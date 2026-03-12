@@ -222,6 +222,12 @@ export default function SettingsPaymentGateway(props) {
               '（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）',
             )}
           </Text>
+          <br />
+          <Text type='secondary'>
+            {t(
+              '固定通知 URL 请填写 回调地址（未填则用服务器地址） + /api/epay/notify，该地址会自动同时处理余额充值和订阅充值',
+            )}
+          </Text>
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
