@@ -24,7 +24,11 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [ -n "${GITHUB_REF_NAME}" ] && [ "${GITHUB_REF_NAME}" != "${GITHUB_SHA}" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(git describe --tags)
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@v2
         with:
@@ -69,7 +73,11 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [ -n "${GITHUB_REF_NAME}" ] && [ "${GITHUB_REF_NAME}" != "${GITHUB_SHA}" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(git describe --tags)
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@v2
         with:
@@ -112,7 +120,11 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [ -n "${GITHUB_REF_NAME}" ] && [ "${GITHUB_REF_NAME}" != "${GITHUB_SHA}" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(git describe --tags)
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@v2
         with:
