@@ -24,7 +24,7 @@ import (
 // ── Keccak256 topic hash for PaymentReceived event ─────────────────────────
 // PaymentReceived(bytes32 indexed orderId, address indexed payer, address token, uint256 amount)
 // Pre-computed with: cast keccak "PaymentReceived(bytes32,address,address,uint256)"
-const paymentReceivedTopicHex = "0xa55b8d5e9e3e3aed1a51f0db7e41a73ec84cb099fb5aa2f07acc3b9e79f48437"
+const paymentReceivedTopicHex = "0x1c517e85acdede9b6dbdaab4925d20d3551f2961e9a860e72658e1769f150322"
 
 // ── Request / response types ───────────────────────────────────────────────
 
