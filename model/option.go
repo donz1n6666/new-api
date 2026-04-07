@@ -105,6 +105,13 @@ func InitOptionMap() {
 	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
 	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
+	// ── Ethereum ──────────────────────────────────────────────────────────
+	common.OptionMap["EthereumEnabled"] = strconv.FormatBool(setting.EthereumEnabled)
+	common.OptionMap["EthereumChainId"] = strconv.FormatInt(setting.EthereumChainId, 10)
+	common.OptionMap["EthereumContractAddress"] = setting.EthereumContractAddress
+	common.OptionMap["EthereumAlchemyWebhookSigningKey"] = setting.EthereumAlchemyWebhookSigningKey
+	common.OptionMap["EthereumMinTopUp"] = strconv.Itoa(setting.EthereumMinTopUp)
+	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -507,6 +514,19 @@ func updateOptionMap(key string, value string) (err error) {
 	case "WaffoPayMethods":
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
+		// No additional in-memory variable to update.
+	case "EthereumEnabled":
+		setting.EthereumEnabled = value == "true"
+	case "EthereumChainId":
+		setting.EthereumChainId, _ = strconv.ParseInt(value, 10, 64)
+	case "EthereumContractAddress":
+		setting.EthereumContractAddress = value
+	case "EthereumAlchemyWebhookSigningKey":
+		setting.EthereumAlchemyWebhookSigningKey = value
+	case "EthereumMinTopUp":
+		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumSupportedTokens":
+		// Read directly from OptionMap via setting.GetEthereumTokens().
 		// No additional in-memory variable to update.
 	}
 	return err

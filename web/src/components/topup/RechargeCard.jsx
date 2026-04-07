@@ -90,6 +90,10 @@ const RechargeCard = ({
   enableWaffoTopUp,
   waffoTopUp,
   waffoPayMethods,
+  enableEthereumTopUp = false,
+  ethereumTopUp,
+  ethereumInfo,
+  ethereumPayLoading = false,
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
@@ -227,19 +231,19 @@ const RechargeCard = ({
           <div className='py-8 flex justify-center'>
             <Spin size='large' />
           </div>
-        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp || enableWaffoTopUp ? (
+        ) : enableOnlineTopUp || enableStripeTopUp || enableCreemTopUp || enableWaffoTopUp || enableEthereumTopUp ? (
           <Form
             getFormApi={(api) => (onlineFormApiRef.current = api)}
             initValues={{ topUpCount: topUpCount }}
           >
             <div className='space-y-6'>
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp || enableEthereumTopUp) && (
                 <Row gutter={12}>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                     <Form.InputNumber
                       field='topUpCount'
                       label={t('充值数量')}
-                      disabled={!enableOnlineTopUp && !enableStripeTopUp && !enableWaffoTopUp}
+                      disabled={!enableOnlineTopUp && !enableStripeTopUp && !enableWaffoTopUp && !enableEthereumTopUp}
                       placeholder={
                         t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
                       }
@@ -361,7 +365,7 @@ const RechargeCard = ({
                 </Row>
               )}
 
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp || enableEthereumTopUp) && (
                 <Form.Slot
                   label={
                     <div className='flex items-center gap-2'>
@@ -522,6 +526,36 @@ const RechargeCard = ({
                   </Form.Slot>
                 )}
 
+              {/* Ethereum 充值区域 */}
+              {enableEthereumTopUp &&
+                ethereumInfo?.tokens?.length > 0 && (
+                  <Form.Slot label={t('Ethereum 充值')}>
+                    <Space wrap>
+                      {ethereumInfo.tokens.map((token, index) => (
+                        <Button
+                          key={index}
+                          loading={ethereumPayLoading}
+                          onClick={() => ethereumTopUp(token.address)}
+                          style={{
+                            background:
+                              'linear-gradient(135deg, #627EEA, #8FA3F5)',
+                            color: '#fff',
+                            border: 'none',
+                          }}
+                          className='!rounded-lg !px-4 !py-2'
+                        >
+                          {t('用')} {token.symbol} {t('支付')}
+                        </Button>
+                      ))}
+                    </Space>
+                    <div style={{ marginTop: 8 }}>
+                      <Text type='tertiary' size='small'>
+                        {t('链 ID')}: {ethereumInfo.chain_id} | {t('需要 MetaMask 钱包')}
+                      </Text>
+                    </div>
+                  </Form.Slot>
+                )}
+
               {/* Creem 充值区域 */}
               {enableCreemTopUp && creemProducts.length > 0 && (
                 <Form.Slot label={t('Creem 充值')}>
@@ -661,6 +695,8 @@ const RechargeCard = ({
                 enableOnlineTopUp={enableOnlineTopUp}
                 enableStripeTopUp={enableStripeTopUp}
                 enableCreemTopUp={enableCreemTopUp}
+                enableEthereumTopUp={enableEthereumTopUp}
+                ethereumInfo={ethereumInfo}
                 billingPreference={billingPreference}
                 onChangeBillingPreference={onChangeBillingPreference}
                 activeSubscriptions={activeSubscriptions}

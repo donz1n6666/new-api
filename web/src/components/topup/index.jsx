@@ -76,6 +76,12 @@ const TopUp = () => {
   const [waffoPayMethods, setWaffoPayMethods] = useState([]);
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
 
+  // Ethereum 相关状态
+  const [enableEthereumTopUp, setEnableEthereumTopUp] = useState(false);
+  const [ethereumInfo, setEthereumInfo] = useState(null);
+  const [ethereumMinTopUp, setEthereumMinTopUp] = useState(1);
+  const [ethereumPayLoading, setEthereumPayLoading] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
   const [payWay, setPayWay] = useState('');
@@ -346,6 +352,108 @@ const TopUp = () => {
     }
   };
 
+  const ethereumTopUp = async (tokenAddress) => {
+    if (!enableEthereumTopUp) {
+      showError(t('管理员未开启 Ethereum 支付！'));
+      return;
+    }
+    if (topUpCount < ethereumMinTopUp) {
+      showError(t('充值数量不能小于') + ethereumMinTopUp);
+      return;
+    }
+
+    setEthereumPayLoading(true);
+    try {
+      // 1. Create pending order on backend
+      const res = await API.post('/api/user/ethereum/pay', {
+        amount: parseInt(topUpCount),
+        token_address: tokenAddress,
+      });
+      if (!res?.data || res.data.message !== 'success') {
+        showError(res?.data?.data || t('创建订单失败'));
+        return;
+      }
+      const {
+        order_id,
+        contract_address,
+        chain_id,
+        token_address: respTokenAddr,
+        pay_amount,
+      } = res.data.data;
+
+      // 2. Connect to MetaMask via ethers.js
+      if (!window.ethereum) {
+        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
+        return;
+      }
+
+      const { ethers } = await import('ethers');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+
+      // 3. Switch to correct chain
+      const network = await provider.getNetwork();
+      if (network.chainId !== BigInt(chain_id)) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x' + chain_id.toString(16) }],
+          });
+        } catch (switchError) {
+          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
+          return;
+        }
+      }
+
+      const signer = await provider.getSigner();
+
+      // 4. Call contract
+      const isNativeETH = respTokenAddr === '0x0000000000000000000000000000000000000000';
+
+      const abi = isNativeETH
+        ? ['function payWithETH(bytes32 orderId) payable']
+        : ['function payWithToken(bytes32 orderId, address token, uint256 amount)'];
+
+      const contract = new ethers.Contract(contract_address, abi, signer);
+
+      let tx;
+      if (isNativeETH) {
+        tx = await contract.payWithETH(order_id, { value: BigInt(pay_amount) });
+      } else {
+        // Approve token spend first
+        const erc20Abi = [
+          'function approve(address spender, uint256 amount) returns (bool)',
+          'function allowance(address owner, address spender) view returns (uint256)',
+        ];
+        const tokenContract = new ethers.Contract(respTokenAddr, erc20Abi, signer);
+
+        const signerAddress = await signer.getAddress();
+        const currentAllowance = await tokenContract.allowance(signerAddress, contract_address);
+
+        if (currentAllowance < BigInt(pay_amount)) {
+          showInfo(t('请在钱包中批准代币支出...'));
+          const approveTx = await tokenContract.approve(contract_address, BigInt(pay_amount));
+          await approveTx.wait();
+        }
+
+        tx = await contract.payWithToken(order_id, respTokenAddr, BigInt(pay_amount));
+      }
+
+      showInfo(t('交易已提交，等待确认...'));
+      await tx.wait();
+      showSuccess(t('交易确认！额度将在几秒内到账'));
+
+    } catch (e) {
+      if (e?.code === 4001 || e?.info?.error?.code === 4001) {
+        showError(t('用户取消了交易'));
+      } else {
+        showError(e?.reason || e?.message || t('交易失败'));
+      }
+    } finally {
+      setEthereumPayLoading(false);
+    }
+  };
+
   const processCreemCallback = (data) => {
     // 与 Stripe 保持一致的实现方式
     window.open(data.checkout_url, '_blank');
@@ -495,6 +603,12 @@ const TopUp = () => {
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
+
+          // Ethereum
+          setEnableEthereumTopUp(data.enable_ethereum_topup || false);
+          setEthereumInfo(data.ethereum_info || null);
+          setEthereumMinTopUp(data.ethereum_min_topup || 1);
+
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -791,6 +905,10 @@ const TopUp = () => {
           enableWaffoTopUp={enableWaffoTopUp}
           waffoTopUp={waffoTopUp}
           waffoPayMethods={waffoPayMethods}
+          enableEthereumTopUp={enableEthereumTopUp}
+          ethereumTopUp={ethereumTopUp}
+          ethereumInfo={ethereumInfo}
+          ethereumPayLoading={ethereumPayLoading}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}

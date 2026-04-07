@@ -52,10 +52,13 @@ const SubscriptionPurchaseModal = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableEthereumTopUp = false,
+  ethereumInfo = null,
   purchaseLimitInfo = null,
   onPayStripe,
   onPayCreem,
   onPayEpay,
+  onPayEthereum,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -69,7 +72,8 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  const hasEthereum = enableEthereumTopUp && ethereumInfo?.tokens?.length > 0;
+  const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasEthereum;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -239,6 +243,28 @@ const SubscriptionPurchaseModal = ({
                   >
                     {t('支付')}
                   </Button>
+                </div>
+              )}
+
+              {/* Ethereum */}
+              {hasEthereum && (
+                <div className='flex gap-2 flex-wrap'>
+                  {ethereumInfo.tokens.map((token, index) => (
+                    <Button
+                      key={index}
+                      loading={paying}
+                      onClick={() => onPayEthereum?.(token.address)}
+                      disabled={purchaseLimitReached}
+                      style={{
+                        background:
+                          'linear-gradient(135deg, #627EEA, #8FA3F5)',
+                        color: '#fff',
+                        border: 'none',
+                      }}
+                    >
+                      {t('用')} {token.symbol} {t('支付')}
+                    </Button>
+                  ))}
                 </div>
               )}
             </div>

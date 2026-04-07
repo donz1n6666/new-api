@@ -97,6 +97,15 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
 	}
+
+	// ── Ethereum top-up info ──────────────────────────────────────────────
+	enableEthereumTopUp, ethereumInfo := getEthereumTopUpInfo()
+	data["enable_ethereum_topup"] = enableEthereumTopUp
+	if enableEthereumTopUp {
+		data["ethereum_info"] = ethereumInfo
+		data["ethereum_min_topup"] = setting.EthereumMinTopUp
+	}
+
 	common.ApiSuccess(c, data)
 }
 

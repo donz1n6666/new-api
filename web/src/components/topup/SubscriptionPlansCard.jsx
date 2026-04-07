@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, renderQuota } from '../../helpers';
+import { API, showError, showSuccess, showInfo, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -77,6 +77,8 @@ const SubscriptionPlansCard = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableEthereumTopUp = false,
+  ethereumInfo = null,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
@@ -193,6 +195,111 @@ const SubscriptionPlansCard = ({
       }
     } catch (e) {
       showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const payEthereum = async (tokenAddress) => {
+    if (!selectedPlan?.plan?.id) return;
+    setPaying(true);
+    try {
+      // 1. Create pending subscription order on backend
+      const res = await API.post('/api/subscription/ethereum/pay', {
+        plan_id: selectedPlan.plan.id,
+        token_address: tokenAddress,
+      });
+      if (!res?.data || res.data.message !== 'success') {
+        showError(res?.data?.data || t('创建订单失败'));
+        return;
+      }
+      const {
+        order_id,
+        contract_address,
+        chain_id,
+        token_address: respTokenAddr,
+        pay_amount,
+      } = res.data.data;
+
+      // 2. Connect MetaMask
+      if (!window.ethereum) {
+        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
+        return;
+      }
+      const { ethers } = await import('ethers');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+
+      // 3. Switch chain
+      const network = await provider.getNetwork();
+      if (network.chainId !== BigInt(chain_id)) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x' + chain_id.toString(16) }],
+          });
+        } catch (switchError) {
+          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
+          return;
+        }
+      }
+
+      const signer = await provider.getSigner();
+      const isNativeETH =
+        respTokenAddr === '0x0000000000000000000000000000000000000000';
+
+      const abi = isNativeETH
+        ? ['function payWithETH(bytes32 orderId) payable']
+        : [
+            'function payWithToken(bytes32 orderId, address token, uint256 amount)',
+          ];
+      const contract = new ethers.Contract(contract_address, abi, signer);
+
+      let tx;
+      if (isNativeETH) {
+        tx = await contract.payWithETH(order_id, {
+          value: BigInt(pay_amount),
+        });
+      } else {
+        const erc20Abi = [
+          'function approve(address spender, uint256 amount) returns (bool)',
+          'function allowance(address owner, address spender) view returns (uint256)',
+        ];
+        const tokenContract = new ethers.Contract(
+          respTokenAddr,
+          erc20Abi,
+          signer,
+        );
+        const signerAddress = await signer.getAddress();
+        const currentAllowance = await tokenContract.allowance(
+          signerAddress,
+          contract_address,
+        );
+        if (currentAllowance < BigInt(pay_amount)) {
+          showInfo(t('请在钱包中批准代币支出...'));
+          const approveTx = await tokenContract.approve(
+            contract_address,
+            BigInt(pay_amount),
+          );
+          await approveTx.wait();
+        }
+        tx = await contract.payWithToken(
+          order_id,
+          respTokenAddr,
+          BigInt(pay_amount),
+        );
+      }
+
+      showInfo(t('交易已提交，等待确认...'));
+      await tx.wait();
+      showSuccess(t('交易确认！额度将在几秒内到账'));
+      closeBuy();
+    } catch (e) {
+      if (e?.code === 4001 || e?.info?.error?.code === 4001) {
+        showError(t('用户取消了交易'));
+      } else {
+        showError(e?.reason || e?.message || t('交易失败'));
+      }
     } finally {
       setPaying(false);
     }
@@ -665,6 +772,8 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
+        enableEthereumTopUp={enableEthereumTopUp}
+        ethereumInfo={ethereumInfo}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -676,6 +785,7 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        onPayEthereum={payEthereum}
       />
     </>
   );
