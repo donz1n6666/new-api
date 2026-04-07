@@ -191,8 +191,14 @@ func EthereumWebhook(c *gin.Context) {
 
 	// Verify Alchemy HMAC-SHA256 signature
 	sigHex := c.GetHeader("X-Alchemy-Signature")
-	if !verifyAlchemySignature(bodyBytes, sigHex, setting.EthereumAlchemyWebhookSigningKey) {
-		log.Printf("Ethereum Webhook: 签名验证失败")
+	signingKey := strings.TrimSpace(setting.EthereumAlchemyWebhookSigningKey)
+	if !verifyAlchemySignature(bodyBytes, sigHex, signingKey) {
+		// Compute expected for debug (same logic as verifyAlchemySignature)
+		debugMac := hmac.New(sha256.New, []byte(signingKey))
+		debugMac.Write(bodyBytes)
+		debugExpected := hex.EncodeToString(debugMac.Sum(nil))
+		log.Printf("Ethereum Webhook: 签名验证失败 - received_sig=%q, expected_sig=%q, key=%q, body_len=%d",
+			sigHex, debugExpected, signingKey, len(bodyBytes))
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -391,16 +397,15 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 // ── Helper functions ───────────────────────────────────────────────────────
 
 // verifyAlchemySignature verifies the Alchemy webhook HMAC-SHA256 signature.
+// Alchemy docs: HMAC-SHA256(signingKey, body) → hex digest, compared against X-Alchemy-Signature.
+// The signingKey (e.g. "whsec_xxx") is used as-is (raw UTF-8 bytes) per Alchemy's own JS example.
 func verifyAlchemySignature(body []byte, sigHex, signingKey string) bool {
+	signingKey = strings.TrimSpace(signingKey)
+	sigHex = strings.TrimSpace(sigHex)
 	if signingKey == "" || sigHex == "" {
 		return false
 	}
-	keyBytes, err := hex.DecodeString(strings.TrimPrefix(signingKey, "0x"))
-	if err != nil {
-		// Treat signing key as raw UTF-8 bytes if not valid hex
-		keyBytes = []byte(signingKey)
-	}
-	mac := hmac.New(sha256.New, keyBytes)
+	mac := hmac.New(sha256.New, []byte(signingKey))
 	mac.Write(body)
 	expected := hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(expected), []byte(strings.ToLower(sigHex)))
