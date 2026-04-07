@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -156,13 +155,13 @@ func RequestEthereumPay(c *gin.Context) {
 		Status:        common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
-		log.Printf("Ethereum: 创建本地订单失败: %v", err)
+		common.SysLog(fmt.Sprintf("Ethereum: 创建本地订单失败: %v", err))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
 
-	log.Printf("Ethereum: 订单创建 - userId=%d, tradeNo=%s, token=%s, payAmount=%s",
-		userId, tradeNo, tokenCfg.Symbol, payAmountStr)
+	common.SysLog(fmt.Sprintf("Ethereum: 订单创建 - userId=%d, tradeNo=%s, token=%s, payAmount=%s",
+		userId, tradeNo, tokenCfg.Symbol, payAmountStr))
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
@@ -184,7 +183,7 @@ func RequestEthereumPay(c *gin.Context) {
 func EthereumWebhook(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		log.Printf("Ethereum Webhook: 读取 body 失败: %v", err)
+		common.SysLog(fmt.Sprintf("Ethereum Webhook: 读取 body 失败: %v", err))
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
@@ -197,34 +196,47 @@ func EthereumWebhook(c *gin.Context) {
 		debugMac := hmac.New(sha256.New, []byte(signingKey))
 		debugMac.Write(bodyBytes)
 		debugExpected := hex.EncodeToString(debugMac.Sum(nil))
-		log.Printf("Ethereum Webhook: 签名验证失败 - received_sig=%q, expected_sig=%q, key=%q, body_len=%d",
-			sigHex, debugExpected, signingKey, len(bodyBytes))
+		common.SysLog(fmt.Sprintf("Ethereum Webhook: 签名验证失败 - received_sig=%q, expected_sig=%q, key=%q, body_len=%d",
+			sigHex, debugExpected, signingKey, len(bodyBytes)))
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
 
+	common.SysLog(fmt.Sprintf("Ethereum Webhook: 签名验证通过, body_len=%d", len(bodyBytes)))
+
 	var payload alchemyWebhookPayload
 	if err := common.Unmarshal(bodyBytes, &payload); err != nil {
-		log.Printf("Ethereum Webhook: JSON 解析失败: %v", err)
+		common.SysLog(fmt.Sprintf("Ethereum Webhook: JSON 解析失败: %v", err))
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
+	logs := payload.Event.Data.Block.Logs
+	common.SysLog(fmt.Sprintf("Ethereum Webhook: webhookId=%s, log_count=%d", payload.WebhookID, len(logs)))
+
 	contractAddrLower := strings.ToLower(setting.EthereumContractAddress)
-	for _, logEntry := range payload.Event.Data.Block.Logs {
+	matched := 0
+	for _, logEntry := range logs {
 		if strings.ToLower(logEntry.Address) != contractAddrLower {
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 跳过不匹配合约 - log_addr=%s, expect=%s",
+				logEntry.Address, contractAddrLower))
 			continue
 		}
 		if len(logEntry.Topics) < 2 {
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 跳过 topics 不足 - topics=%v", logEntry.Topics))
 			continue
 		}
 		// topics[0] = event signature hash
 		if !strings.EqualFold(logEntry.Topics[0], paymentReceivedTopicHex) {
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 跳过不匹配事件 - topic0=%s, expect=%s",
+				logEntry.Topics[0], paymentReceivedTopicHex))
 			continue
 		}
+		matched++
 		handlePaymentReceivedLog(logEntry)
 	}
 
+	common.SysLog(fmt.Sprintf("Ethereum Webhook: 处理完成 - matched=%d/%d", matched, len(logs)))
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
@@ -250,11 +262,11 @@ func handlePaymentReceivedLog(entry alchemyLog) {
 	orderIdHex := entry.Topics[1] // 0x + 64 hex chars
 	tradeNo := orderIdToTradeNo(orderIdHex)
 	if tradeNo == "" {
-		log.Printf("Ethereum Webhook: 无法从 orderId 还原 tradeNo: %s", orderIdHex)
+		common.SysLog(fmt.Sprintf("Ethereum Webhook: 无法从 orderId 还原 tradeNo: %s", orderIdHex))
 		return
 	}
 
-	log.Printf("Ethereum Webhook: 收到支付事件 - tradeNo=%s, txHash=%s", tradeNo, entry.TransactionHash)
+	common.SysLog(fmt.Sprintf("Ethereum Webhook: 收到支付事件 - tradeNo=%s, txHash=%s", tradeNo, entry.TransactionHash))
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
@@ -264,17 +276,17 @@ func handlePaymentReceivedLog(entry alchemyLog) {
 		// Subscription purchase order
 		err = model.CompleteSubscriptionOrder(tradeNo, "")
 		if err != nil {
-			log.Printf("Ethereum Webhook: 订阅订单完成失败 - tradeNo=%s, err=%v", tradeNo, err)
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 订阅订单完成失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
-			log.Printf("Ethereum Webhook: 订阅订单完成成功 - tradeNo=%s", tradeNo)
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 订阅订单完成成功 - tradeNo=%s", tradeNo))
 		}
 	} else {
 		// Top-up (balance recharge) order
 		err = model.RechargeEthereum(tradeNo)
 		if err != nil {
-			log.Printf("Ethereum Webhook: 充值失败 - tradeNo=%s, err=%v", tradeNo, err)
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 充值失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
-			log.Printf("Ethereum Webhook: 充值成功 - tradeNo=%s", tradeNo)
+			common.SysLog(fmt.Sprintf("Ethereum Webhook: 充值成功 - tradeNo=%s", tradeNo))
 		}
 	}
 }
@@ -372,13 +384,13 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 		Status:        common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		log.Printf("Ethereum: 创建订阅订单失败: %v", err)
+		common.SysLog(fmt.Sprintf("Ethereum: 创建订阅订单失败: %v", err))
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
 
-	log.Printf("Ethereum: 订阅订单创建 - userId=%d, tradeNo=%s, planId=%d, token=%s, payAmount=%s",
-		userId, tradeNo, plan.Id, tokenCfg.Symbol, payAmountStr)
+	common.SysLog(fmt.Sprintf("Ethereum: 订阅订单创建 - userId=%d, tradeNo=%s, planId=%d, token=%s, payAmount=%s",
+		userId, tradeNo, plan.Id, tokenCfg.Symbol, payAmountStr))
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
