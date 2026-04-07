@@ -66,10 +66,14 @@ type alchemyWebhookPayload struct {
 }
 
 type alchemyLog struct {
-	Topics          []string `json:"topics"`
-	Data            string   `json:"data"`
-	TransactionHash string   `json:"transactionHash"`
-	Address         string   `json:"address"`
+	Topics  []string `json:"topics"`
+	Data    string   `json:"data"`
+	Account struct {
+		Address string `json:"address"`
+	} `json:"account"`
+	Transaction struct {
+		Hash string `json:"hash"`
+	} `json:"transaction"`
 }
 
 // ── RequestEthereumPay ─────────────────────────────────────────────────────
@@ -217,9 +221,9 @@ func EthereumWebhook(c *gin.Context) {
 	contractAddrLower := strings.ToLower(setting.EthereumContractAddress)
 	matched := 0
 	for _, logEntry := range logs {
-		if strings.ToLower(logEntry.Address) != contractAddrLower {
+		if strings.ToLower(logEntry.Account.Address) != contractAddrLower {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 跳过不匹配合约 - log_addr=%s, expect=%s",
-				logEntry.Address, contractAddrLower))
+				logEntry.Account.Address, contractAddrLower))
 			continue
 		}
 		if len(logEntry.Topics) < 2 {
@@ -266,7 +270,7 @@ func handlePaymentReceivedLog(entry alchemyLog) {
 		return
 	}
 
-	common.SysLog(fmt.Sprintf("Ethereum Webhook: 收到支付事件 - tradeNo=%s, txHash=%s", tradeNo, entry.TransactionHash))
+	common.SysLog(fmt.Sprintf("Ethereum Webhook: 收到支付事件 - tradeNo=%s, txHash=%s", tradeNo, entry.Transaction.Hash))
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
