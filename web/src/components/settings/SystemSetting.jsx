@@ -93,6 +93,7 @@ const SystemSetting = () => {
     EmailDomainRestrictionEnabled: '',
     EmailAliasRestrictionEnabled: '',
     SMTPSSLEnabled: '',
+    SMTPForceAuthLogin: '',
     EmailDomainWhitelist: [],
     TelegramOAuthEnabled: '',
     TelegramBotToken: '',
@@ -185,6 +186,7 @@ const SystemSetting = () => {
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
           case 'SMTPSSLEnabled':
+          case 'SMTPForceAuthLogin':
           case 'LinuxDOOAuthEnabled':
           case 'discord.enabled':
           case 'oidc.enabled':
@@ -1373,6 +1375,15 @@ const SystemSetting = () => {
                         }
                       >
                         {t('启用SMTP SSL')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='SMTPForceAuthLogin'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('SMTPForceAuthLogin', e)
+                        }
+                      >
+                        {t('强制使用 AUTH LOGIN')}
                       </Form.Checkbox>
                     </Col>
                   </Row>
