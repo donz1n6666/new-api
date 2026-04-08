@@ -27,6 +27,10 @@ func GenerateOAuthCode(c *gin.Context) {
 	if affCode != "" {
 		session.Set("aff", affCode)
 	}
+	invitationCode := c.Query("invitation_code")
+	if invitationCode != "" {
+		session.Set("invitation_code", invitationCode)
+	}
 	session.Set("oauth_state", state)
 	err := session.Save()
 	if err != nil {
@@ -237,6 +241,24 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 
+	// 邀请码验证（OAuth 注册也需要邀请码）
+	var invitationCodeRecord *model.InvitationCode
+	if common.InvitationCodeEnabled {
+		invCodeVal := session.Get("invitation_code")
+		if invCodeVal == nil || invCodeVal.(string) == "" {
+			return nil, fmt.Errorf("注册需要邀请码")
+		}
+		invCode := invCodeVal.(string)
+		var icErr error
+		invitationCodeRecord, icErr = model.GetInvitationCodeByCode(invCode)
+		if icErr != nil || invitationCodeRecord == nil {
+			return nil, fmt.Errorf("无效的邀请码")
+		}
+		if invitationCodeRecord.Status != common.InvitationCodeStatusEnabled {
+			return nil, fmt.Errorf("该邀请码已被使用或已禁用")
+		}
+	}
+
 	// Set up new user
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
 
@@ -262,11 +284,15 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
 
-	// Handle affiliate code
-	affCode := session.Get("aff")
+	// Handle inviter: 优先使用邀请码生成者，否则使用 aff_code
 	inviterId := 0
-	if affCode != nil {
-		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+	if common.InvitationCodeEnabled && invitationCodeRecord != nil {
+		inviterId = invitationCodeRecord.UserId
+	} else {
+		affCode := session.Get("aff")
+		if affCode != nil {
+			inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+		}
 	}
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
@@ -296,6 +322,10 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
 		user.FinalizeOAuthUserCreation(inviterId)
+		// 标记邀请码已使用
+		if common.InvitationCodeEnabled && invitationCodeRecord != nil {
+			_ = model.UseInvitationCode(invitationCodeRecord.Code, user.Id)
+		}
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -325,6 +355,10 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks
 		user.FinalizeOAuthUserCreation(inviterId)
+		// 标记邀请码已使用
+		if common.InvitationCodeEnabled && invitationCodeRecord != nil {
+			_ = model.UseInvitationCode(invitationCodeRecord.Code, user.Id)
+		}
 	}
 
 	return user, nil

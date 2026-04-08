@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   Avatar,
   Typography,
@@ -26,8 +26,12 @@ import {
   Input,
   Badge,
   Space,
+  Table,
+  Tag,
 } from '@douyinfe/semi-ui';
-import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import { Copy, Users, BarChart2, TrendingUp, Gift, Zap, Ticket } from 'lucide-react';
+import { API, showError, showSuccess } from '../../helpers';
+import { StatusContext } from '../../context/Status';
 
 const { Text } = Typography;
 
@@ -39,6 +43,66 @@ const InvitationCard = ({
   affLink,
   handleAffLinkClick,
 }) => {
+  const [statusState] = useContext(StatusContext);
+  const status = useMemo(() => {
+    if (statusState?.status) return statusState.status;
+    const saved = localStorage.getItem('status');
+    if (!saved) return {};
+    try { return JSON.parse(saved) || {}; } catch { return {}; }
+  }, [statusState?.status]);
+
+  const invitationCodeEnabled = !!status?.invitation_code_enabled;
+
+  const [myCodes, setMyCodes] = useState([]);
+  const [myCodesLoading, setMyCodesLoading] = useState(false);
+  const [generateLoading, setGenerateLoading] = useState(false);
+
+  const loadMyCodes = async () => {
+    setMyCodesLoading(true);
+    try {
+      const res = await API.get('/api/invitation_code/mine?p=0&page_size=50');
+      const { success, data } = res.data;
+      if (success) {
+        setMyCodes(data.items || []);
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setMyCodesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (invitationCodeEnabled) {
+      loadMyCodes();
+    }
+  }, [invitationCodeEnabled]);
+
+  const handleGenerate = async () => {
+    setGenerateLoading(true);
+    try {
+      const res = await API.post('/api/invitation_code/generate');
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('邀请码生成成功'));
+        loadMyCodes();
+      } else {
+        showError(message);
+      }
+    } catch (e) {
+      showError(t('生成失败'));
+    } finally {
+      setGenerateLoading(false);
+    }
+  };
+
+  const copyInvLink = (code) => {
+    const link = `${window.location.origin}/register?invitation_code=${code}`;
+    navigator.clipboard.writeText(link).then(() => {
+      showSuccess(t('已复制到剪贴板'));
+    }).catch(() => showError(t('复制失败')));
+  };
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -221,6 +285,67 @@ const InvitationCard = ({
             </div>
           </div>
         </Card>
+
+        {/* 邀请码管理 - 仅在启用邀请码时显示 */}
+        {invitationCodeEnabled && (
+          <Card
+            className='!rounded-xl w-full'
+            title={
+              <div className='flex items-center gap-2'>
+                <Ticket size={16} />
+                <Text>{t('我的邀请码')}</Text>
+              </div>
+            }
+            headerExtraContent={
+              <Button
+                theme='solid'
+                type='primary'
+                size='small'
+                onClick={handleGenerate}
+                loading={generateLoading}
+                className='!rounded-lg'
+              >
+                {t('生成邀请码')}
+              </Button>
+            }
+          >
+            <Table
+              dataSource={myCodes}
+              loading={myCodesLoading}
+              rowKey='id'
+              size='small'
+              pagination={false}
+              columns={[
+                {
+                  title: t('邀请码'),
+                  dataIndex: 'code',
+                  render: (text) => <Text copyable={{ content: text }}>{text}</Text>,
+                },
+                {
+                  title: t('状态'),
+                  dataIndex: 'status',
+                  width: 80,
+                  render: (s) => {
+                    const map = { 1: { text: t('未使用'), color: 'green' }, 2: { text: t('已使用'), color: 'grey' }, 3: { text: t('已禁用'), color: 'red' } };
+                    const info = map[s] || { text: t('未知'), color: 'grey' };
+                    return <Tag color={info.color}>{info.text}</Tag>;
+                  },
+                },
+                {
+                  title: t('操作'),
+                  width: 100,
+                  render: (_, record) =>
+                    record.status === 1 ? (
+                      <Button size='small' icon={<Copy size={12} />} onClick={() => copyInvLink(record.code)}>
+                        {t('复制链接')}
+                      </Button>
+                    ) : null,
+                },
+              ]}
+              empty={<Text type='tertiary'>{t('暂无邀请码，点击上方按钮生成')}</Text>}
+            />
+          </Card>
+        )}
       </Space>
     </Card>
   );

@@ -51,6 +51,16 @@ redemption.failed: "兌換失敗，請稍後重試"
 redemption.not_provided: "未提供兌換碼"
 redemption.expire_time_invalid: "過期時間不能早於當前時間"
 
+# Invitation code messages
+invitation_code.required: "註冊需要邀請碼"
+invitation_code.invalid: "無效的邀請碼"
+invitation_code.used: "該邀請碼已被使用"
+invitation_code.disabled: "該邀請碼已被停用"
+invitation_code.quota_insufficient: "額度不足，無法生成邀請碼"
+invitation_code.create_failed: "建立邀請碼失敗"
+invitation_code.count_positive: "邀請碼數量必須大於 0"
+invitation_code.count_max: "單次最多生成 100 個邀請碼"
+
 # User messages
 user.password_login_disabled: "管理員關閉了密碼登錄"
 user.register_disabled: "管理員關閉了新使用者註冊"

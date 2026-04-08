@@ -50,6 +50,16 @@ redemption.failed: "Redemption failed, please try again later"
 redemption.not_provided: "Redemption code not provided"
 redemption.expire_time_invalid: "Expiration time cannot be earlier than current time"
 
+# Invitation code messages
+invitation_code.required: "Invitation code is required for registration"
+invitation_code.invalid: "Invalid invitation code"
+invitation_code.used: "This invitation code has already been used"
+invitation_code.disabled: "This invitation code has been disabled"
+invitation_code.quota_insufficient: "Insufficient quota to generate invitation code"
+invitation_code.create_failed: "Failed to create invitation code"
+invitation_code.count_positive: "Invitation code count must be greater than 0"
+invitation_code.count_max: "Maximum 100 invitation codes can be generated at once"
+
 # User messages
 user.password_login_disabled: "Password login has been disabled by administrator"
 user.register_disabled: "New user registration has been disabled by administrator"

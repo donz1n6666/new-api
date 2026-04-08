@@ -119,6 +119,17 @@ const RegisterForm = () => {
     localStorage.setItem('aff', affCode);
   }
 
+  // 邀请码：从 URL 参数或 localStorage 读取
+  const urlInvitationCode = new URLSearchParams(window.location.search).get('invitation_code');
+  const [invitationCodeInput, setInvitationCodeInput] = useState(urlInvitationCode || localStorage.getItem('invitation_code') || '');
+  const [invitationCodeEnabled, setInvitationCodeEnabled] = useState(false);
+
+  useEffect(() => {
+    if (urlInvitationCode) {
+      localStorage.setItem('invitation_code', urlInvitationCode);
+    }
+  }, [urlInvitationCode]);
+
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
     const savedStatus = localStorage.getItem('status');
@@ -153,6 +164,7 @@ const RegisterForm = () => {
     // 从 status 获取用户协议和隐私政策的启用状态
     setHasUserAgreement(status?.user_agreement_enabled || false);
     setHasPrivacyPolicy(status?.privacy_policy_enabled || false);
+    setInvitationCodeEnabled(!!status?.invitation_code_enabled);
   }, [status]);
 
   useEffect(() => {
@@ -235,6 +247,9 @@ const RegisterForm = () => {
           affCode = localStorage.getItem('aff');
         }
         inputs.aff_code = affCode;
+        if (invitationCodeEnabled) {
+          inputs.invitation_code = invitationCodeInput;
+        }
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,
@@ -295,7 +310,7 @@ const RegisterForm = () => {
       setGithubButtonDisabled(true);
     }, 20000);
     try {
-      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true });
+      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true, invitationCode: invitationCodeInput });
     } finally {
       setTimeout(() => setGithubLoading(false), 3000);
     }
@@ -304,7 +319,7 @@ const RegisterForm = () => {
   const handleDiscordClick = () => {
     setDiscordLoading(true);
     try {
-      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
+      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true, invitationCode: invitationCodeInput });
     } finally {
       setTimeout(() => setDiscordLoading(false), 3000);
     }
@@ -317,7 +332,7 @@ const RegisterForm = () => {
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
         false,
-        { shouldLogout: true },
+        { shouldLogout: true, invitationCode: invitationCodeInput },
       );
     } finally {
       setTimeout(() => setOidcLoading(false), 3000);
@@ -327,7 +342,7 @@ const RegisterForm = () => {
   const handleLinuxDOClick = () => {
     setLinuxdoLoading(true);
     try {
-      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
+      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true, invitationCode: invitationCodeInput });
     } finally {
       setTimeout(() => setLinuxdoLoading(false), 3000);
     }
@@ -336,7 +351,7 @@ const RegisterForm = () => {
   const handleCustomOAuthClick = (provider) => {
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
     try {
-      onCustomOAuthClicked(provider, { shouldLogout: true });
+      onCustomOAuthClicked(provider, { shouldLogout: true, invitationCode: invitationCodeInput });
     } finally {
       setTimeout(() => {
         setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: false }));
@@ -409,6 +424,20 @@ const RegisterForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              {invitationCodeEnabled && (
+                <div className='mb-4 px-2'>
+                  <Form>
+                    <Form.Input
+                      field='invitation_code_oauth'
+                      label={t('邀请码')}
+                      placeholder={t('请输入邀请码')}
+                      value={invitationCodeInput}
+                      onChange={(value) => setInvitationCodeInput(value)}
+                      prefix={<IconKey />}
+                    />
+                  </Form>
+                </div>
+              )}
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -635,6 +664,18 @@ const RegisterForm = () => {
                       prefix={<IconKey />}
                     />
                   </>
+                )}
+
+                {invitationCodeEnabled && (
+                  <Form.Input
+                    field='invitation_code'
+                    label={t('邀请码')}
+                    placeholder={t('请输入邀请码')}
+                    name='invitation_code'
+                    value={invitationCodeInput}
+                    onChange={(value) => setInvitationCodeInput(value)}
+                    prefix={<IconKey />}
+                  />
                 )}
 
                 {(hasUserAgreement || hasPrivacyPolicy) && (

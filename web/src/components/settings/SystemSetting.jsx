@@ -81,6 +81,8 @@ const SystemSetting = () => {
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
     RegisterEnabled: '',
+    InvitationCodeEnabled: '',
+    InvitationCodePrice: '',
     'passkey.enabled': '',
     'passkey.rp_display_name': '',
     'passkey.rp_id': '',
@@ -178,6 +180,7 @@ const SystemSetting = () => {
           case 'WeChatAuthEnabled':
           case 'TelegramOAuthEnabled':
           case 'RegisterEnabled':
+          case 'InvitationCodeEnabled':
           case 'TurnstileCheckEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
@@ -1025,6 +1028,15 @@ const SystemSetting = () => {
                         {t('允许新用户注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
+                        field='InvitationCodeEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('InvitationCodeEnabled', e)
+                        }
+                      >
+                        {t('注册需要邀请码')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
                         field='TurnstileCheckEnabled'
                         noLabel
                         onChange={(e) =>
@@ -1089,6 +1101,21 @@ const SystemSetting = () => {
                       >
                         {t('允许通过 OIDC 进行登录')}
                       </Form.Checkbox>
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.InputNumber
+                        field='InvitationCodePrice'
+                        label={t('生成邀请码价格（额度）')}
+                        placeholder={t('0 表示免费生成')}
+                        min={0}
+                        extraText={t(
+                          '用户生成一个邀请码需要消耗的额度，管理员生成不消耗额度',
+                        )}
+                      />
                     </Col>
                   </Row>
                 </Form.Section>

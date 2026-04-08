@@ -103,6 +103,18 @@ const (
 	MsgUserLinuxDOIdEmpty            = "user.linux_do_id_empty"
 )
 
+// Invitation code related messages
+const (
+	MsgInvitationCodeRequired          = "invitation_code.required"
+	MsgInvitationCodeInvalid           = "invitation_code.invalid"
+	MsgInvitationCodeUsed              = "invitation_code.used"
+	MsgInvitationCodeDisabled          = "invitation_code.disabled"
+	MsgInvitationCodeQuotaInsufficient = "invitation_code.quota_insufficient"
+	MsgInvitationCodeCreateFailed      = "invitation_code.create_failed"
+	MsgInvitationCodeCountPositive     = "invitation_code.count_positive"
+	MsgInvitationCodeCountMax          = "invitation_code.count_max"
+)
+
 // Quota related messages
 const (
 	MsgQuotaNegative        = "quota.negative"

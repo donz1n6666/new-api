@@ -168,6 +168,29 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		// Invitation code routes
+		invitationCodeRoute := apiRouter.Group("/invitation_code")
+		{
+			// User routes (need login)
+			userInvRoute := invitationCodeRoute.Group("/")
+			userInvRoute.Use(middleware.UserAuth())
+			{
+				userInvRoute.POST("/generate", middleware.CriticalRateLimit(), controller.GenerateInvitationCode)
+				userInvRoute.GET("/mine", controller.GetMyInvitationCodes)
+			}
+			// Admin routes
+			adminInvRoute := invitationCodeRoute.Group("/")
+			adminInvRoute.Use(middleware.AdminAuth())
+			{
+				adminInvRoute.GET("/", controller.GetAllInvitationCodes)
+				adminInvRoute.GET("/search", controller.SearchInvitationCodes)
+				adminInvRoute.POST("/", controller.AddInvitationCode)
+				adminInvRoute.DELETE("/:id", controller.DeleteInvitationCode)
+				adminInvRoute.PUT("/", controller.UpdateInvitationCode)
+				adminInvRoute.POST("/delete_used", controller.DeleteUsedInvitationCodes)
+			}
+		}
+
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

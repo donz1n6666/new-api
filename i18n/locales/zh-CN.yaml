@@ -51,6 +51,16 @@ redemption.failed: "兑换失败，请稍后重试"
 redemption.not_provided: "未提供兑换码"
 redemption.expire_time_invalid: "过期时间不能早于当前时间"
 
+# Invitation code messages
+invitation_code.required: "注册需要邀请码"
+invitation_code.invalid: "无效的邀请码"
+invitation_code.used: "该邀请码已被使用"
+invitation_code.disabled: "该邀请码已被禁用"
+invitation_code.quota_insufficient: "额度不足，无法生成邀请码"
+invitation_code.create_failed: "创建邀请码失败"
+invitation_code.count_positive: "邀请码数量必须大于 0"
+invitation_code.count_max: "单次最多生成 100 个邀请码"
+
 # User messages
 user.password_login_disabled: "管理员关闭了密码登录"
 user.register_disabled: "管理员关闭了新用户注册"
