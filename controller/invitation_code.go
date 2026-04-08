@@ -88,7 +88,7 @@ func SearchInvitationCodes(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
-// AddInvitationCode 管理员批量生成邀请码（免费）
+// AddInvitationCode 管理员批量生成邀请码
 func AddInvitationCode(c *gin.Context) {
 	invitationCode := model.InvitationCode{}
 	err := c.ShouldBindJSON(&invitationCode)
@@ -105,11 +105,32 @@ func AddInvitationCode(c *gin.Context) {
 		return
 	}
 
+	userId := c.GetInt("id")
+	totalPrice := common.InvitationCodePrice * invitationCode.Count
+
+	// 检查并扣减额度
+	if totalPrice > 0 {
+		userQuota, err := model.GetUserQuota(userId, true)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if userQuota < totalPrice {
+			common.ApiErrorI18n(c, i18n.MsgInvitationCodeQuotaInsufficient)
+			return
+		}
+		err = model.DecreaseUserQuota(userId, totalPrice)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
 	var codes []string
 	for j := 0; j < invitationCode.Count; j++ {
 		code := common.GetUUID()
 		cleanCode := model.InvitationCode{
-			UserId:      c.GetInt("id"),
+			UserId:      userId,
 			Code:        code,
 			Status:      common.InvitationCodeStatusEnabled,
 			CreatedTime: common.GetTimestamp(),
@@ -118,6 +139,11 @@ func AddInvitationCode(c *gin.Context) {
 		err = cleanCode.Insert()
 		if err != nil {
 			common.SysError("failed to insert invitation code: " + err.Error())
+			// 退还未成功生成的部分额度
+			if common.InvitationCodePrice > 0 {
+				refund := common.InvitationCodePrice * (invitationCode.Count - j)
+				_ = model.IncreaseUserQuota(userId, refund, true)
+			}
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": i18n.T(c, i18n.MsgInvitationCodeCreateFailed),

@@ -11,7 +11,6 @@ import {
   Space,
   Typography,
   Card,
-  Banner,
 } from '@douyinfe/semi-ui';
 import {
   IconPlus,
@@ -345,11 +344,6 @@ const InvitationCodePage = () => {
             />
           </Form.Slot>
         </Form>
-        <Banner
-          type='info'
-          description={t('管理员生成邀请码不消耗额度')}
-          style={{ marginTop: 12 }}
-        />
       </Modal>
     </div>
   );

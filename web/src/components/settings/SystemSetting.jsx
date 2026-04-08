@@ -1113,11 +1113,23 @@ const SystemSetting = () => {
                         placeholder={t('0 表示免费生成')}
                         min={0}
                         extraText={t(
-                          '用户生成一个邀请码需要消耗的额度，管理员生成不消耗额度',
+                          '所有用户生成一个邀请码需要消耗的额度，0 表示免费',
                         )}
                       />
                     </Col>
                   </Row>
+                  <Button
+                    onClick={async () => {
+                      await updateOptions([
+                        {
+                          key: 'InvitationCodePrice',
+                          value: String(inputs.InvitationCodePrice || 0),
+                        },
+                      ]);
+                    }}
+                  >
+                    {t('保存邀请码设置')}
+                  </Button>
                 </Form.Section>
               </Card>
 
