@@ -197,38 +197,75 @@ func DeleteUsedInvitationCodes() (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
-// GenerateInvitationCodeForUser 为用户生成邀请码，扣减额度
-func GenerateInvitationCodeForUser(userId int, remark string) (*InvitationCode, error) {
+func DeleteUsedInvitationCodesByUser(userId int) (int64, error) {
+	result := DB.Where("user_id = ? AND status = ?", userId, common.InvitationCodeStatusUsed).Delete(&InvitationCode{})
+	return result.RowsAffected, result.Error
+}
+
+func DeleteInvitationCodesByUser(userId int, ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := DB.Where("user_id = ? AND id IN ?", userId, ids).Delete(&InvitationCode{})
+	return result.RowsAffected, result.Error
+}
+
+// GenerateInvitationCodesForUser 为用户批量生成邀请码，扣减额度
+func GenerateInvitationCodesForUser(userId int, count int, remark string) ([]*InvitationCode, error) {
+	if count <= 0 {
+		count = 1
+	}
 	price := common.InvitationCodePrice
-	if price > 0 {
+	totalPrice := price * count
+	if totalPrice > 0 {
 		userQuota, err := GetUserQuota(userId, true)
 		if err != nil {
 			return nil, err
 		}
-		if userQuota < price {
+		if userQuota < totalPrice {
 			return nil, errors.New("额度不足")
 		}
-		err = DecreaseUserQuota(userId, price)
+		err = DecreaseUserQuota(userId, totalPrice)
 		if err != nil {
 			return nil, err
 		}
-		RecordLog(userId, LogTypeSystem, fmt.Sprintf("生成邀请码消耗 %s", logger.LogQuota(price)))
 	}
 
-	code := &InvitationCode{
-		UserId:      userId,
-		Code:        common.GetUUID(),
-		Status:      common.InvitationCodeStatusEnabled,
-		CreatedTime: common.GetTimestamp(),
-		Remark:      remark,
-	}
-	err := code.Insert()
-	if err != nil {
-		// 如果插入失败，退还额度
-		if price > 0 {
-			_ = IncreaseUserQuota(userId, price, true)
+	codes := make([]*InvitationCode, 0, count)
+	createdIDs := make([]int, 0, count)
+	for i := 0; i < count; i++ {
+		code := &InvitationCode{
+			UserId:      userId,
+			Code:        common.GetUUID(),
+			Status:      common.InvitationCodeStatusEnabled,
+			CreatedTime: common.GetTimestamp(),
+			Remark:      remark,
 		}
+		err := code.Insert()
+		if err != nil {
+			if len(createdIDs) > 0 {
+				_ = DB.Where("user_id = ? AND id IN ?", userId, createdIDs).Delete(&InvitationCode{}).Error
+			}
+			if totalPrice > 0 {
+				_ = IncreaseUserQuota(userId, totalPrice, true)
+			}
+			return nil, err
+		}
+		codes = append(codes, code)
+		createdIDs = append(createdIDs, code.Id)
+	}
+
+	if totalPrice > 0 {
+		RecordLog(userId, LogTypeSystem, fmt.Sprintf("生成邀请码消耗 %s", logger.LogQuota(totalPrice)))
+	}
+	return codes, nil
+}
+
+// GenerateInvitationCodeForUser 为用户生成单个邀请码，扣减额度
+func GenerateInvitationCodeForUser(userId int, remark string) (*InvitationCode, error) {
+	codes, err := GenerateInvitationCodesForUser(userId, 1, remark)
+	if err != nil {
 		return nil, err
 	}
-	return code, nil
+	return codes[0], nil
 }

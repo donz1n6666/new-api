@@ -177,6 +177,8 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				userInvRoute.POST("/generate", middleware.CriticalRateLimit(), controller.GenerateInvitationCode)
 				userInvRoute.GET("/mine", controller.GetMyInvitationCodes)
+				userInvRoute.POST("/mine/delete_used", middleware.CriticalRateLimit(), controller.DeleteMyUsedInvitationCodes)
+				userInvRoute.POST("/mine/batch_delete", middleware.CriticalRateLimit(), controller.BatchDeleteMyInvitationCodes)
 			}
 			// Admin routes
 			adminInvRoute := invitationCodeRoute.Group("/")

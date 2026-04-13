@@ -24,11 +24,19 @@ func GenerateInvitationCode(c *gin.Context) {
 
 	type GenerateRequest struct {
 		Remark string `json:"remark"`
+		Count  int    `json:"count"`
 	}
 	var req GenerateRequest
 	_ = c.ShouldBindJSON(&req)
+	if req.Count <= 0 {
+		req.Count = 1
+	}
+	if req.Count > 100 {
+		common.ApiErrorI18n(c, i18n.MsgInvitationCodeCountMax)
+		return
+	}
 
-	code, err := model.GenerateInvitationCodeForUser(userId, req.Remark)
+	codes, err := model.GenerateInvitationCodesForUser(userId, req.Count, req.Remark)
 	if err != nil {
 		if err.Error() == "额度不足" {
 			common.ApiErrorI18n(c, i18n.MsgInvitationCodeQuotaInsufficient)
@@ -38,10 +46,9 @@ func GenerateInvitationCode(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    code,
+	common.ApiSuccess(c, gin.H{
+		"count": req.Count,
+		"items": codes,
 	})
 }
 
@@ -57,6 +64,37 @@ func GetMyInvitationCodes(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(codes)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func DeleteMyUsedInvitationCodes(c *gin.Context) {
+	userId := c.GetInt("id")
+	rows, err := model.DeleteUsedInvitationCodesByUser(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": rows})
+}
+
+func BatchDeleteMyInvitationCodes(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req struct {
+		Ids []int `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(req.Ids) == 0 {
+		common.ApiErrorMsg(c, "请选择需要删除的邀请码")
+		return
+	}
+	rows, err := model.DeleteInvitationCodesByUser(userId, req.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": rows})
 }
 
 // ========== 管理员接口 ==========
