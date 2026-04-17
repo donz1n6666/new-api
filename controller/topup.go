@@ -2,23 +2,19 @@ package controller
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 	"github.com/shopspring/decimal"
 )
 
@@ -82,20 +78,20 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_waffo_topup":  enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":         payMethods,
-		"min_topup":           operation_setting.MinTopUp,
-		"stripe_min_topup":    setting.StripeMinTopUp,
-		"waffo_min_topup":     setting.WaffoMinTopUp,
-		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":   setting.CreemProducts,
+		"pay_methods":      payMethods,
+		"min_topup":        operation_setting.MinTopUp,
+		"stripe_min_topup": setting.StripeMinTopUp,
+		"waffo_min_topup":  setting.WaffoMinTopUp,
+		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 
 	// ── Ethereum top-up info ──────────────────────────────────────────────
@@ -201,9 +197,12 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	callBackAddress := service.GetCallbackAddress()
 	returnUrl, _ := url.Parse(system_setting.ServerAddress + "/console/log")
-	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
+	notifyUrl := getUnifiedEpayNotifyURLParsed()
+	if notifyUrl == nil {
+		c.JSON(200, gin.H{"message": "error", "data": "回调地址配置错误"})
+		return
+	}
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
 	client := GetEpayClient()
@@ -287,95 +286,6 @@ func UnlockOrder(tradeNo string) {
 		orderLocks.Delete(tradeNo)
 	}
 	createLock.Unlock()
-}
-
-func EpayNotify(c *gin.Context) {
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
-		if err := c.Request.ParseForm(); err != nil {
-			log.Println("易支付回调POST解析失败:", err)
-			_, _ = c.Writer.Write([]byte("fail"))
-			return
-		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
-	}
-
-	if len(params) == 0 {
-		log.Println("易支付回调参数为空")
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
-	client := GetEpayClient()
-	if client == nil {
-		log.Println("易支付回调失败 未找到配置信息")
-		_, err := c.Writer.Write([]byte("fail"))
-		if err != nil {
-			log.Println("易支付回调写入失败")
-		}
-		return
-	}
-	verifyInfo, err := client.Verify(params)
-	if err == nil && verifyInfo.VerifyStatus {
-		_, err := c.Writer.Write([]byte("success"))
-		if err != nil {
-			log.Println("易支付回调写入失败")
-		}
-	} else {
-		_, err := c.Writer.Write([]byte("fail"))
-		if err != nil {
-			log.Println("易支付回调写入失败")
-		}
-		log.Println("易支付回调签名验证失败")
-		return
-	}
-
-	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
-		log.Println(verifyInfo)
-		LockOrder(verifyInfo.ServiceTradeNo)
-		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
-		if topUp == nil {
-			log.Printf("易支付回调未找到订单: %v", verifyInfo)
-			return
-		}
-		if topUp.PaymentMethod == "stripe" || topUp.PaymentMethod == "creem" || topUp.PaymentMethod == "waffo" {
-			log.Printf("易支付回调订单支付方式不匹配: %s, 订单号: %s", topUp.PaymentMethod, verifyInfo.ServiceTradeNo)
-			return
-		}
-		if topUp.Status == "pending" {
-			topUp.Status = "success"
-			err := topUp.Update()
-			if err != nil {
-				log.Printf("易支付回调更新订单失败: %v", topUp)
-				return
-			}
-			//user, _ := model.GetUserById(topUp.UserId, false)
-			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
-			if err != nil {
-				log.Printf("易支付回调更新用户失败: %v", topUp)
-				return
-			}
-			log.Printf("易支付回调更新用户成功 %v", topUp)
-			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
-		}
-	} else {
-		log.Printf("易支付异常回调: %v", verifyInfo)
-	}
 }
 
 func RequestAmount(c *gin.Context) {
@@ -476,4 +386,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

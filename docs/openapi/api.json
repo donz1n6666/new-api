@@ -2032,7 +2032,7 @@
         ]
       }
     },
-    "/api/user/epay/notify": {
+    "/api/epay/notify": {
       "get": {
         "summary": "易支付回调",
         "deprecated": false,

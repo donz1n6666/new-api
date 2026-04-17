@@ -50,6 +50,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
 		apiRouter.POST("/ethereum/webhook", controller.EthereumWebhook)
+		apiRouter.POST("/epay/notify", controller.EpayUnifiedNotify)
+		apiRouter.GET("/epay/notify", controller.EpayUnifiedNotify)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
@@ -63,8 +65,6 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), controller.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.GET("/logout", controller.Logout)
-			userRoute.POST("/epay/notify", controller.EpayNotify)
-			userRoute.GET("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
@@ -164,8 +164,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Subscription payment callbacks (no auth)
-		apiRouter.POST("/subscription/epay/notify", controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
+		apiRouter.POST("/user/epay/notify", controller.EpayUnifiedNotify)
+		apiRouter.GET("/user/epay/notify", controller.EpayUnifiedNotify)
+		apiRouter.POST("/subscription/epay/notify", controller.EpayUnifiedNotify)
+		apiRouter.GET("/subscription/epay/notify", controller.EpayUnifiedNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		// Invitation code routes
