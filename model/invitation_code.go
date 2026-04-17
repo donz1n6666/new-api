@@ -225,7 +225,7 @@ func GenerateInvitationCodesForUser(userId int, count int, remark string) ([]*In
 		if userQuota < totalPrice {
 			return nil, errors.New("额度不足")
 		}
-		err = DecreaseUserQuota(userId, totalPrice)
+		err = DecreaseUserQuota(userId, totalPrice, true)
 		if err != nil {
 			return nil, err
 		}

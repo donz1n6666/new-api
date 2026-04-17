@@ -157,7 +157,7 @@ func AddInvitationCode(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgInvitationCodeQuotaInsufficient)
 			return
 		}
-		err = model.DecreaseUserQuota(userId, totalPrice)
+		err = model.DecreaseUserQuota(userId, totalPrice, true)
 		if err != nil {
 			common.ApiError(c, err)
 			return
