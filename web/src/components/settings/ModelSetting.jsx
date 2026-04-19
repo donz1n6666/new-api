@@ -26,6 +26,7 @@ import SettingGeminiModel from '../../pages/Setting/Model/SettingGeminiModel';
 import SettingClaudeModel from '../../pages/Setting/Model/SettingClaudeModel';
 import SettingGlobalModel from '../../pages/Setting/Model/SettingGlobalModel';
 import SettingGrokModel from '../../pages/Setting/Model/SettingGrokModel';
+import SettingsChannelRoute from '../../pages/Setting/Model/SettingsChannelRoute';
 import SettingsChannelAffinity from '../../pages/Setting/Operation/SettingsChannelAffinity';
 
 const ModelSetting = () => {
@@ -42,6 +43,8 @@ const ModelSetting = () => {
     'global.pass_through_request_enabled': false,
     'global.thinking_model_blacklist': '[]',
     'global.chat_completions_to_responses_policy': '{}',
+    'channel_route_setting.enabled': false,
+    'channel_route_setting.rules': '[]',
     'general_setting.ping_interval_enabled': false,
     'general_setting.ping_interval_seconds': 60,
     'gemini.thinking_adapter_enabled': false,
@@ -65,7 +68,8 @@ const ModelSetting = () => {
           item.key === 'claude.default_max_tokens' ||
           item.key === 'gemini.supported_imagine_models' ||
           item.key === 'global.thinking_model_blacklist' ||
-          item.key === 'global.chat_completions_to_responses_policy'
+          item.key === 'global.chat_completions_to_responses_policy' ||
+          item.key === 'channel_route_setting.rules'
         ) {
           if (item.value !== '') {
             try {
@@ -112,6 +116,10 @@ const ModelSetting = () => {
         {/* OpenAI */}
         <Card style={{ marginTop: '10px' }}>
           <SettingGlobalModel options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* Static channel route */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsChannelRoute options={inputs} refresh={onRefresh} />
         </Card>
         {/* Channel affinity */}
         <Card style={{ marginTop: '10px' }}>

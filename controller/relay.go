@@ -297,6 +297,56 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			AutoBan: &autoBanInt,
 		}, nil
 	}
+	savedAutoGroup, savedAutoGroupExists := common.GetContextKey(c, constant.ContextKeyAutoGroup)
+	savedAutoGroupIndex, savedAutoGroupIndexExists := common.GetContextKey(c, constant.ContextKeyAutoGroupIndex)
+	savedAutoGroupRetryIndex, savedAutoGroupRetryIndexExists := common.GetContextKey(c, constant.ContextKeyAutoGroupRetryIndex)
+	restoreAutoRouteContext := func() {
+		if c.Keys == nil {
+			return
+		}
+		if savedAutoGroupExists {
+			common.SetContextKey(c, constant.ContextKeyAutoGroup, savedAutoGroup)
+		} else {
+			delete(c.Keys, string(constant.ContextKeyAutoGroup))
+		}
+		if savedAutoGroupIndexExists {
+			common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, savedAutoGroupIndex)
+		} else {
+			delete(c.Keys, string(constant.ContextKeyAutoGroupIndex))
+		}
+		if savedAutoGroupRetryIndexExists {
+			common.SetContextKey(c, constant.ContextKeyAutoGroupRetryIndex, savedAutoGroupRetryIndex)
+		} else {
+			delete(c.Keys, string(constant.ContextKeyAutoGroupRetryIndex))
+		}
+	}
+	routeRetryParam := &service.RetryParam{
+		Ctx:        retryParam.Ctx,
+		TokenGroup: retryParam.TokenGroup,
+		ModelName:  retryParam.ModelName,
+		Retry:      common.GetPointer(retryParam.GetRetry()),
+	}
+	routeMatch, routeErr := service.GetChannelByRoute(routeRetryParam)
+	if routeErr != nil {
+		return nil, types.NewError(fmt.Errorf("获取模型 %s 的静态渠道路由失败: %s", info.OriginModelName, routeErr.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	if routeMatch.Matched {
+		if routeMatch.Channel != nil {
+			if retryParam.TokenGroup == "auto" && routeMatch.SelectGroup != "" {
+				common.SetContextKey(c, constant.ContextKeyAutoGroup, routeMatch.SelectGroup)
+			}
+			newAPIError := middleware.SetupContextForSelectedChannel(c, routeMatch.Channel, info.OriginModelName)
+			if newAPIError != nil {
+				return nil, newAPIError
+			}
+			info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+			return routeMatch.Channel, nil
+		}
+		if routeMatch.Strict && routeMatch.Exhausted {
+			return nil, types.NewError(fmt.Errorf("静态渠道路由规则 %s 命中，但未找到可用渠道", routeMatch.RuleName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+		restoreAutoRouteContext()
+	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
