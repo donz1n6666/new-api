@@ -106,13 +106,18 @@ func InitOptionMap() {
 	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
 	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
-	// ── Ethereum ──────────────────────────────────────────────────────────
-	common.OptionMap["EthereumEnabled"] = strconv.FormatBool(setting.EthereumEnabled)
-	common.OptionMap["EthereumChainId"] = strconv.FormatInt(setting.EthereumChainId, 10)
-	common.OptionMap["EthereumContractAddress"] = setting.EthereumContractAddress
-	common.OptionMap["EthereumAlchemyWebhookSigningKey"] = setting.EthereumAlchemyWebhookSigningKey
-	common.OptionMap["EthereumMinTopUp"] = strconv.Itoa(setting.EthereumMinTopUp)
-	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
+	common.OptionMap["WaffoPancakeEnabled"] = strconv.FormatBool(setting.WaffoPancakeEnabled)
+	common.OptionMap["WaffoPancakeSandbox"] = strconv.FormatBool(setting.WaffoPancakeSandbox)
+	common.OptionMap["WaffoPancakeMerchantID"] = setting.WaffoPancakeMerchantID
+	common.OptionMap["WaffoPancakePrivateKey"] = setting.WaffoPancakePrivateKey
+	common.OptionMap["WaffoPancakeWebhookPublicKey"] = setting.WaffoPancakeWebhookPublicKey
+	common.OptionMap["WaffoPancakeWebhookTestKey"] = setting.WaffoPancakeWebhookTestKey
+	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
+	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["WaffoPancakeReturnURL"] = setting.WaffoPancakeReturnURL
+	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
+	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
+	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -130,8 +135,6 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
-	common.OptionMap["InvitationCodeEnabled"] = strconv.FormatBool(common.InvitationCodeEnabled)
-	common.OptionMap["InvitationCodePrice"] = strconv.Itoa(common.InvitationCodePrice)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -326,8 +329,6 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
-		case "InvitationCodeEnabled":
-			common.InvitationCodeEnabled = boolValue
 		}
 	}
 	switch key {
@@ -418,6 +419,30 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoMinTopUp":
 		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
+	case "WaffoPancakeEnabled":
+		setting.WaffoPancakeEnabled = value == "true"
+	case "WaffoPancakeSandbox":
+		setting.WaffoPancakeSandbox = value == "true"
+	case "WaffoPancakeMerchantID":
+		setting.WaffoPancakeMerchantID = value
+	case "WaffoPancakePrivateKey":
+		setting.WaffoPancakePrivateKey = value
+	case "WaffoPancakeWebhookPublicKey":
+		setting.WaffoPancakeWebhookPublicKey = value
+	case "WaffoPancakeWebhookTestKey":
+		setting.WaffoPancakeWebhookTestKey = value
+	case "WaffoPancakeStoreID":
+		setting.WaffoPancakeStoreID = value
+	case "WaffoPancakeProductID":
+		setting.WaffoPancakeProductID = value
+	case "WaffoPancakeReturnURL":
+		setting.WaffoPancakeReturnURL = value
+	case "WaffoPancakeCurrency":
+		setting.WaffoPancakeCurrency = value
+	case "WaffoPancakeUnitPrice":
+		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "WaffoPancakeMinTopUp":
+		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -456,8 +481,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
-	case "InvitationCodePrice":
-		common.InvitationCodePrice, _ = strconv.Atoi(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
@@ -524,19 +547,6 @@ func updateOptionMap(key string, value string) (err error) {
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
-	case "EthereumEnabled":
-		setting.EthereumEnabled = value == "true"
-	case "EthereumChainId":
-		setting.EthereumChainId, _ = strconv.ParseInt(value, 10, 64)
-	case "EthereumContractAddress":
-		setting.EthereumContractAddress = value
-	case "EthereumAlchemyWebhookSigningKey":
-		setting.EthereumAlchemyWebhookSigningKey = value
-	case "EthereumMinTopUp":
-		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
-	case "EthereumSupportedTokens":
-		// Read directly from OptionMap via setting.GetEthereumTokens().
-		// No additional in-memory variable to update.
 	}
 	return err
 }
@@ -565,8 +575,12 @@ func handleConfigUpdate(key, value string) bool {
 
 	// 特定配置的后处理
 	if configName == "performance_setting" {
-		// 同步磁盘缓存配置到 common 包
 		performance_setting.UpdateAndSync()
+	} else if configName == "tool_price_setting" {
+		operation_setting.RebuildToolPriceIndex()
+	} else if configName == "billing_setting" {
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
 	}
 
 	return true // 已处理

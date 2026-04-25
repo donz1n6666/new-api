@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   API,
@@ -26,6 +26,7 @@ import {
   showSuccess,
   renderQuota,
   renderQuotaWithAmount,
+  copy,
   getQuotaPerUnit,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
@@ -35,6 +36,7 @@ import { StatusContext } from '../../context/Status';
 
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
+import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 
@@ -73,12 +75,8 @@ const TopUp = () => {
   const [enableWaffoTopUp, setEnableWaffoTopUp] = useState(false);
   const [waffoPayMethods, setWaffoPayMethods] = useState([]);
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
-
-  // Ethereum 相关状态
-  const [enableEthereumTopUp, setEnableEthereumTopUp] = useState(false);
-  const [ethereumInfo, setEthereumInfo] = useState(null);
-  const [ethereumMinTopUp, setEthereumMinTopUp] = useState(1);
-  const [ethereumPayLoading, setEthereumPayLoading] = useState(false);
+  const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
+  const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -87,6 +85,13 @@ const TopUp = () => {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [payMethods, setPayMethods] = useState([]);
+
+  const affFetchedRef = useRef(false);
+
+  // 邀请相关状态
+  const [affLink, setAffLink] = useState('');
+  const [openTransfer, setOpenTransfer] = useState(false);
+  const [transferAmount, setTransferAmount] = useState(0);
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -108,6 +113,39 @@ const TopUp = () => {
     amount_options: [],
     discount: {},
   });
+
+  const confirmPayMethods = [
+    ...payMethods,
+    ...waffoPayMethods.map((method, index) => ({
+      ...method,
+      type: `waffo:${index}`,
+      min_topup: waffoMinTopUp,
+      color: method.color || 'rgba(var(--semi-primary-5), 1)',
+    })),
+  ];
+
+  const getPayMethodConfig = (payment) =>
+    confirmPayMethods.find((method) => method.type === payment);
+
+  const getPaymentMinTopUp = (payment) => {
+    const configuredMinTopUp = Number(getPayMethodConfig(payment)?.min_topup);
+    return Number.isFinite(configuredMinTopUp) && configuredMinTopUp > 0
+      ? configuredMinTopUp
+      : minTopUp;
+  };
+
+  const requestAmountByPayment = async (payment, value) => {
+    if (payment === 'stripe') {
+      return getStripeAmount(value);
+    }
+    if (payment === 'waffo_pancake') {
+      return getWaffoPancakeAmount(value);
+    }
+    if (typeof payment === 'string' && payment.startsWith('waffo:')) {
+      return getWaffoAmount(value);
+    }
+    return getAmount(value);
+  };
 
   const topUp = async () => {
     if (redemptionCode === '') {
@@ -159,6 +197,16 @@ const TopUp = () => {
         showError(t('管理员未开启Stripe充值！'));
         return;
       }
+    } else if (payment === 'waffo_pancake') {
+      if (!enableWaffoPancakeTopUp) {
+        showError(t('管理员未开启 Waffo Pancake 充值！'));
+        return;
+      }
+    } else if (payment.startsWith('waffo:')) {
+      if (!enableWaffoTopUp) {
+        showError(t('管理员未开启 Waffo 充值！'));
+        return;
+      }
     } else {
       if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
@@ -169,14 +217,11 @@ const TopUp = () => {
     setPayWay(payment);
     setPaymentLoading(true);
     try {
-      if (payment === 'stripe') {
-        await getStripeAmount();
-      } else {
-        await getAmount();
-      }
+      const selectedMinTopUp = getPaymentMinTopUp(payment);
+      await requestAmountByPayment(payment);
 
-      if (topUpCount < minTopUp) {
-        showError(t('充值数量不能小于') + minTopUp);
+      if (topUpCount < selectedMinTopUp) {
+        showError(t('充值数量不能小于') + selectedMinTopUp);
         return;
       }
       setOpen(true);
@@ -188,6 +233,29 @@ const TopUp = () => {
   };
 
   const onlineTopUp = async () => {
+    if (payWay === 'waffo_pancake') {
+      setConfirmLoading(true);
+      try {
+        await waffoPancakeTopUp();
+      } finally {
+        setOpen(false);
+        setConfirmLoading(false);
+      }
+      return;
+    }
+
+    if (payWay.startsWith('waffo:')) {
+      const payMethodIndex = Number(payWay.split(':')[1]);
+      setConfirmLoading(true);
+      try {
+        await waffoTopUp(Number.isFinite(payMethodIndex) ? payMethodIndex : 0);
+      } finally {
+        setOpen(false);
+        setConfirmLoading(false);
+      }
+      return;
+    }
+
     if (payWay === 'stripe') {
       // Stripe 支付处理
       if (amount === 0) {
@@ -314,134 +382,122 @@ const TopUp = () => {
 
   const waffoTopUp = async (payMethodIndex) => {
     try {
-        if (topUpCount < waffoMinTopUp) {
-            showError(t('充值数量不能小于') + waffoMinTopUp);
-            return;
-        }
-        setPaymentLoading(true);
-        const requestBody = {
-            amount: parseInt(topUpCount),
-        };
-        if (payMethodIndex != null) {
-            requestBody.pay_method_index = payMethodIndex;
-        }
-        const res = await API.post('/api/user/waffo/pay', requestBody);
-        if (res !== undefined) {
-            const { message, data } = res.data;
-            if (message === 'success' && data?.payment_url) {
-                window.open(data.payment_url, '_blank');
-            } else {
-                showError(data || t('支付请求失败'));
-            }
+      if (topUpCount < waffoMinTopUp) {
+        showError(t('充值数量不能小于') + waffoMinTopUp);
+        return;
+      }
+      setPaymentLoading(true);
+      const requestBody = {
+        amount: parseInt(topUpCount),
+      };
+      if (payMethodIndex != null) {
+        requestBody.pay_method_index = payMethodIndex;
+      }
+      const res = await API.post('/api/user/waffo/pay', requestBody);
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success' && data?.payment_url) {
+          window.open(data.payment_url, '_blank');
         } else {
-            showError(res);
+          showError(data || t('支付请求失败'));
         }
+      } else {
+        showError(res);
+      }
     } catch (e) {
-        showError(t('支付请求失败'));
+      showError(t('支付请求失败'));
     } finally {
-        setPaymentLoading(false);
+      setPaymentLoading(false);
     }
   };
 
-  const ethereumTopUp = async (tokenAddress) => {
-    if (!enableEthereumTopUp) {
-      showError(t('管理员未开启 Ethereum 支付！'));
-      return;
+  const getWaffoAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
     }
-    if (topUpCount < ethereumMinTopUp) {
-      showError(t('充值数量不能小于') + ethereumMinTopUp);
-      return;
-    }
-
-    setEthereumPayLoading(true);
+    setAmountLoading(true);
     try {
-      // 1. Create pending order on backend
-      const res = await API.post('/api/user/ethereum/pay', {
-        amount: parseInt(topUpCount),
-        token_address: tokenAddress,
+      const res = await API.post('/api/user/waffo/amount', {
+        amount: parseInt(value),
       });
-      if (!res?.data || res.data.message !== 'success') {
-        showError(res?.data?.data || t('创建订单失败'));
-        return;
-      }
-      const {
-        order_id,
-        contract_address,
-        chain_id,
-        token_address: respTokenAddr,
-        pay_amount,
-      } = res.data.data;
-
-      // 2. Connect to MetaMask via ethers.js
-      if (!window.ethereum) {
-        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
-        return;
-      }
-
-      const { ethers } = await import('ethers');
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
-
-      // 3. Switch to correct chain
-      const network = await provider.getNetwork();
-      if (network.chainId !== BigInt(chain_id)) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x' + chain_id.toString(16) }],
-          });
-        } catch (switchError) {
-          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
-          return;
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
         }
-      }
-
-      const signer = await provider.getSigner();
-
-      // 4. Call contract
-      const isNativeETH = respTokenAddr === '0x0000000000000000000000000000000000000000';
-
-      const abi = isNativeETH
-        ? ['function payWithETH(bytes32 orderId) payable']
-        : ['function payWithToken(bytes32 orderId, address token, uint256 amount)'];
-
-      const contract = new ethers.Contract(contract_address, abi, signer);
-
-      let tx;
-      if (isNativeETH) {
-        tx = await contract.payWithETH(order_id, { value: BigInt(pay_amount) });
       } else {
-        // Approve token spend first
-        const erc20Abi = [
-          'function approve(address spender, uint256 amount) returns (bool)',
-          'function allowance(address owner, address spender) view returns (uint256)',
-        ];
-        const tokenContract = new ethers.Contract(respTokenAddr, erc20Abi, signer);
-
-        const signerAddress = await signer.getAddress();
-        const currentAllowance = await tokenContract.allowance(signerAddress, contract_address);
-
-        if (currentAllowance < BigInt(pay_amount)) {
-          showInfo(t('请在钱包中批准代币支出...'));
-          const approveTx = await tokenContract.approve(contract_address, BigInt(pay_amount));
-          await approveTx.wait();
-        }
-
-        tx = await contract.payWithToken(order_id, respTokenAddr, BigInt(pay_amount));
+        showError(res);
       }
-
-      showInfo(t('交易已提交，等待确认...'));
-      await tx.wait();
-      showSuccess(t('交易确认！额度将在几秒内到账'));
-
-    } catch (e) {
-      if (e?.code === 4001 || e?.info?.error?.code === 4001) {
-        showError(t('用户取消了交易'));
-      } else {
-        showError(e?.reason || e?.message || t('交易失败'));
-      }
+    } catch (err) {
+      // amount fetch failed silently
     } finally {
-      setEthereumPayLoading(false);
+      setAmountLoading(false);
+    }
+  };
+
+  const waffoPancakeTopUp = async () => {
+    const minTopUpValue = Number(waffoPancakeMinTopUp || 1);
+    if (topUpCount < minTopUpValue) {
+      showError(t('充值数量不能小于') + minTopUpValue);
+      return;
+    }
+
+    setPaymentLoading(true);
+    try {
+      const res = await API.post('/api/user/waffo-pancake/pay', {
+        amount: parseInt(topUpCount),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          const checkoutUrl = data?.checkout_url || '';
+          if (checkoutUrl) {
+            window.open(checkoutUrl, '_blank');
+          } else {
+            showError(t('支付请求失败'));
+          }
+        } else {
+          const errorMsg =
+            typeof data === 'string' ? data : message || t('支付请求失败');
+          showError(errorMsg);
+        }
+      } else {
+        showError(res);
+      }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const getWaffoPancakeAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/waffo-pancake/amount', {
+        amount: parseInt(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+        }
+      } else {
+        showError(res);
+      }
+    } catch (err) {
+      // amount fetch failed silently
+    } finally {
+      setAmountLoading(false);
     }
   };
 
@@ -580,26 +636,26 @@ const TopUp = () => {
           const enableStripeTopUp = data.enable_stripe_topup || false;
           const enableOnlineTopUp = data.enable_online_topup || false;
           const enableCreemTopUp = data.enable_creem_topup || false;
+          const enableWaffoTopUp = data.enable_waffo_topup || false;
+          const enableWaffoPancakeTopUp =
+            data.enable_waffo_pancake_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
               ? data.stripe_min_topup
-              : data.enable_waffo_topup
+              : enableWaffoTopUp
                 ? data.waffo_min_topup
+                : enableWaffoPancakeTopUp
+                  ? data.waffo_pancake_min_topup
                 : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
-          const enableWaffoTopUp = data.enable_waffo_topup || false;
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
-
-          // Ethereum
-          setEnableEthereumTopUp(data.enable_ethereum_topup || false);
-          setEthereumInfo(data.ethereum_info || null);
-          setEthereumMinTopUp(data.ethereum_min_topup || 1);
-
+          setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
+          setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -638,6 +694,42 @@ const TopUp = () => {
     }
   };
 
+  // 获取邀请链接
+  const getAffLink = async () => {
+    const res = await API.get('/api/user/aff');
+    const { success, message, data } = res.data;
+    if (success) {
+      let link = `${window.location.origin}/register?aff=${data}`;
+      setAffLink(link);
+    } else {
+      showError(message);
+    }
+  };
+
+  // 划转邀请额度
+  const transfer = async () => {
+    if (transferAmount < getQuotaPerUnit()) {
+      showError(t('划转金额最低为') + ' ' + renderQuota(getQuotaPerUnit()));
+      return;
+    }
+    const res = await API.post(`/api/user/aff_transfer`, {
+      quota: transferAmount,
+    });
+    const { success, message } = res.data;
+    if (success) {
+      showSuccess(message);
+      setOpenTransfer(false);
+      getUserQuota().then();
+    } else {
+      showError(message);
+    }
+  };
+
+  // 复制邀请链接
+  const handleAffLinkClick = async () => {
+    await copy(affLink);
+    showSuccess(t('邀请链接已复制到剪切板'));
+  };
 
   // URL 参数自动打开账单弹窗（支付回跳时触发）
   useEffect(() => {
@@ -651,6 +743,13 @@ const TopUp = () => {
   useEffect(() => {
     // 始终获取最新用户数据，确保余额等统计信息准确
     getUserQuota().then();
+    setTransferAmount(getQuotaPerUnit());
+  }, []);
+
+  useEffect(() => {
+    if (affFetchedRef.current) return;
+    affFetchedRef.current = true;
+    getAffLink().then();
   }, []);
 
   // 在 statusState 可用时获取充值信息
@@ -733,6 +832,10 @@ const TopUp = () => {
     setOpen(false);
   };
 
+  const handleTransferCancel = () => {
+    setOpenTransfer(false);
+  };
+
   const handleOpenHistory = () => {
     setOpenHistory(true);
   };
@@ -772,6 +875,19 @@ const TopUp = () => {
 
   return (
     <div className='w-full max-w-7xl mx-auto relative min-h-screen lg:min-h-0 mt-[60px] px-2'>
+      {/* 划转模态框 */}
+      <TransferModal
+        t={t}
+        openTransfer={openTransfer}
+        transfer={transfer}
+        handleTransferCancel={handleTransferCancel}
+        userState={userState}
+        renderQuota={renderQuota}
+        getQuotaPerUnit={getQuotaPerUnit}
+        transferAmount={transferAmount}
+        setTransferAmount={setTransferAmount}
+      />
+
       {/* 充值确认模态框 */}
       <PaymentConfirmModal
         t={t}
@@ -784,7 +900,7 @@ const TopUp = () => {
         amountLoading={amountLoading}
         renderAmount={renderAmount}
         payWay={payWay}
-        payMethods={payMethods}
+        payMethods={confirmPayMethods}
         amountNumber={amount}
         discountRate={topupInfo?.discount?.[topUpCount] || 1.0}
       />
@@ -834,12 +950,7 @@ const TopUp = () => {
           creemProducts={creemProducts}
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}
-          waffoTopUp={waffoTopUp}
-          waffoPayMethods={waffoPayMethods}
-          enableEthereumTopUp={enableEthereumTopUp}
-          ethereumTopUp={ethereumTopUp}
-          ethereumInfo={ethereumInfo}
-          ethereumPayLoading={ethereumPayLoading}
+          enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
@@ -853,7 +964,7 @@ const TopUp = () => {
           setSelectedPreset={setSelectedPreset}
           renderAmount={renderAmount}
           amountLoading={amountLoading}
-          payMethods={payMethods}
+          payMethods={confirmPayMethods}
           preTopUp={preTopUp}
           paymentLoading={paymentLoading}
           payWay={payWay}
@@ -876,7 +987,14 @@ const TopUp = () => {
           allSubscriptions={allSubscriptions}
           reloadSubscriptionSelf={getSubscriptionSelf}
         />
-        <InvitationCard t={t} />
+        <InvitationCard
+          t={t}
+          userState={userState}
+          renderQuota={renderQuota}
+          setOpenTransfer={setOpenTransfer}
+          affLink={affLink}
+          handleAffLinkClick={handleAffLinkClick}
+        />
       </div>
     </div>
   );

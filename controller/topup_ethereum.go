@@ -278,7 +278,7 @@ func handlePaymentReceivedLog(entry alchemyLog) {
 	var err error
 	if strings.HasPrefix(tradeNo, "ETHSUB-") {
 		// Subscription purchase order
-		err = model.CompleteSubscriptionOrder(tradeNo, "")
+		err = model.CompleteSubscriptionOrder(tradeNo, "", "", "")
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 订阅订单完成失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {

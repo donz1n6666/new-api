@@ -97,7 +97,7 @@ func completeTopUpEpayOrder(verifyInfo *epay.VerifyRes) error {
 func completeSubscriptionEpayOrder(verifyInfo *epay.VerifyRes) error {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
-	return model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo))
+	return model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type)
 }
 
 func EpayUnifiedNotify(c *gin.Context) {
