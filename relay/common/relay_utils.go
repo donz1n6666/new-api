@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -23,17 +24,48 @@ type HasImage interface {
 }
 
 func GetFullRequestURL(baseURL string, requestURL string, channelType int) string {
-	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
+	// 1. 如果 baseURL 已经包含了常见的 API 路径后缀（用户填写了完整URL），直接使用 baseURL
+	// 支持的路径: /chat/completions, /v1/chat/completions, /messages, /v1/messages 等
+	commonPaths := []string{
+		"/chat/completions",
+		"/messages",
+		"/models",
+		"/completions",
+		"/embeddings",
+	}
+	for _, path := range commonPaths {
+		if strings.HasSuffix(baseURL, path) {
+			return baseURL
+		}
+	}
 
+	// 2. Cloudflare 网关的特殊处理
 	if strings.HasPrefix(baseURL, "https://gateway.ai.cloudflare.com") {
 		switch channelType {
 		case constant.ChannelTypeOpenAI:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/v1"))
+			return fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/v1"))
 		case constant.ChannelTypeAzure:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
+			return fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
 		}
 	}
-	return fullRequestURL
+
+	// 3. 如果 baseURL 以版本号结尾（如 /v1, /v2, /v3, /v1beta 等），去掉 requestURL 的版本前缀
+	// 使用正则匹配 /v 开头后面跟数字/字母的版本号
+	matched, _ := regexp.MatchString(`/v[a-zA-Z0-9]+$`, baseURL)
+	if matched {
+		// requestURL 通常是 /v1/xxx，去掉 /v1 前缀，只保留 /xxx 部分
+		trimmedRequestURL := requestURL
+		if strings.HasPrefix(requestURL, "/v") {
+			// 找到第一个 /v 后面的 / 位置
+			if idx := strings.Index(requestURL[2:], "/"); idx != -1 {
+				trimmedRequestURL = requestURL[2+idx:]
+			}
+		}
+		return fmt.Sprintf("%s%s", baseURL, trimmedRequestURL)
+	}
+
+	// 4. 默认：直接拼接
+	return fmt.Sprintf("%s%s", baseURL, requestURL)
 }
 
 func GetAPIVersion(c *gin.Context) string {
