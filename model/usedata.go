@@ -101,21 +101,54 @@ func increaseQuotaData(userId int, username string, modelName string, count int,
 	}
 }
 
-func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUsername(username string, startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
+	// 如果提供了 channel 参数，从 logs 表实时聚合数据
+	if channel != "" {
+		var quotaDatas []*QuotaData
+		err = DB.Table("logs").
+			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
+			Where("type = ? and username = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, username, startTime, endTime, channel).
+			Group("model_name, created_at").
+			Find(&quotaDatas).Error
+		return quotaDatas, err
+	}
+
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	err = DB.Table("quota_data").Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
+	// 如果提供了 channel 参数，从 logs 表实时聚合数据
+	if channel != "" {
+		var quotaDatas []*QuotaData
+		err = DB.Table("logs").
+			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
+			Where("type = ? and user_id = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, userId, startTime, endTime, channel).
+			Group("model_name, created_at").
+			Find(&quotaDatas).Error
+		return quotaDatas, err
+	}
+
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	err = DB.Table("quota_data").Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataGroupByUser(startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
+	// 如果提供了 channel 参数，从 logs 表实时聚合数据
+	if channel != "" {
+		var quotaDatas []*QuotaData
+		err = DB.Table("logs").
+			Select("username, created_at - (created_at % 3600) as created_at, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used").
+			Where("type = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, startTime, endTime, channel).
+			Group("username, created_at").
+			Find(&quotaDatas).Error
+		return quotaDatas, err
+	}
+
 	var quotaDatas []*QuotaData
 	err = DB.Table("quota_data").
 		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
@@ -125,9 +158,20 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 	return quotaDatas, err
 }
 
-func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {
+func GetAllQuotaDates(startTime int64, endTime int64, username string, channel string) (quotaData []*QuotaData, err error) {
+	// 如果提供了 channel 参数，从 logs 表实时聚合数据
+	if channel != "" {
+		var quotaDatas []*QuotaData
+		err = DB.Table("logs").
+			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
+			Where("type = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, startTime, endTime, channel).
+			Group("model_name, created_at").
+			Find(&quotaDatas).Error
+		return quotaDatas, err
+	}
+
 	if username != "" {
-		return GetQuotaDataByUsername(username, startTime, endTime)
+		return GetQuotaDataByUsername(username, startTime, endTime, channel)
 	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
