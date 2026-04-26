@@ -220,7 +220,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const loadModelAvailabilityData = useCallback(async () => {
     setModelAvailabilityLoading(true);
     try {
-      const res = await API.get('/api/user/self/models/availability?hours=24');
+      const res = await API.get('/api/user/models/availability?hours=24');
       const { success, message, data } = res.data;
       if (success) {
         setModelAvailabilityData(data || []);
