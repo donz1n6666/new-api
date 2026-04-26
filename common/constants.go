@@ -106,6 +106,7 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 var InvitationCodeEnabled = false // 是否启用邀请码注册
 var InvitationCodePrice = 0      // 生成邀请码消耗的额度
+var InvitationCodeRewardRatio = 50 // 邀请码使用时，使用者获得生成消耗的百分比（50 = 50%）
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

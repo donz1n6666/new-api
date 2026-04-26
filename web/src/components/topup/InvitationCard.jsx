@@ -398,7 +398,7 @@ const InvitationCard = ({ t }) => {
           <Typography.Text className='text-lg font-medium'>
             {t('我的邀请码')}
           </Typography.Text>
-          <div className='text-xs'>{t('生成邀请码邀请好友注册')}</div>
+          <div className='text-xs'>{t('生成邀请码，可用于邀请好友注册或作为兑换码兑换额度')}</div>
         </div>
       </div>
 

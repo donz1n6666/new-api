@@ -83,6 +83,7 @@ const SystemSetting = () => {
     RegisterEnabled: '',
     InvitationCodeEnabled: '',
     InvitationCodePrice: '',
+    InvitationCodeRewardRatio: '',
     'passkey.enabled': '',
     'passkey.rp_display_name': '',
     'passkey.rp_id': '',
@@ -1119,6 +1120,18 @@ const SystemSetting = () => {
                         )}
                       />
                     </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.InputNumber
+                        field='InvitationCodeRewardRatio'
+                        label={t('邀请码兑换奖励比例（%）')}
+                        placeholder={t('默认 50%')}
+                        min={0}
+                        max={100}
+                        extraText={t(
+                          '用户使用邀请码时，获得生成消耗的此比例的额度，例如 50 表示获得 50%',
+                        )}
+                      />
+                    </Col>
                   </Row>
                   <Button
                     onClick={async () => {
@@ -1126,6 +1139,10 @@ const SystemSetting = () => {
                         {
                           key: 'InvitationCodePrice',
                           value: String(inputs.InvitationCodePrice || 0),
+                        },
+                        {
+                          key: 'InvitationCodeRewardRatio',
+                          value: String(inputs.InvitationCodeRewardRatio || 50),
                         },
                       ]);
                     }}

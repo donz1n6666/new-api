@@ -15,6 +15,7 @@ type InvitationCode struct {
 	Id          int            `json:"id"`
 	UserId      int            `json:"user_id" gorm:"index"`                          // 生成者 ID
 	Code        string         `json:"code" gorm:"type:varchar(32);uniqueIndex"`       // 邀请码
+	Quota       int            `json:"quota" gorm:"default:0"`                         // 生成时消耗的额度
 	Status      int            `json:"status" gorm:"default:1"`                        // 1=未使用, 2=已使用, 3=已禁用
 	UsedUserId  int            `json:"used_user_id"`                                   // 使用者 ID
 	UsedTime    int64          `json:"used_time" gorm:"bigint"`                        // 使用时间
@@ -161,6 +162,22 @@ func UseInvitationCode(codeStr string, userId int) error {
 		if code.Status != common.InvitationCodeStatusEnabled {
 			return errors.New("该邀请码已被使用或已禁用")
 		}
+		// 不能使用自己生成的邀请码
+		if code.UserId == userId {
+			return errors.New("不能使用自己生成的邀请码")
+		}
+		// 按比例给使用者增加余额
+		if code.Quota > 0 && common.InvitationCodeRewardRatio > 0 {
+			rewardQuota := code.Quota * common.InvitationCodeRewardRatio / 100
+			if rewardQuota > 0 {
+				err := tx.Model(&User{}).Where("id = ?", userId).
+					Update("quota", gorm.Expr("quota + ?", rewardQuota)).Error
+				if err != nil {
+					return err
+				}
+				RecordLog(userId, LogTypeTopup, fmt.Sprintf("使用邀请码获得 %s", logger.LogQuota(rewardQuota)))
+			}
+		}
 		code.Status = common.InvitationCodeStatusUsed
 		code.UsedUserId = userId
 		code.UsedTime = common.GetTimestamp()
@@ -237,6 +254,7 @@ func GenerateInvitationCodesForUser(userId int, count int, remark string) ([]*In
 		code := &InvitationCode{
 			UserId:      userId,
 			Code:        common.GetUUID(),
+			Quota:       price, // 记录每个邀请码消耗的额度
 			Status:      common.InvitationCodeStatusEnabled,
 			CreatedTime: common.GetTimestamp(),
 			Remark:      remark,

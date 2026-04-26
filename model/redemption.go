@@ -129,7 +129,41 @@ func Redeem(key string, userId int) (quota int, err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
-			return errors.New("无效的兑换码")
+			// 如果不是兑换码，尝试作为邀请码兑换
+			invitationCode := &InvitationCode{}
+			err = tx.Set("gorm:query_option", "FOR UPDATE").Where("code = ?", key).First(invitationCode).Error
+			if err != nil {
+				return errors.New("无效的兑换码或邀请码")
+			}
+			if invitationCode.Status != common.InvitationCodeStatusEnabled {
+				return errors.New("该邀请码已被使用或已禁用")
+			}
+			// 不能使用自己生成的邀请码
+			if invitationCode.UserId == userId {
+				return errors.New("不能使用自己生成的邀请码")
+			}
+			// 按比例给使用者增加余额
+			rewardQuota := invitationCode.Quota
+			if common.InvitationCodeRewardRatio > 0 {
+				rewardQuota = invitationCode.Quota * common.InvitationCodeRewardRatio / 100
+			}
+			if rewardQuota > 0 {
+				err = tx.Model(&User{}).Where("id = ?", userId).
+					Update("quota", gorm.Expr("quota + ?", rewardQuota)).Error
+				if err != nil {
+					return err
+				}
+			}
+			invitationCode.Status = common.InvitationCodeStatusUsed
+			invitationCode.UsedUserId = userId
+			invitationCode.UsedTime = common.GetTimestamp()
+			err = tx.Save(invitationCode).Error
+			if err != nil {
+				return err
+			}
+			quota = rewardQuota
+			RecordLog(userId, LogTypeTopup, fmt.Sprintf("使用邀请码获得 %s，邀请码ID %d", logger.LogQuota(rewardQuota), invitationCode.Id))
+			return nil
 		}
 		if redemption.Status != common.RedemptionCodeStatusEnabled {
 			return errors.New("该兑换码已被使用")
@@ -145,14 +179,18 @@ func Redeem(key string, userId int) (quota int, err error) {
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId
 		err = tx.Save(redemption).Error
-		return err
+		if err != nil {
+			return err
+		}
+		quota = redemption.Quota
+		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
+		return nil
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
-	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
-	return redemption.Quota, nil
+	return quota, nil
 }
 
 func (redemption *Redemption) Insert() error {

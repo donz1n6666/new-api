@@ -170,6 +170,7 @@ func AddInvitationCode(c *gin.Context) {
 		cleanCode := model.InvitationCode{
 			UserId:      userId,
 			Code:        code,
+			Quota:       common.InvitationCodePrice, // 记录每个邀请码消耗的额度
 			Status:      common.InvitationCodeStatusEnabled,
 			CreatedTime: common.GetTimestamp(),
 			Remark:      invitationCode.Remark,
