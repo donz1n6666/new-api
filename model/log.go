@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -530,4 +531,163 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	}
 
 	return total, nil
+}
+
+// 模型可用性状态
+const (
+	ModelAvailabilityStatusNormal  = "normal"  // 成功率 ≥ 95%
+	ModelAvailabilityStatusWarning = "warning" // 成功率 80-95%
+	ModelAvailabilityStatusError   = "error"   // 成功率 < 80%
+	ModelAvailabilityStatusNoData  = "no_data" // 无请求数据
+)
+
+type ModelAvailability struct {
+	ModelName   string  `json:"model_name"`
+	TotalCount  int     `json:"total_count"`
+	SuccessCount int    `json:"success_count"`
+	ErrorCount  int     `json:"error_count"`
+	SuccessRate float64 `json:"success_rate"`
+	Status      string  `json:"status"`
+}
+
+// GetModelAvailabilityByGroup 统计指定分组在指定小时内的模型可用性
+// 如果 group 为空，则统计所有分组；如果 hours <= 0，默认统计 24 小时
+func GetModelAvailabilityByGroup(group string, hours int) ([]ModelAvailability, error) {
+	if hours <= 0 {
+		hours = 24
+	}
+	startTimestamp := time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+
+	type ModelStat struct {
+		ModelName string `gorm:"column:model_name"`
+		Type      int    `gorm:"column:type"`
+		Count     int    `gorm:"column:count"`
+	}
+
+	var stats []ModelStat
+	query := LOG_DB.Table("logs").
+		Select("model_name, type, count(*) as count").
+		Where("created_at >= ?", startTimestamp).
+		Where("type IN ?", []int{LogTypeConsume, LogTypeError}).
+		Group("model_name, type")
+
+	if group != "" {
+		query = query.Where(logGroupCol+" = ?", group)
+	}
+
+	err := query.Find(&stats).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// 合并统计结果
+	modelStatsMap := make(map[string]*ModelAvailability)
+	for _, stat := range stats {
+		if stat.ModelName == "" {
+			continue
+		}
+		if _, exists := modelStatsMap[stat.ModelName]; !exists {
+			modelStatsMap[stat.ModelName] = &ModelAvailability{
+				ModelName: stat.ModelName,
+			}
+		}
+		if stat.Type == LogTypeConsume {
+			modelStatsMap[stat.ModelName].SuccessCount = stat.Count
+			modelStatsMap[stat.ModelName].TotalCount += stat.Count
+		} else if stat.Type == LogTypeError {
+			modelStatsMap[stat.ModelName].ErrorCount = stat.Count
+			modelStatsMap[stat.ModelName].TotalCount += stat.Count
+		}
+	}
+
+	// 计算成功率和状态
+	result := make([]ModelAvailability, 0, len(modelStatsMap))
+	for _, stat := range modelStatsMap {
+		if stat.TotalCount > 0 {
+			stat.SuccessRate = float64(stat.SuccessCount) / float64(stat.TotalCount) * 100
+		} else {
+			stat.SuccessRate = 0
+		}
+
+		switch {
+		case stat.TotalCount == 0:
+			stat.Status = ModelAvailabilityStatusNoData
+		case stat.SuccessRate >= 95:
+			stat.Status = ModelAvailabilityStatusNormal
+		case stat.SuccessRate >= 80:
+			stat.Status = ModelAvailabilityStatusWarning
+		default:
+			stat.Status = ModelAvailabilityStatusError
+		}
+		result = append(result, *stat)
+	}
+
+	return result, nil
+}
+
+// GetUserModelAvailability 获取用户可用模型的可用性
+func GetUserModelAvailability(userId int, hours int) ([]ModelAvailability, error) {
+	// 获取用户分组
+	userGroup, err := GetUserGroup(userId, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取该分组的所有可用模型
+	enabledModels := GetGroupEnabledModels(userGroup)
+
+	// 获取模型可用性统计
+	availabilityMap := make(map[string]ModelAvailability)
+	stats, err := GetModelAvailabilityByGroup(userGroup, hours)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, stat := range stats {
+		availabilityMap[stat.ModelName] = stat
+	}
+
+	// 构建结果（包含所有可用模型，没有统计数据的显示无请求）
+	result := make([]ModelAvailability, 0, len(enabledModels))
+	for _, modelName := range enabledModels {
+		if stat, exists := availabilityMap[modelName]; exists {
+			result = append(result, stat)
+		} else {
+			result = append(result, ModelAvailability{
+				ModelName:   modelName,
+				TotalCount:  0,
+				SuccessCount: 0,
+				ErrorCount:  0,
+				SuccessRate: 0,
+				Status:      ModelAvailabilityStatusNoData,
+			})
+		}
+	}
+
+	// 按状态优先级排序：异常 → 警告 → 正常 → 无数据；相同状态按调用量降序
+	sort.Slice(result, func(i, j int) bool {
+		priorityI := getStatusPriority(result[i].Status)
+		priorityJ := getStatusPriority(result[j].Status)
+		if priorityI != priorityJ {
+			return priorityI < priorityJ
+		}
+		// 相同状态按调用量降序
+		return result[i].TotalCount > result[j].TotalCount
+	})
+
+	return result, nil
+}
+
+// getStatusPriority 获取状态优先级，数字越小优先级越高
+func getStatusPriority(status string) int {
+	switch status {
+	case ModelAvailabilityStatusError:
+		return 0
+	case ModelAvailabilityStatusWarning:
+		return 1
+	case ModelAvailabilityStatusNormal:
+		return 2
+	default: // ModelAvailabilityStatusNoData
+		return 3
+	}
 }

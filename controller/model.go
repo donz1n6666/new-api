@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -256,6 +257,42 @@ func EnabledListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
 		"data":    model.GetEnabledModels(),
+	})
+}
+
+// GetModelAvailability 获取模型可用性统计
+func GetModelAvailability(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的用户ID",
+		})
+		return
+	}
+
+	// 默认统计 24 小时数据
+	hours := 24
+	hoursParam := c.Query("hours")
+	if hoursParam != "" {
+		if h, err := strconv.Atoi(hoursParam); err == nil && h > 0 {
+			hours = h
+		}
+	}
+
+	availability, err := model.GetUserModelAvailability(userId, hours)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "获取模型可用性失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    availability,
 	})
 }
 

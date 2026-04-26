@@ -285,6 +285,76 @@ export const useDashboardCharts = (
       specified: modelColorMap,
     },
   });
+  
+  // ========== 模型词元消耗排行 ==========
+  const [spec_token_rank_bar, setSpecTokenRankBar] = useState({
+    type: 'bar',
+    data: [{ id: 'tokenRankData', values: [] }],
+    xField: 'Model',
+    yField: 'Tokens',
+    seriesField: 'Model',
+    legends: { visible: true, selectMode: 'single' },
+    title: {
+      visible: true,
+      text: t('模型词元消耗排行'),
+      subtext: '',
+    },
+    bar: {
+      state: { hover: { stroke: '#000', lineWidth: 1 } },
+    },
+    tooltip: {
+      mark: {
+        content: [{
+          key: (datum) => datum['Model'],
+          value: (datum) => renderNumber(datum['Tokens'] || 0),
+        }],
+      },
+    },
+    color: { specified: modelColorMap },
+  });
+
+  // ========== Admin: 用户词元消耗排行 ==========
+  const [spec_user_token_rank, setSpecUserTokenRank] = useState({
+    type: 'bar',
+    data: [{ id: 'userTokenRankData', values: [] }],
+    xField: 'rawTokens',
+    yField: 'User',
+    seriesField: 'User',
+    direction: 'horizontal',
+    legends: { visible: false },
+    title: {
+      visible: true,
+      text: t('用户词元消耗排行'),
+      subtext: '',
+    },
+    bar: {
+      state: { hover: { stroke: '#000', lineWidth: 1 } },
+    },
+    label: {
+      visible: true,
+      position: 'outside',
+      formatMethod: (value, datum) => renderNumber(datum['rawTokens'] || 0),
+    },
+    axes: [{
+      orient: 'left',
+      type: 'band',
+      label: { visible: true },
+    }, {
+      orient: 'bottom',
+      type: 'linear',
+      visible: false,
+    }],
+    tooltip: {
+      mark: {
+        content: [{
+          key: (datum) => datum['User'],
+          value: (datum) => renderNumber(datum['rawTokens'] || 0),
+        }],
+      },
+    },
+    color: { type: 'ordinal', range: USER_COLORS },
+  });
+
 
   // ========== Admin: 用户消耗排行 ==========
   const [spec_user_rank, setSpecUserRank] = useState({
@@ -542,6 +612,38 @@ export const useDashboardCharts = (
         'rankData',
       );
 
+      // ===== 模型词元消耗排行柱状图 =====
+      const modelTokenTotals = new Map();
+      for (let [_, value] of aggregatedData) {
+        updateMapValue(modelTokenTotals, value.model, value.token_used || 0);
+      }
+
+      const allTokenRankData = Array.from(modelTokenTotals)
+        .map(([model, tokens]) => ({
+          Model: model,
+          Tokens: tokens,
+        }))
+        .sort((a, b) => b.Tokens - a.Tokens);
+
+      let tokenRankData;
+      if (allTokenRankData.length > MAX_RANK_MODELS) {
+        const topTokenModels = allTokenRankData.slice(0, MAX_RANK_MODELS);
+        const otherTokenCount = allTokenRankData
+          .slice(MAX_RANK_MODELS)
+          .reduce((sum, item) => sum + item.Tokens, 0);
+        tokenRankData = [...topTokenModels, { Model: t('其他'), Tokens: otherTokenCount }];
+      } else {
+        tokenRankData = allTokenRankData;
+      }
+
+      updateChartSpec(
+        setSpecTokenRankBar,
+        tokenRankData,
+        `${t('总计')}：${renderNumber(totalTokens)}`,
+        newModelColors,
+        'tokenRankData',
+      );
+
       setPieData(newPieData);
       setLineData(newLineData);
       setConsumeQuota(totalQuota);
@@ -603,6 +705,23 @@ export const useDashboardCharts = (
           subtext: `${t('总计')}：${renderQuota(totalUserQuota, 2)}`,
         },
       }));
+
+      // ===== 用户词元消耗排行 =====
+      const userTokenRankValues = rankingData.map((item) => ({
+        User: item.User,
+        rawTokens: item.Tokens,
+      })).sort((a, b) => b.rawTokens - a.rawTokens);
+
+      const totalUserTokens = rankingData.reduce((s, i) => s + i.Tokens, 0);
+
+      setSpecUserTokenRank((prev) => ({
+        ...prev,
+        data: [{ id: 'userTokenRankData', values: userTokenRankValues }],
+        title: {
+          ...prev.title,
+          subtext: `${t('总计')}：${renderNumber(totalUserTokens)}`,
+        },
+      }));
     },
     [dataExportDefaultTime, t],
   );
@@ -619,7 +738,9 @@ export const useDashboardCharts = (
     spec_line,
     spec_model_line,
     spec_rank_bar,
+    spec_token_rank_bar,
     spec_user_rank,
+    spec_user_token_rank,
     spec_user_trend,
     updateChartData,
     updateUserChartData,

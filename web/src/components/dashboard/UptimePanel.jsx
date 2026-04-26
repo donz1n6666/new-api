@@ -27,7 +27,7 @@ import {
   Tag,
   Empty,
 } from '@douyinfe/semi-ui';
-import { Gauge, RefreshCw } from 'lucide-react';
+import { Gauge, RefreshCw, Activity } from 'lucide-react';
 import {
   IllustrationConstruction,
   IllustrationConstructionDark,
@@ -42,10 +42,47 @@ const UptimePanel = ({
   loadUptimeData,
   uptimeLegendData,
   renderMonitorList,
+  modelAvailabilityData,
+  renderModelAvailabilityList,
+  modelAvailabilityTabKey,
+  modelAvailabilityLegendData,
   CARD_PROPS,
   ILLUSTRATION_SIZE,
   t,
 }) => {
+  // 合并 Uptime Kuma 数据和模型可用性数据
+  const hasUptimeData = uptimeData && uptimeData.length > 0;
+  const hasModelData = modelAvailabilityData && modelAvailabilityData.length > 0;
+
+  // 生成最终的 Tab 数据
+  const finalTabs = [];
+  if (hasUptimeData) {
+    finalTabs.push(...uptimeData);
+  }
+
+  // 始终添加模型可用性 Tab（即使没有数据也可以展示）
+  const modelTab = {
+    categoryName: modelAvailabilityTabKey,
+    isModelAvailability: true,
+    monitors: modelAvailabilityData || [],
+  };
+  finalTabs.push(modelTab);
+
+  // 初始化选中第一个 Tab
+  React.useEffect(() => {
+    if (!activeUptimeTab && finalTabs.length > 0) {
+      setActiveUptimeTab(finalTabs[0].categoryName);
+    }
+  }, [activeUptimeTab, finalTabs, setActiveUptimeTab]);
+
+  // 获取当前激活的 Tab 数据
+  const activeTabData = finalTabs.find((tab) => tab.categoryName === activeUptimeTab);
+  const isModelAvailabilityTab = activeTabData?.isModelAvailability;
+
+  // 确定显示哪个图例
+  const currentLegendData = isModelAvailabilityTab
+    ? modelAvailabilityLegendData
+    : uptimeLegendData;
   return (
     <Card
       {...CARD_PROPS}
@@ -72,68 +109,52 @@ const UptimePanel = ({
       {/* 内容区域 */}
       <div className='relative'>
         <Spin spinning={uptimeLoading}>
-          {uptimeData.length > 0 ? (
-            uptimeData.length === 1 ? (
-              <ScrollableContainer maxHeight='24rem'>
-                {renderMonitorList(uptimeData[0].monitors)}
-              </ScrollableContainer>
-            ) : (
-              <Tabs
-                type='card'
-                collapsible
-                activeKey={activeUptimeTab}
-                onChange={setActiveUptimeTab}
-                size='small'
-              >
-                {uptimeData.map((group, groupIdx) => (
-                  <TabPane
-                    tab={
-                      <span className='flex items-center gap-2'>
-                        <Gauge size={14} />
-                        {group.categoryName}
-                        <Tag
-                          color={
-                            activeUptimeTab === group.categoryName
-                              ? 'red'
-                              : 'grey'
-                          }
-                          size='small'
-                          shape='circle'
-                        >
-                          {group.monitors ? group.monitors.length : 0}
-                        </Tag>
-                      </span>
-                    }
-                    itemKey={group.categoryName}
-                    key={groupIdx}
-                  >
-                    <ScrollableContainer maxHeight='21.5rem'>
-                      {renderMonitorList(group.monitors)}
-                    </ScrollableContainer>
-                  </TabPane>
-                ))}
-              </Tabs>
-            )
+          {finalTabs.length === 1 ? (
+            <ScrollableContainer maxHeight='24rem'>
+              {isModelAvailabilityTab
+                ? renderModelAvailabilityList(activeTabData?.monitors || [])
+                : renderMonitorList(activeTabData?.monitors || [])}
+            </ScrollableContainer>
           ) : (
-            <div className='flex justify-center items-center py-8'>
-              <Empty
-                image={<IllustrationConstruction style={ILLUSTRATION_SIZE} />}
-                darkModeImage={
-                  <IllustrationConstructionDark style={ILLUSTRATION_SIZE} />
-                }
-                title={t('暂无监控数据')}
-                description={t('请联系管理员在系统设置中配置Uptime')}
-              />
-            </div>
+            <Tabs
+              type='card'
+              collapsible
+              activeKey={activeUptimeTab}
+              onTabClick={setActiveUptimeTab}
+              size='small'
+            >
+              {finalTabs.map((tab, groupIdx) => (
+                <TabPane
+                  tab={
+                    <span className='flex items-center gap-2'>
+                      {tab.isModelAvailability ? (
+                        <Activity size={14} />
+                      ) : (
+                        <Gauge size={14} />
+                      )}
+                      {tab.isModelAvailability ? t('模型状态') : tab.categoryName}
+                    </span>
+                  }
+                  itemKey={tab.categoryName}
+                  key={groupIdx}
+                >
+                  <ScrollableContainer maxHeight='21.5rem'>
+                    {tab.isModelAvailability
+                      ? renderModelAvailabilityList(tab.monitors)
+                      : renderMonitorList(tab.monitors)}
+                  </ScrollableContainer>
+                </TabPane>
+              ))}
+            </Tabs>
           )}
         </Spin>
       </div>
 
       {/* 图例 */}
-      {uptimeData.length > 0 && (
+      {currentLegendData && currentLegendData.length > 0 && (
         <div className='p-3 bg-gray-50 rounded-b-2xl'>
           <div className='flex flex-wrap gap-3 text-xs justify-center'>
-            {uptimeLegendData.map((legend, index) => (
+            {currentLegendData.map((legend, index) => (
               <div key={index} className='flex items-center gap-1'>
                 <div
                   className='w-2 h-2 rounded-full'

@@ -81,6 +81,10 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const [uptimeLoading, setUptimeLoading] = useState(false);
   const [activeUptimeTab, setActiveUptimeTab] = useState('');
 
+  // ========== 模型可用性数据 ==========
+  const [modelAvailabilityData, setModelAvailabilityData] = useState([]);
+  const [modelAvailabilityLoading, setModelAvailabilityLoading] = useState(false);
+
   // ========== 常量 ==========
   const now = new Date();
   const isAdminUser = isAdmin();
@@ -213,6 +217,23 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     }
   }, [activeUptimeTab]);
 
+  const loadModelAvailabilityData = useCallback(async () => {
+    setModelAvailabilityLoading(true);
+    try {
+      const res = await API.get('/api/user/self/models/availability?hours=24');
+      const { success, message, data } = res.data;
+      if (success) {
+        setModelAvailabilityData(data || []);
+      } else {
+        showError(message);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setModelAvailabilityLoading(false);
+    }
+  }, []);
+
   const loadUserQuotaData = useCallback(async () => {
     if (!isAdminUser) return [];
     try {
@@ -247,8 +268,9 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
   const refresh = useCallback(async () => {
     const data = await loadQuotaData();
     await loadUptimeData();
+    await loadModelAvailabilityData();
     return data;
-  }, [loadQuotaData, loadUptimeData]);
+  }, [loadQuotaData, loadUptimeData, loadModelAvailabilityData]);
 
   const handleSearchConfirm = useCallback(
     async (updateChartDataCallback) => {
@@ -314,6 +336,11 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     uptimeLoading,
     activeUptimeTab,
     setActiveUptimeTab,
+
+    // 模型可用性数据
+    modelAvailabilityData,
+    modelAvailabilityLoading,
+    loadModelAvailabilityData,
 
     // 计算值
     timeOptions,

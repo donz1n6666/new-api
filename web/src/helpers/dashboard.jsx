@@ -167,7 +167,85 @@ export const getUptimeStatusColor = (status, uptimeStatusMap) =>
 export const getUptimeStatusText = (status, uptimeStatusMap, t) =>
   uptimeStatusMap[status]?.text || t('未知');
 
-// ========== 监控列表渲染函数 ==========
+// ========== 模型可用性相关函数 ==========
+export const getModelAvailabilityStatusColor = (status, statusMap) =>
+  statusMap[status]?.color || '#8b9aa7';
+
+export const getModelAvailabilityStatusText = (status, statusMap, t) =>
+  statusMap[status]?.text || t('未知');
+
+// ========== 模型可用性列表渲染函数 ==========
+export const renderModelAvailabilityList = (
+  models,
+  getStatusColor,
+  getStatusText,
+  t,
+) => {
+  if (!models || models.length === 0) {
+    return (
+      <div className='flex justify-center items-center py-4'>
+        <Empty
+          image={<IllustrationConstruction style={ILLUSTRATION_SIZE} />}
+          darkModeImage={
+            <IllustrationConstructionDark style={ILLUSTRATION_SIZE} />
+          }
+          title={t('暂无模型数据')}
+        />
+      </div>
+    );
+  }
+
+  const renderItem = (model, idx) => (
+    <div key={idx} className='p-2 hover:bg-white rounded-lg transition-colors'>
+      <div className='flex items-center justify-between mb-1'>
+        <div className='flex items-center gap-2'>
+          <div
+            className='w-2 h-2 rounded-full flex-shrink-0'
+            style={{ backgroundColor: getStatusColor(model.status) }}
+          />
+          <span className='text-sm font-medium text-gray-900'>
+            {model.model_name}
+          </span>
+        </div>
+        <span className='text-xs text-gray-500'>
+          {model.total_count > 0 ? `${model.success_rate.toFixed(2)}%` : '-'}
+        </span>
+      </div>
+      <div className='flex items-center gap-2'>
+        <span className='text-xs text-gray-500'>
+          {getStatusText(model.status)}
+        </span>
+        {model.total_count > 0 ? (
+          <div className='flex-1'>
+            <Progress
+              percent={model.success_rate}
+              showInfo={false}
+              aria-label={`${model.model_name} success rate`}
+              stroke={getStatusColor(model.status)}
+            />
+          </div>
+        ) : (
+          <div className='flex-1 text-xs text-gray-400'>
+            {t('过去24小时无调用记录')}
+          </div>
+        )}
+      </div>
+      {model.total_count > 0 && (
+        <div className='text-xs text-gray-400 mt-1 flex gap-3'>
+          <span>{t('总计')}: {model.total_count}{t('次')}</span>
+          <span>{t('成功')}: {model.success_count}{t('次')}</span>
+          <span>{t('失败')}: {model.error_count}{t('次')}</span>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className='max-h-96 overflow-y-auto'>
+      {models.map(renderItem)}
+    </div>
+  );
+};
 export const renderMonitorList = (
   monitors,
   getUptimeStatusColor,
@@ -349,12 +427,14 @@ export const aggregateDataByTimeAndModel = (data, dataExportDefaultTime) => {
         model: modelKey,
         quota: 0,
         count: 0,
+        token_used: 0,
       });
     }
 
     const existing = aggregatedData.get(key);
     existing.quota += item.quota;
     existing.count += item.count;
+    existing.token_used += item.token_used || 0;
   });
 
   return aggregatedData;
@@ -391,9 +471,12 @@ export const generateChartTimePoints = (
 // ========== 用户维度数据处理 ==========
 export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
   const userQuotaTotal = new Map();
+  const userTokenTotal = new Map();
   data.forEach((item) => {
-    const prev = userQuotaTotal.get(item.username) || 0;
-    userQuotaTotal.set(item.username, prev + item.quota);
+    const prevQuota = userQuotaTotal.get(item.username) || 0;
+    userQuotaTotal.set(item.username, prevQuota + item.quota);
+    const prevToken = userTokenTotal.get(item.username) || 0;
+    userTokenTotal.set(item.username, prevToken + (item.token_used || 0));
   });
 
   const sorted = Array.from(userQuotaTotal.entries()).sort(
@@ -405,6 +488,7 @@ export const processUserData = (data, dataExportDefaultTime, limit = 10) => {
   const rankingData = sorted.slice(0, limit).map(([username, quota]) => ({
     User: username,
     Quota: quota,
+    Tokens: userTokenTotal.get(username) || 0,
   }));
 
   const showYear = isDataCrossYear(data.map((item) => item.created_at));

@@ -42,6 +42,8 @@ import {
   ILLUSTRATION_SIZE,
   ANNOUNCEMENT_LEGEND_DATA,
   UPTIME_STATUS_MAP,
+  MODEL_AVAILABILITY_STATUS_MAP,
+  MODEL_AVAILABILITY_TAB_KEY,
 } from '../../constants/dashboard.constants';
 import {
   getTrendSpec,
@@ -50,6 +52,9 @@ import {
   getUptimeStatusColor,
   getUptimeStatusText,
   renderMonitorList,
+  getModelAvailabilityStatusColor,
+  getModelAvailabilityStatusText,
+  renderModelAvailabilityList,
 } from '../../helpers/dashboard';
 
 const Dashboard = () => {
@@ -103,6 +108,7 @@ const Dashboard = () => {
     });
     await loadUserData();
     await dashboardData.loadUptimeData();
+    await dashboardData.loadModelAvailabilityData();
   };
 
   const handleRefresh = async () => {
@@ -111,6 +117,7 @@ const Dashboard = () => {
       dashboardCharts.updateChartData(data);
     }
     await loadUserData();
+    await dashboardData.loadModelAvailabilityData();
   };
 
   const handleSearchConfirm = async () => {
@@ -142,6 +149,14 @@ const Dashboard = () => {
       status: Number(status),
       color: info.color,
       label: dashboardData.t(info.label),
+    }),
+  );
+
+  const modelAvailabilityLegendData = Object.entries(MODEL_AVAILABILITY_STATUS_MAP).map(
+    ([status, info]) => ({
+      status,
+      color: info.color,
+      label: dashboardData.t(info.text),
     }),
   );
 
@@ -194,7 +209,9 @@ const Dashboard = () => {
             spec_model_line={dashboardCharts.spec_model_line}
             spec_pie={dashboardCharts.spec_pie}
             spec_rank_bar={dashboardCharts.spec_rank_bar}
+            spec_token_rank_bar={dashboardCharts.spec_token_rank_bar}
             spec_user_rank={dashboardCharts.spec_user_rank}
+            spec_user_token_rank={dashboardCharts.spec_user_token_rank}
             spec_user_trend={dashboardCharts.spec_user_trend}
             isAdminUser={dashboardData.isAdminUser}
             CARD_PROPS={CARD_PROPS}
@@ -253,7 +270,10 @@ const Dashboard = () => {
             {dashboardData.uptimeEnabled && (
               <UptimePanel
                 uptimeData={dashboardData.uptimeData}
-                uptimeLoading={dashboardData.uptimeLoading}
+                uptimeLoading={
+                  dashboardData.uptimeLoading ||
+                  dashboardData.modelAvailabilityLoading
+                }
                 activeUptimeTab={dashboardData.activeUptimeTab}
                 setActiveUptimeTab={dashboardData.setActiveUptimeTab}
                 loadUptimeData={dashboardData.loadUptimeData}
@@ -271,6 +291,26 @@ const Dashboard = () => {
                     dashboardData.t,
                   )
                 }
+                modelAvailabilityData={dashboardData.modelAvailabilityData}
+                renderModelAvailabilityList={(models) =>
+                  renderModelAvailabilityList(
+                    models,
+                    (status) =>
+                      getModelAvailabilityStatusColor(
+                        status,
+                        MODEL_AVAILABILITY_STATUS_MAP,
+                      ),
+                    (status) =>
+                      getModelAvailabilityStatusText(
+                        status,
+                        MODEL_AVAILABILITY_STATUS_MAP,
+                        dashboardData.t,
+                      ),
+                    dashboardData.t,
+                  )
+                }
+                modelAvailabilityTabKey={MODEL_AVAILABILITY_TAB_KEY}
+                modelAvailabilityLegendData={modelAvailabilityLegendData}
                 CARD_PROPS={CARD_PROPS}
                 ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
                 t={dashboardData.t}
