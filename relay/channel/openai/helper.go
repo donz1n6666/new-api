@@ -52,28 +52,77 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 		_ = json.Unmarshal([]byte(usage.Raw), info.ClaudeConvertInfo.Usage)
 	}
 
-	var sentContent bool
+	// message_start — 首个 chunk 发送（必须）
+	if !info.ClaudeConvertInfo.MessageStartSent {
+		responseID := gjson.Get(data, "id").String()
+		model := gjson.Get(data, "model").String()
+		if responseID == "" {
+			responseID = "msg_" + common.GetUUID()
+		}
+		if model == "" {
+			model = info.UpstreamModelName
+		}
+		messageStart := map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":      responseID,
+				"type":    "message",
+				"role":    "assistant",
+				"model":   model,
+				"content": []any{},
+				"usage": map[string]any{
+					"input_tokens":  0,
+					"output_tokens": 0,
+				},
+			},
+		}
+		b, _ := json.Marshal(messageStart)
+		c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
+		_ = helper.FlushWriter(c)
+		info.ClaudeConvertInfo.MessageStartSent = true
+	}
+
+	// 发送 content_block_stop（切换 block 类型时）
+	sendStopBlock := func() {
+		if info.ClaudeConvertInfo.LastMessagesType == "" || info.ClaudeConvertInfo.LastMessagesType == relaycommon.LastMessageTypeNone {
+			return
+		}
+		stopData := map[string]any{
+			"type":  "content_block_stop",
+			"index": info.ClaudeConvertInfo.Index,
+		}
+		b, _ := json.Marshal(stopData)
+		c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
+		_ = helper.FlushWriter(c)
+	}
 
 	// 处理 delta 内容
 	if delta.Exists() {
-		// content delta（文本）
-		if content := delta.Get("content").String(); content != "" {
-			claudeData := map[string]any{
-				"type":  "content_block_delta",
-				"index": info.ClaudeConvertInfo.Index,
-				"delta": map[string]any{
-					"type": "text_delta",
-					"text": content,
-				},
-			}
-			b, _ := json.Marshal(claudeData)
-			c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
-			_ = helper.FlushWriter(c)
-			sentContent = true
-		}
-
-		// reasoning_content delta（推理过程）
+		// reasoning_content delta（推理过程）— 优先处理，保持 thinking 在前
 		if reasoning := delta.Get("reasoning_content").String(); reasoning != "" {
+			// 当前是其他类型 block → 先 stop
+			if info.ClaudeConvertInfo.LastMessagesType != "" &&
+				info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeThinking {
+				sendStopBlock()
+				info.ClaudeConvertInfo.Index++
+			}
+			// 尚未开始 thinking block → 发送 content_block_start
+			if info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeThinking {
+				startData := map[string]any{
+					"type":  "content_block_start",
+					"index": info.ClaudeConvertInfo.Index,
+					"content_block": map[string]any{
+						"type":      "thinking",
+						"thinking":  "",
+						"signature": "",
+					},
+				}
+				b, _ := json.Marshal(startData)
+				c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
+				_ = helper.FlushWriter(c)
+				info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeThinking
+			}
+
 			claudeData := map[string]any{
 				"type":  "content_block_delta",
 				"index": info.ClaudeConvertInfo.Index,
@@ -85,11 +134,55 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 			b, _ := json.Marshal(claudeData)
 			c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
 			_ = helper.FlushWriter(c)
-			sentContent = true
+		}
+
+		// content delta（文本）
+		if content := delta.Get("content").String(); content != "" {
+			// 当前是其他类型 block → 先 stop
+			if info.ClaudeConvertInfo.LastMessagesType != "" &&
+				info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeText {
+				sendStopBlock()
+				info.ClaudeConvertInfo.Index++
+			}
+			// 尚未开始 text block → 发送 content_block_start
+			if info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeText {
+				startData := map[string]any{
+					"type":  "content_block_start",
+					"index": info.ClaudeConvertInfo.Index,
+					"content_block": map[string]any{
+						"type": "text",
+						"text": "",
+					},
+				}
+				b, _ := json.Marshal(startData)
+				c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
+				_ = helper.FlushWriter(c)
+				info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeText
+			}
+
+			claudeData := map[string]any{
+				"type":  "content_block_delta",
+				"index": info.ClaudeConvertInfo.Index,
+				"delta": map[string]any{
+					"type": "text_delta",
+					"text": content,
+				},
+			}
+			b, _ := json.Marshal(claudeData)
+			c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
+			_ = helper.FlushWriter(c)
 		}
 
 		// tool_calls delta
 		if toolCalls := delta.Get("tool_calls"); toolCalls.Exists() && toolCalls.IsArray() {
+			// 当前是 text/thinking block → 先 stop
+			if info.ClaudeConvertInfo.LastMessagesType != "" &&
+				info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeTools {
+				sendStopBlock()
+				info.ClaudeConvertInfo.Index++
+				info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeNone
+			}
+
 			for _, tc := range toolCalls.Array() {
 				name := tc.Get("function.name").String()
 				args := tc.Get("function.arguments").String()
@@ -109,8 +202,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 					b, _ := json.Marshal(claudeData)
 					c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
 					_ = helper.FlushWriter(c)
-					sentContent = true
-					info.ClaudeConvertInfo.LastMessagesType = "tool_use"
+							info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeTools
 				}
 				if args != "" {
 					// input_json_delta
@@ -125,23 +217,16 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 					b, _ := json.Marshal(claudeData)
 					c.Render(-1, common.CustomEvent{Data: "data: " + string(b)})
 					_ = helper.FlushWriter(c)
-					sentContent = true
-				}
+						}
 				// 有新 tool_call id 时递增计数
 				if tc.Get("id").String() != "" {
 					info.ClaudeConvertInfo.ToolCallBaseIndex++
 				}
 			}
-			sentContent = true
 		}
 	}
 
-	// 记录首个成功发送的致谢（如果需要兼容旧逻辑的话）
-	if sentContent && !info.ClaudeConvertInfo.Done {
-		info.ClaudeConvertInfo.Index++
-	}
-
-	// finish_reason - 最后一个 chunk
+	// finish_reason — 最后一个 chunk
 	if finishReason != "" {
 		info.ClaudeConvertInfo.Done = true
 		info.ClaudeConvertInfo.FinishReason = finishReason
@@ -311,27 +396,47 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 	case types.RelayFormatClaude:
 		info.ClaudeConvertInfo.Usage = usage
 
-		// 在需要发送最终 usage 时发送 message_delta 事件
+		// close all open content blocks before message_delta
+		if info.ClaudeConvertInfo.LastMessagesType != "" &&
+			info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeNone {
+			switch info.ClaudeConvertInfo.LastMessagesType {
+			case relaycommon.LastMessageTypeText, relaycommon.LastMessageTypeThinking:
+				stopJSON, _ := json.Marshal(map[string]any{
+					"type":  "content_block_stop",
+					"index": info.ClaudeConvertInfo.Index,
+				})
+				c.Render(-1, common.CustomEvent{Data: "data: " + string(stopJSON)})
+			case relaycommon.LastMessageTypeTools:
+				base := info.ClaudeConvertInfo.ToolCallBaseIndex
+				for offset := 0; offset <= info.ClaudeConvertInfo.ToolCallMaxIndexOffset; offset++ {
+					stopJSON, _ := json.Marshal(map[string]any{
+						"type":  "content_block_stop",
+						"index": base + offset,
+					})
+					c.Render(-1, common.CustomEvent{Data: "data: " + string(stopJSON)})
+				}
+			}
+		}
+
 		if info.ShouldIncludeUsage && usage != nil {
 			finishReason := "end_turn"
-			if info.ClaudeConvertInfo.LastMessagesType == "tool_use" {
+			if info.ClaudeConvertInfo.LastMessagesType == relaycommon.LastMessageTypeTools {
 				finishReason = "tool_use"
 			}
 			usageJSON, _ := json.Marshal(map[string]any{
-				"input_tokens":              usage.PromptTokens,
-				"output_tokens":             usage.CompletionTokens,
-				"cache_read_input_tokens":   usage.PromptTokensDetails.CachedTokens,
+				"input_tokens":                usage.PromptTokens,
+				"output_tokens":               usage.CompletionTokens,
+				"cache_read_input_tokens":     usage.PromptTokensDetails.CachedTokens,
 				"cache_creation_input_tokens": usage.PromptTokensDetails.CachedCreationTokens,
 			})
 			deltaJSON, _ := json.Marshal(map[string]any{
-				"type":        "message_delta",
-				"delta":       map[string]any{"stop_reason": finishReason},
-				"usage":       json.RawMessage(usageJSON),
+				"type":  "message_delta",
+				"delta": map[string]any{"stop_reason": finishReason},
+				"usage": json.RawMessage(usageJSON),
 			})
 			c.Render(-1, common.CustomEvent{Data: "data: " + string(deltaJSON)})
 		}
 
-		// 发送 message_stop
 		stopJSON, _ := json.Marshal(map[string]any{"type": "message_stop"})
 		c.Render(-1, common.CustomEvent{Data: "data: " + string(stopJSON)})
 		_ = helper.FlushWriter(c)

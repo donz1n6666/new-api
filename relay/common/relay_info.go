@@ -40,6 +40,8 @@ type ClaudeConvertInfo struct {
 	FinishReason     string
 	Done             bool
 
+	MessageStartSent bool
+
 	ToolCallBaseIndex      int
 	ToolCallMaxIndexOffset int
 }
