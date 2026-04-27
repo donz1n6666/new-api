@@ -462,7 +462,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	return nil
 }
 
-func RechargeEthereum(tradeNo string) (err error) {
+func RechargeEthereum(tradeNo string, callerIp string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -515,7 +515,7 @@ func RechargeEthereum(tradeNo string) (err error) {
 	}
 
 	if quotaToAdd > 0 {
-		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Ethereum充值成功，充值额度: %v，支付金额: %.6f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("Ethereum充值成功，充值额度: %v，支付金额: %.6f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, "ethereum", "ethereum")
 	}
 
 	return nil

@@ -237,7 +237,7 @@ func EthereumWebhook(c *gin.Context) {
 			continue
 		}
 		matched++
-		handlePaymentReceivedLog(logEntry)
+		handlePaymentReceivedLog(logEntry, c.ClientIP())
 	}
 
 	common.SysLog(fmt.Sprintf("Ethereum Webhook: 处理完成 - matched=%d/%d", matched, len(logs)))
@@ -248,7 +248,7 @@ func EthereumWebhook(c *gin.Context) {
 // It dispatches to the correct completion logic based on the tradeNo prefix:
 //   - "ETHSUB-" → subscription order → CompleteSubscriptionOrder
 //   - "ETH-"    → top-up order       → RechargeEthereum
-func handlePaymentReceivedLog(entry alchemyLog) {
+func handlePaymentReceivedLog(entry alchemyLog, callerIp string) {
 	// PaymentReceived(bytes32 indexed orderId, address indexed payer, address token, uint256 amount)
 	//
 	// Indexed params appear in topics:
@@ -286,7 +286,7 @@ func handlePaymentReceivedLog(entry alchemyLog) {
 		}
 	} else {
 		// Top-up (balance recharge) order
-		err = model.RechargeEthereum(tradeNo)
+		err = model.RechargeEthereum(tradeNo, callerIp)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 充值失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
