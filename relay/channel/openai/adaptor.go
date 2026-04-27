@@ -23,6 +23,7 @@ import (
 	//"github.com/QuantumNous/new-api/relay/channel/minimax"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/relay/channel/xinference"
+	"github.com/QuantumNous/new-api/relay/transform"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/common_handler"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -50,35 +51,39 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
-	//if !strings.Contains(request.Model, "claude") {
-	//	return nil, fmt.Errorf("you are using openai channel type with path /v1/messages, only claude model supported convert, but got %s", request.Model)
-	//}
-	//if common.DebugEnabled {
-	//	bodyBytes := []byte(common.GetJsonString(request))
-	//	err := os.WriteFile(fmt.Sprintf("claude_request_%s.txt", c.GetString(common.RequestIdKey)), bodyBytes, 0644)
-	//	if err != nil {
-	//		println(fmt.Sprintf("failed to save request body to file: %v", err))
-	//	}
-	//}
-	aiRequest, err := service.ClaudeToOpenAIRequest(*request, info)
+	// 使用纯 JSON 方式转换，相比 DTO 方式有以下优势：
+	// 1. 所有未知字段都能保留，不会丢失
+	// 2. 更好的兼容性，支持新 API 特性
+	// 3. 支持 Codex OAuth 等特殊协议处理
+	// 4. 多级 reasoning_effort 智能映射
+
+	// 1. 将 Claude 请求结构体序列化为 JSON
+	claudeJSON, err := common.Marshal(request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal claude request: %w", err)
 	}
-	//if common.DebugEnabled {
-	//	println(fmt.Sprintf("convert claude to openai request result: %s", common.GetJsonString(aiRequest)))
-	//	// Save request body to file for debugging
-	//	bodyBytes := []byte(common.GetJsonString(aiRequest))
-	//	err = os.WriteFile(fmt.Sprintf("claude_to_openai_request_%s.txt", c.GetString(common.RequestIdKey)), bodyBytes, 0644)
-	//	if err != nil {
-	//		println(fmt.Sprintf("failed to save request body to file: %v", err))
-	//	}
-	//}
+
+	// 2. 获取转换 flags（根据渠道类型自动判断）
+	flags := transform.GetModelFlags(request.Model)
+
+	// 3. 纯 JSON 转换（Claude → OpenAI）
+	openAIJSON, err := transform.RequestClaudeToOpenAI(claudeJSON, flags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform claude request: %w", err)
+	}
+
+	// 4. 解析为 OpenAI 请求结构体继续后续处理
+	var aiRequest dto.GeneralOpenAIRequest
+	if err := common.Unmarshal(openAIJSON, &aiRequest); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal transformed request: %w", err)
+	}
+
 	if info.SupportStreamOptions && info.IsStream {
 		aiRequest.StreamOptions = &dto.StreamOptions{
 			IncludeUsage: true,
 		}
 	}
-	return a.ConvertOpenAIRequest(c, info, aiRequest)
+	return a.ConvertOpenAIRequest(c, info, &aiRequest)
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {

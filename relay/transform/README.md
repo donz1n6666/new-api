@@ -4,16 +4,17 @@
 
 The `relay/transform` package implements a **pure JSON manipulation approach** for format conversion between different AI provider APIs. It's inspired by cc-switch's design, offering several key advantages over the traditional DTO-based approach.
 
+This package is **already integrated** into the OpenAI channel adapter (`relay/channel/openai/adaptor.go:ConvertClaudeRequest`).
+
 ## Key Design Principles (from cc-switch)
 
 ### 1. Pure JSON Manipulation (No DTO Dependency)
 
 Instead of marshaling/unmarshaling through structs (DTOs), this package operates directly on `map[string]any` and JSON bytes. This offers:
 
-- **Zero allocation overhead** for struct instantiation
-- **No lost fields** during conversion (fields unknown to structs are preserved)
-- **Flexibility** to handle edge cases without modifying struct definitions
-- **Forward compatibility** with new API features without code changes
+- **Zero field loss**: Unknown fields are preserved, not dropped
+- **Forward compatibility**: New API features work without code changes
+- **Flexibility**: Handle edge cases and special protocols easily
 
 ### 2. Provider-Specific Flags Mechanism
 
@@ -59,94 +60,72 @@ func resolveReasoningEffort(req map[string]any) string {
 
 OpenAI's o-series models use `max_completion_tokens` while regular models use `max_tokens`. The transform automatically selects the correct field based on `OSeriesMode` flag.
 
-## API Reference
+## Conversion Matrix
 
-### Request Transformation
+| ↓ Source / Target → | OpenAI Chat | Claude Messages |
+|-------------------|-------------|----------------|
+| **OpenAI Chat** | Native | `RequestOpenAIToClaude()`<br>`ResponseClaudeToOpenAI()`<br>`StreamResponseClaudeToOpenAI()` |
+| **Claude Messages** | `RequestClaudeToOpenAI()`<br>`ResponseOpenAIToClaude()` | Native |
 
-```go
-// Convert OpenAI Chat request to Claude Messages format
-func RequestOpenAIToClaude(body []byte, flags TransformFlags) ([]byte, error)
-```
+## Integration Status
 
-### Response Transformation
+### ✅ Already Integrated
 
-```go
-// Convert Claude streaming response to OpenAI format
-func StreamResponseClaudeToOpenAI(ctx context.Context, body []byte) ([]byte, error)
+1. **`ConvertClaudeRequest`** (`relay/channel/openai/adaptor.go`)
+   - Uses `RequestClaudeToOpenAI()` for request conversion
+   - Scenario: Client calls Claude API, upstream channel is OpenAI
 
-// Convert Claude non-streaming response to OpenAI format
-func ResponseClaudeToOpenAI(body []byte) ([]byte, error)
-```
+### 📋 Can Be Extended To
 
-### Helper Functions
-
-```go
-// Auto-detect flags from model name
-func GetModelFlags(modelName string) TransformFlags
-
-// Create adaptor for integration with existing relay system
-func NewAdaptor() *Adaptor
-```
-
-## Comparison: DTO vs Pure JSON
-
-| Aspect | DTO Approach | Pure JSON Approach |
-|--------|-------------|-------------------|
-| **Type Safety** | High (compile-time) | Medium (runtime) |
-| **Flexibility** | Low (requires struct changes) | High |
-| **Performance** | More allocations | Fewer allocations |
-| **Unknown Fields** | Lost | Preserved |
-| **Maintenance** | High (duplicate structs) | Low |
-| **Error Location** | Precise | Requires explicit checks |
+1. **OpenAI → Claude request**: Client calls OpenAI, upstream is Claude
+2. **Response conversion (both directions)**: Replace existing DTO-based conversion
+3. **Streaming response conversion**: Use pure JSON SSE event transformation
 
 ## Usage Example
 
 ```go
 import "github.com/QuantumNous/new-api/relay/transform"
 
-// 1. Get request body
-body, _ := io.ReadAll(c.Request.Body)
+// Convert request: Claude format → OpenAI format
+flags := transform.GetModelFlags("gpt-4o")
+openAIJSON, err := transform.RequestClaudeToOpenAI(claudeJSON, flags)
 
-// 2. Auto-detect transformation flags
-flags := transform.GetModelFlags(modelName)
-
-// 3. Transform request
-claudeBody, err := transform.RequestOpenAIToClaude(body, flags)
-if err != nil {
-    // Handle error
-}
-
-// 4. Forward request to Claude API...
-
-// 5. Transform response back
-openAIResponse, err := transform.ResponseClaudeToOpenAI(claudeResponseBody)
+// Convert response: OpenAI format → Claude format  
+claudeJSON, err := transform.ResponseOpenAIToClaude(openAIResponseJSON)
 ```
 
-## Testing
+## Test Coverage
 
-```bash
-go test ./relay/transform/... -v
 ```
+✓ RequestOpenAIToClaude - Basic
+✓ RequestOpenAIToClaude - System messages
+✓ RequestOpenAIToClaude - Tool calls
+✓ RequestOpenAIToClaude - Reasoning effort (low/medium/high)
+✓ RequestOpenAIToClaude - Codex OAuth special handling
+✓ RequestOpenAIToClaude - O-series token adaptation
 
-Test coverage includes:
-- Basic request transformation
-- System message handling
-- Tool call transformation
-- Reasoning effort mapping
-- Codex OAuth special handling
-- O-series model token adaptation
-- Response transformation (streaming + non-streaming)
+✓ RequestClaudeToOpenAI - Basic
+✓ RequestClaudeToOpenAI - System prompt
+✓ RequestClaudeToOpenAI - Tools
+✓ RequestClaudeToOpenAI - Array system format
+
+✓ ResponseClaudeToOpenAI - Basic / Tool calls
+✓ ResponseOpenAIToClaude - Basic / Tool calls
+✓ resolveReasoningEffort - All priority levels
+✓ Stop reason mapping
+✓ Usage field mapping
+```
 
 ## Future Enhancements
 
-1. **OpenAI Responses API support** - Add `/v1/responses` format conversion
-2. **Gemini format support** - Bidirectional conversion for Gemini API
-3. **AWS Bedrock variations** - Special handling for Bedrock's Claude variant
-4. **Cache control field merging** - Intelligent `cache_control` management
-5. **More streaming edge cases** - Handle interleaved content types
+1. **Streaming response conversion integration** - Replace DTO-based stream conversion
+2. **Responses API format** - Add OpenAI Responses API format bidirectional conversion
+3. **Gemini format support** - Add Gemini API bidirectional conversion
+4. **AWS Bedrock variations** - Special handling for Bedrock's Claude variant
+5. **Cache control field merging** - Intelligent `cache_control` management
 
 ## Design Philosophy
 
 This package follows cc-switch's philosophy: **"Don't fight the JSON"**. Instead of forcing APIs into rigid struct hierarchies, work with the natural shape of JSON data. This reduces boilerplate, preserves forward compatibility, and makes it easier to handle the idiosyncrasies of different AI providers.
 
-> Inspired by: cc-switch (https://github.com/cc-switch/cc-switch) internal transform module
+> Inspired by: cc-switch internal transform module
