@@ -25,7 +25,12 @@ import {
   showError,
   showSuccess,
   showWarning,
+  getCurrencyConfig,
 } from '../../../helpers';
+import {
+  quotaToDisplayAmount,
+  displayAmountToQuota,
+} from '../../../helpers/quota';
 import { useTranslation } from 'react-i18next';
 
 export default function SettingsCheckin(props) {
@@ -33,15 +38,40 @@ export default function SettingsCheckin(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     'checkin_setting.enabled': false,
-    'checkin_setting.min_quota': 1000,
-    'checkin_setting.max_quota': 10000,
+    'checkin_setting.min_quota': 100000,
+    'checkin_setting.min_quota_amount': 0,
+    'checkin_setting.max_quota': 500000,
+    'checkin_setting.max_quota_amount': 0,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
 
   function handleFieldChange(fieldName) {
     return (value) => {
-      setInputs((inputs) => ({ ...inputs, [fieldName]: value }));
+      const updates = { [fieldName]: value };
+      // 金额和额度双向转换
+      if (fieldName === 'checkin_setting.min_quota_amount') {
+        const amount = value === '' || value == null ? '' : value;
+        const quota = amount === '' ? 0 : displayAmountToQuota(amount);
+        updates['checkin_setting.min_quota'] = quota;
+      } else if (fieldName === 'checkin_setting.min_quota') {
+        const quota = value === '' || value == null ? '' : value;
+        const amount = quota === ''
+          ? ''
+          : Number(quotaToDisplayAmount(quota).toFixed(6));
+        updates['checkin_setting.min_quota_amount'] = amount;
+      } else if (fieldName === 'checkin_setting.max_quota_amount') {
+        const amount = value === '' || value == null ? '' : value;
+        const quota = amount === '' ? 0 : displayAmountToQuota(amount);
+        updates['checkin_setting.max_quota'] = quota;
+      } else if (fieldName === 'checkin_setting.max_quota') {
+        const quota = value === '' || value == null ? '' : value;
+        const amount = quota === ''
+          ? ''
+          : Number(quotaToDisplayAmount(quota).toFixed(6));
+        updates['checkin_setting.max_quota_amount'] = amount;
+      }
+      setInputs((inputs) => ({ ...inputs, ...updates }));
     };
   }
 
@@ -87,6 +117,17 @@ export default function SettingsCheckin(props) {
         currentInputs[key] = props.options[key];
       }
     }
+    // 初始化金额字段
+    currentInputs['checkin_setting.min_quota_amount'] = Number(
+      quotaToDisplayAmount(
+        currentInputs['checkin_setting.min_quota'] || 0,
+      ).toFixed(6),
+    );
+    currentInputs['checkin_setting.max_quota_amount'] = Number(
+      quotaToDisplayAmount(
+        currentInputs['checkin_setting.max_quota'] || 0,
+      ).toFixed(6),
+    );
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
@@ -120,11 +161,41 @@ export default function SettingsCheckin(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
+                  field={'checkin_setting.min_quota_amount'}
+                  label={t('签到最小金额')}
+                  placeholder={t('签到奖励的最小金额')}
+                  onChange={handleFieldChange('checkin_setting.min_quota_amount')}
+                  min={0}
+                  step={0.000001}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
                   field={'checkin_setting.min_quota'}
                   label={t('签到最小额度')}
                   placeholder={t('签到奖励的最小额度')}
                   onChange={handleFieldChange('checkin_setting.min_quota')}
                   min={0}
+                  step={500000}
+                  suffix={'Token'}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'checkin_setting.max_quota_amount'}
+                  label={t('签到最大金额')}
+                  placeholder={t('签到奖励的最大金额')}
+                  onChange={handleFieldChange('checkin_setting.max_quota_amount')}
+                  min={0}
+                  step={0.000001}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>
@@ -135,6 +206,8 @@ export default function SettingsCheckin(props) {
                   placeholder={t('签到奖励的最大额度')}
                   onChange={handleFieldChange('checkin_setting.max_quota')}
                   min={0}
+                  step={500000}
+                  suffix={'Token'}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
               </Col>

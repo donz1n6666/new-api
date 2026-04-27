@@ -26,16 +26,25 @@ import {
   showError,
   showSuccess,
   showWarning,
+  getCurrencyConfig,
 } from '../../../helpers';
+import {
+  quotaToDisplayAmount,
+  displayAmountToQuota,
+} from '../../../helpers/quota';
 
 export default function SettingsCreditLimit(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     QuotaForNewUser: '',
+    QuotaForNewUserAmount: '',
     PreConsumedQuota: '',
+    PreConsumedQuotaAmount: '',
     QuotaForInviter: '',
+    QuotaForInviterAmount: '',
     QuotaForInvitee: '',
+    QuotaForInviteeAmount: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -83,6 +92,19 @@ export default function SettingsCreditLimit(props) {
         currentInputs[key] = props.options[key];
       }
     }
+    // 初始化金额字段
+    currentInputs.QuotaForNewUserAmount = Number(
+      quotaToDisplayAmount(currentInputs.QuotaForNewUser || 0).toFixed(6),
+    );
+    currentInputs.PreConsumedQuotaAmount = Number(
+      quotaToDisplayAmount(currentInputs.PreConsumedQuota || 0).toFixed(6),
+    );
+    currentInputs.QuotaForInviterAmount = Number(
+      quotaToDisplayAmount(currentInputs.QuotaForInviter || 0).toFixed(6),
+    );
+    currentInputs.QuotaForInviteeAmount = Number(
+      quotaToDisplayAmount(currentInputs.QuotaForInvitee || 0).toFixed(6),
+    );
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
     refForm.current.setValues(currentInputs);
@@ -99,71 +121,172 @@ export default function SettingsCreditLimit(props) {
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
-                  label={t('新用户初始额度')}
-                  field={'QuotaForNewUser'}
-                  step={1}
+                  label={t('新用户初始金额')}
+                  field={'QuotaForNewUserAmount'}
+                  step={0.000001}
                   min={0}
-                  suffix={'Token'}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
                   placeholder={''}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    const amount = value === '' || value == null ? '' : value;
+                    const quota = amount === '' ? '' : displayAmountToQuota(amount);
                     setInputs({
                       ...inputs,
-                      QuotaForNewUser: String(value),
-                    })
-                  }
+                      QuotaForNewUserAmount: amount,
+                      QuotaForNewUser: String(quota),
+                    });
+                  }}
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
+                  label={t('新用户初始额度')}
+                  field={'QuotaForNewUser'}
+                  step={500000}
+                  min={0}
+                  suffix={'Token'}
+                  placeholder={''}
+                  onChange={(value) => {
+                    const quota = value === '' || value == null ? '' : value;
+                    const amount = quota === ''
+                      ? ''
+                      : Number(quotaToDisplayAmount(quota).toFixed(6));
+                    setInputs({
+                      ...inputs,
+                      QuotaForNewUser: String(quota),
+                      QuotaForNewUserAmount: amount,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('请求预扣费金额')}
+                  field={'PreConsumedQuotaAmount'}
+                  step={0.000001}
+                  min={0}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
+                  extraText={t('请求结束后多退少补')}
+                  placeholder={''}
+                  onChange={(value) => {
+                    const amount = value === '' || value == null ? '' : value;
+                    const quota = amount === '' ? '' : displayAmountToQuota(amount);
+                    setInputs({
+                      ...inputs,
+                      PreConsumedQuotaAmount: amount,
+                      PreConsumedQuota: String(quota),
+                    });
+                  }}
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
                   label={t('请求预扣费额度')}
                   field={'PreConsumedQuota'}
-                  step={1}
+                  step={500000}
                   min={0}
                   suffix={'Token'}
                   extraText={t('请求结束后多退少补')}
                   placeholder={''}
-                  onChange={(value) =>
+                  onChange={(value) => {
+                    const quota = value === '' || value == null ? '' : value;
+                    const amount = quota === ''
+                      ? ''
+                      : Number(quotaToDisplayAmount(quota).toFixed(6));
                     setInputs({
                       ...inputs,
-                      PreConsumedQuota: String(value),
-                    })
-                  }
+                      PreConsumedQuota: String(quota),
+                      PreConsumedQuotaAmount: amount,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('邀请新用户奖励金额')}
+                  field={'QuotaForInviterAmount'}
+                  step={0.000001}
+                  min={0}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
+                  placeholder={t('例如：0.01')}
+                  onChange={(value) => {
+                    const amount = value === '' || value == null ? '' : value;
+                    const quota = amount === '' ? '' : displayAmountToQuota(amount);
+                    setInputs({
+                      ...inputs,
+                      QuotaForInviterAmount: amount,
+                      QuotaForInviter: String(quota),
+                    });
+                  }}
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('邀请新用户奖励额度')}
                   field={'QuotaForInviter'}
-                  step={1}
+                  step={500000}
                   min={0}
                   suffix={'Token'}
-                  extraText={''}
-                  placeholder={t('例如：2000')}
-                  onChange={(value) =>
+                  placeholder={t('例如：5000000')}
+                  onChange={(value) => {
+                    const quota = value === '' || value == null ? '' : value;
+                    const amount = quota === ''
+                      ? ''
+                      : Number(quotaToDisplayAmount(quota).toFixed(6));
                     setInputs({
                       ...inputs,
-                      QuotaForInviter: String(value),
-                    })
-                  }
+                      QuotaForInviter: String(quota),
+                      QuotaForInviterAmount: amount,
+                    });
+                  }}
                 />
               </Col>
             </Row>
-            <Row>
-              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('新用户使用邀请码奖励金额')}
+                  field={'QuotaForInviteeAmount'}
+                  step={0.000001}
+                  min={0}
+                  precision={6}
+                  prefix={getCurrencyConfig().symbol}
+                  placeholder={t('例如：0.005')}
+                  onChange={(value) => {
+                    const amount = value === '' || value == null ? '' : value;
+                    const quota = amount === '' ? '' : displayAmountToQuota(amount);
+                    setInputs({
+                      ...inputs,
+                      QuotaForInviteeAmount: amount,
+                      QuotaForInvitee: String(quota),
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('新用户使用邀请码奖励额度')}
                   field={'QuotaForInvitee'}
-                  step={1}
+                  step={500000}
                   min={0}
                   suffix={'Token'}
-                  extraText={''}
-                  placeholder={t('例如：1000')}
-                  onChange={(value) =>
+                  placeholder={t('例如：2500000')}
+                  onChange={(value) => {
+                    const quota = value === '' || value == null ? '' : value;
+                    const amount = quota === ''
+                      ? ''
+                      : Number(quotaToDisplayAmount(quota).toFixed(6));
                     setInputs({
                       ...inputs,
-                      QuotaForInvitee: String(value),
-                    })
-                  }
+                      QuotaForInvitee: String(quota),
+                      QuotaForInviteeAmount: amount,
+                    });
+                  }}
                 />
               </Col>
             </Row>

@@ -39,7 +39,12 @@ import {
   showError,
   showSuccess,
   toBoolean,
+  getCurrencyConfig,
 } from '../../helpers';
+import {
+  quotaToDisplayAmount,
+  displayAmountToQuota,
+} from '../../helpers/quota';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
@@ -83,6 +88,7 @@ const SystemSetting = () => {
     RegisterEnabled: '',
     InvitationCodeEnabled: '',
     InvitationCodePrice: '',
+    InvitationCodePriceAmount: '',
     InvitationCodeRewardRatio: '',
     'passkey.enabled': '',
     'passkey.rp_display_name': '',
@@ -219,6 +225,10 @@ const SystemSetting = () => {
         }
         newInputs[item.key] = item.value;
       });
+      // 初始化邀请码金额字段
+      newInputs.InvitationCodePriceAmount = Number(
+        quotaToDisplayAmount(newInputs.InvitationCodePrice || 0).toFixed(6),
+      );
       setInputs(newInputs);
       setOriginInputs(newInputs);
       // 同步模式布尔到本地状态
@@ -1111,15 +1121,55 @@ const SystemSetting = () => {
                   >
                     <Col xs={24} sm={24} md={12} lg={12} xl={12}>
                       <Form.InputNumber
+                        field='InvitationCodePriceAmount'
+                        label={t('生成邀请码价格（金额）')}
+                        placeholder={t('0 表示免费生成')}
+                        min={0}
+                        step={0.000001}
+                        precision={6}
+                        prefix={getCurrencyConfig().symbol}
+                        extraText={t(
+                          '所有用户生成一个邀请码需要消耗的金额，0 表示免费',
+                        )}
+                        onChange={(value) => {
+                          const amount = value === '' || value == null ? '' : value;
+                          const quota = amount === '' ? 0 : displayAmountToQuota(amount);
+                          setInputs((prev) => ({
+                            ...prev,
+                            InvitationCodePriceAmount: amount,
+                            InvitationCodePrice: quota,
+                          }));
+                        }}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.InputNumber
                         field='InvitationCodePrice'
                         label={t('生成邀请码价格（额度）')}
                         placeholder={t('0 表示免费生成')}
                         min={0}
+                        step={500000}
+                        suffix={'Token'}
                         extraText={t(
                           '所有用户生成一个邀请码需要消耗的额度，0 表示免费',
                         )}
+                        onChange={(value) => {
+                          const quota = value === '' || value == null ? '' : value;
+                          const amount = quota === ''
+                            ? ''
+                            : Number(quotaToDisplayAmount(quota).toFixed(6));
+                          setInputs((prev) => ({
+                            ...prev,
+                            InvitationCodePrice: quota,
+                            InvitationCodePriceAmount: amount,
+                          }));
+                        }}
                       />
                     </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
                     <Col xs={24} sm={24} md={12} lg={12} xl={12}>
                       <Form.InputNumber
                         field='InvitationCodeRewardRatio'
