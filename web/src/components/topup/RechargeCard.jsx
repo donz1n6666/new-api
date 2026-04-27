@@ -109,15 +109,20 @@ const RechargeCard = ({
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
 
-  // 构建 Ethereum 支付方法
+  // 构建 Ethereum 支付方法（仅自动添加不在 PayMethods 中的 token，避免重复）
   const ethereumPayMethods = [];
   if (enableEthereumTopUp && ethereumInfo && ethereumInfo.tokens?.length > 0) {
+    const payMethodAddresses = regularPayMethods
+      .filter((m) => m.type === 'ethereum')
+      .map((m) => (m.address || '').toLowerCase());
     ethereumInfo.tokens.forEach((token) => {
-      ethereumPayMethods.push({
-        ...token,
-        type: `ethereum:${token.address}`,
-        name: token.symbol,
-      });
+      if (!payMethodAddresses.includes(token.address.toLowerCase())) {
+        ethereumPayMethods.push({
+          ...token,
+          type: `ethereum:${token.address}`,
+          name: token.symbol,
+        });
+      }
     });
   }
 
