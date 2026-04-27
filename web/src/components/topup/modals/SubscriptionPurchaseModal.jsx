@@ -49,6 +49,7 @@ const SubscriptionPurchaseModal = ({
   selectedEpayMethod,
   setSelectedEpayMethod,
   epayMethods = [],
+  payMethods = [],
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
@@ -72,7 +73,26 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasEthereum = enableEthereumTopUp && ethereumInfo?.tokens?.length > 0;
+  // Ethereum: include tokens from ethereumInfo AND manual entries in payMethods (deduplicated)
+  const ethereumPayMethodEntries = payMethods.filter((m) => m.type === 'ethereum');
+  const autoTokens = ethereumInfo?.tokens || [];
+  const payMethodAddresses = ethereumPayMethodEntries.map((m) => (m.address || '').toLowerCase());
+  const dedupedAutoTokens = autoTokens.filter(
+    (t) => !payMethodAddresses.includes(t.address.toLowerCase()),
+  );
+  const ethereumTokenButtons = [
+    ...ethereumPayMethodEntries.map((m) => ({
+      symbol: m.name || 'ETH',
+      address: m.address || '0x0000000000000000000000000000000000000000',
+      isPayMethod: true,
+    })),
+    ...dedupedAutoTokens.map((t) => ({
+      symbol: t.symbol,
+      address: t.address,
+      isPayMethod: false,
+    })),
+  ];
+  const hasEthereum = (enableEthereumTopUp && ethereumTokenButtons.length > 0) || ethereumPayMethodEntries.length > 0;
   const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasEthereum;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
@@ -249,7 +269,7 @@ const SubscriptionPurchaseModal = ({
               {/* Ethereum */}
               {hasEthereum && (
                 <div className='flex gap-2 flex-wrap'>
-                  {ethereumInfo.tokens.map((token, index) => (
+                  {ethereumTokenButtons.map((token, index) => (
                     <Button
                       key={index}
                       loading={paying}
