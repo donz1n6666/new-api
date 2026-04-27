@@ -25,6 +25,7 @@ import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPa
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWaffoPancake from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffoPancake';
+import SettingsPaymentGatewayEthereum from '../../pages/Setting/Payment/SettingsPaymentGatewayEthereum';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -60,6 +61,13 @@ const PaymentSetting = () => {
     WaffoPancakeCurrency: 'USD',
     WaffoPancakeUnitPrice: 1.0,
     WaffoPancakeMinTopUp: 1,
+
+    EthereumEnabled: false,
+    EthereumChainId: 11155111,
+    EthereumContractAddress: '',
+    EthereumAlchemyWebhookSigningKey: '',
+    EthereumMinTopUp: 1,
+    EthereumSupportedTokens: '[]',
   });
 
   let [loading, setLoading] = useState(false);
@@ -196,6 +204,12 @@ const PaymentSetting = () => {
                 options={inputs}
                 refresh={onRefresh}
                 hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('Ethereum 设置')} itemKey='ethereum'>
+              <SettingsPaymentGatewayEthereum
+                options={inputs}
+                refresh={onRefresh}
               />
             </Tabs.TabPane>
             {/*<Tabs.TabPane tab={t('Waffo Pancake 设置')} itemKey='waffo-pancake'>*/}
