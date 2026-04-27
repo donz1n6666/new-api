@@ -334,11 +334,13 @@ const RechargeCard = ({
                               payMethod.type.startsWith('waffo:');
                             const isWaffoPancake =
                               payMethod.type === 'waffo_pancake';
+                            const isEthereum = payMethod.type === 'ethereum';
                             const disabled =
                               (!enableOnlineTopUp &&
                                 !isStripe &&
                                 !isWaffo &&
-                                !isWaffoPancake) ||
+                                !isWaffoPancake &&
+                                !isEthereum) ||
                               (!enableStripeTopUp && isStripe) ||
                               (!enableWaffoTopUp && isWaffo) ||
                               (!enableWaffoPancakeTopUp && isWaffoPancake) ||
@@ -349,10 +351,16 @@ const RechargeCard = ({
                                 key={payMethod.type}
                                 theme='outline'
                                 type='tertiary'
-                                onClick={() => preTopUp(payMethod.type)}
+                                onClick={() =>
+                                  isEthereum
+                                    ? onPayEthereum?.(payMethod.address || '0x0000000000000000000000000000000000000000')
+                                    : preTopUp(payMethod.type)
+                                }
                                 disabled={disabled}
                                 loading={
-                                  paymentLoading && payWay === payMethod.type
+                                  isEthereum
+                                    ? paymentLoading && payWay === `ethereum:${payMethod.address || '0x0000'}`
+                                    : paymentLoading && payWay === payMethod.type
                                 }
                                 icon={
                                   payMethod.type === 'alipay' ? (
@@ -375,6 +383,14 @@ const RechargeCard = ({
                                     <CreditCard
                                       size={18}
                                       color='var(--semi-color-primary)'
+                                    />
+                                  ) : isEthereum ? (
+                                    <Wallet
+                                      size={18}
+                                      color={
+                                        payMethod.color ||
+                                        'var(--semi-color-primary)'
+                                      }
                                     />
                                   ) : (
                                     <CreditCard
