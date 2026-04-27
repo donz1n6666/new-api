@@ -448,6 +448,18 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumEnabled":
+		setting.EthereumEnabled = value == "true"
+	case "EthereumChainId":
+		setting.EthereumChainId, _ = strconv.ParseInt(value, 10, 64)
+	case "EthereumContractAddress":
+		setting.EthereumContractAddress = value
+	case "EthereumAlchemyWebhookSigningKey":
+		setting.EthereumAlchemyWebhookSigningKey = value
+	case "EthereumMinTopUp":
+		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumSupportedTokens":
+		// validated lazily via GetEthereumTokens(), just store in OptionMap
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
