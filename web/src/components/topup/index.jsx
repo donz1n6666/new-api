@@ -479,8 +479,8 @@ const TopUp = () => {
   };
 
   // Ethereum 余额充值
-  const payEthereum = async (tokenAddress) => {
-    if (!enableEthereumTopUp) {
+  const payEthereum = async (tokenAddress, fromPayMethod) => {
+    if (!fromPayMethod && !enableEthereumTopUp) {
       showError(t('管理员未开启 Ethereum 充值！'));
       return;
     }

@@ -353,7 +353,7 @@ const RechargeCard = ({
                                 type='tertiary'
                                 onClick={() =>
                                   isEthereum
-                                    ? onPayEthereum?.(payMethod.address || '0x0000000000000000000000000000000000000000')
+                                    ? onPayEthereum?.(payMethod.address || '0x0000000000000000000000000000000000000000', true)
                                     : preTopUp(payMethod.type)
                                 }
                                 disabled={disabled}
