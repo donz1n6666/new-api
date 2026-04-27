@@ -89,6 +89,9 @@ const RechargeCard = ({
   onOpenHistory,
   enableWaffoTopUp,
   enableWaffoPancakeTopUp,
+  enableEthereumTopUp,
+  ethereumInfo,
+  onPayEthereum,
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
@@ -105,6 +108,18 @@ const RechargeCard = ({
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
+
+  // 构建 Ethereum 支付方法
+  const ethereumPayMethods = [];
+  if (enableEthereumTopUp && ethereumInfo && ethereumInfo.tokens?.length > 0) {
+    ethereumInfo.tokens.forEach((token) => {
+      ethereumPayMethods.push({
+        ...token,
+        type: `ethereum:${token.address}`,
+        name: token.symbol,
+      });
+    });
+  }
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -231,7 +246,8 @@ const RechargeCard = ({
           enableStripeTopUp ||
           enableCreemTopUp ||
           enableWaffoTopUp ||
-          enableWaffoPancakeTopUp ? (
+          enableWaffoPancakeTopUp ||
+          enableEthereumTopUp ? (
           <Form
             getFormApi={(api) => (onlineFormApiRef.current = api)}
             initValues={{ topUpCount: topUpCount }}
@@ -240,7 +256,8 @@ const RechargeCard = ({
               {(enableOnlineTopUp ||
                 enableStripeTopUp ||
                 enableWaffoTopUp ||
-                enableWaffoPancakeTopUp) && (
+                enableWaffoPancakeTopUp ||
+                enableEthereumTopUp) && (
                 <Row gutter={12}>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                     <Form.InputNumber
@@ -250,7 +267,8 @@ const RechargeCard = ({
                         !enableOnlineTopUp &&
                         !enableStripeTopUp &&
                         !enableWaffoTopUp &&
-                        !enableWaffoPancakeTopUp
+                        !enableWaffoPancakeTopUp &&
+                        !enableEthereumTopUp
                       }
                       placeholder={
                         t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
@@ -303,7 +321,7 @@ const RechargeCard = ({
                       style={{ width: '100%' }}
                     />
                   </Col>
-                  {regularPayMethods.length > 0 && (
+                  {regularPayMethods.length > 0 || ethereumPayMethods.length > 0 ? (
                     <Col xs={24} sm={24} md={24} lg={14} xl={14}>
                       <Form.Slot label={t('选择支付方式')}>
                         <Space wrap>
@@ -392,6 +410,52 @@ const RechargeCard = ({
                               </React.Fragment>
                             );
                           })}
+
+                          {/* Ethereum 支付按钮 */}
+                          {ethereumPayMethods.map((token) => {
+                            const minTopupVal = Number(ethereumInfo.min_topup) || 1;
+                            const disabled = minTopupVal > Number(topUpCount || 0);
+
+                            const ethereumButton = (
+                              <Button
+                                key={token.type}
+                                theme='outline'
+                                type='tertiary'
+                                onClick={() => onPayEthereum?.(token.address)}
+                                disabled={disabled}
+                                loading={paymentLoading && payWay === token.type}
+                                icon={
+                                  <Wallet
+                                    size={18}
+                                    color={
+                                      token.color ||
+                                      'var(--semi-color-primary)'
+                                    }
+                                  />
+                                }
+                                className='!rounded-lg !px-4 !py-2'
+                              >
+                                {token.name} (Ethereum)
+                              </Button>
+                            );
+
+                            return disabled ? (
+                              <Tooltip
+                                content={
+                                  t('此支付方式最低充值金额为') +
+                                  ' ' +
+                                  minTopupVal
+                                }
+                                key={token.type}
+                              >
+                                {ethereumButton}
+                              </Tooltip>
+                            ) : (
+                              <React.Fragment key={token.type}>
+                                {ethereumButton}
+                              </React.Fragment>
+                            );
+                          })}
                         </Space>
                       </Form.Slot>
                     </Col>
@@ -399,7 +463,7 @@ const RechargeCard = ({
                 </Row>
               )}
 
-              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+              {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp || enableEthereumTopUp) && (
                 <Form.Slot
                   label={
                     <div className='flex items-center gap-2'>

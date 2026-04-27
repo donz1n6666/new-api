@@ -78,6 +78,10 @@ const TopUp = () => {
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
 
+  // Ethereum 相关状态
+  const [enableEthereumTopUp, setEnableEthereumTopUp] = useState(false);
+  const [ethereumInfo, setEthereumInfo] = useState(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
   const [payWay, setPayWay] = useState('');
@@ -474,6 +478,132 @@ const TopUp = () => {
     }
   };
 
+  // Ethereum 余额充值
+  const payEthereum = async (tokenAddress) => {
+    if (!enableEthereumTopUp) {
+      showError(t('管理员未开启 Ethereum 充值！'));
+      return;
+    }
+
+    const payWayType = `ethereum:${tokenAddress}`;
+    setPayWay(payWayType);
+    setPaymentLoading(true);
+    try {
+      // 1. Create pending top-up order on backend
+      const res = await API.post('/api/user/ethereum/pay', {
+        amount: parseInt(topUpCount),
+        token_address: tokenAddress,
+      });
+      if (!res?.data || res.data.message !== 'success') {
+        showError(res?.data?.data || t('创建订单失败'));
+        return;
+      }
+      const {
+        order_id,
+        contract_address,
+        chain_id,
+        token_address: respTokenAddr,
+        pay_amount,
+        symbol,
+      } = res.data.data;
+
+      // 2. Connect MetaMask
+      if (!window.ethereum) {
+        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
+        return;
+      }
+      const { ethers } = await import('ethers');
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+
+      // 3. Switch chain
+      const network = await provider.getNetwork();
+      if (network.chainId !== BigInt(chain_id)) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x' + chain_id.toString(16) }],
+          });
+        } catch (switchError) {
+          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
+          return;
+        }
+      }
+
+      const signer = await provider.getSigner();
+      const isNativeETH =
+        respTokenAddr === '0x0000000000000000000000000000000000000000';
+
+      const abi = isNativeETH
+        ? ['function payWithETH(bytes32 orderId) payable']
+        : [
+            'function payWithToken(bytes32 orderId, address token, uint256 amount)',
+          ];
+      const contract = new ethers.Contract(contract_address, abi, signer);
+
+      setPaymentLoading(false);
+      showInfo(t('请在钱包中确认交易...'));
+
+      let tx;
+      if (isNativeETH) {
+        tx = await contract.payWithETH(order_id, {
+          value: BigInt(pay_amount),
+        });
+      } else {
+        const erc20Abi = [
+          'function approve(address spender, uint256 amount) returns (bool)',
+          'function allowance(address owner, address spender) view returns (uint256)',
+        ];
+        const tokenContract = new ethers.Contract(
+          respTokenAddr,
+          erc20Abi,
+          signer,
+        );
+        const signerAddress = await signer.getAddress();
+        const currentAllowance = await tokenContract.allowance(
+          signerAddress,
+          contract_address,
+        );
+        if (currentAllowance < BigInt(pay_amount)) {
+          showInfo(t('请在钱包中批准代币支出...'));
+          const approveTx = await tokenContract.approve(
+            contract_address,
+            BigInt(pay_amount),
+          );
+          await approveTx.wait();
+          showSuccess(t('代币批准成功！请确认支付交易...'));
+        }
+        tx = await contract.payWithToken(order_id, respTokenAddr, pay_amount);
+      }
+
+      showInfo(
+        t('交易已发送，等待区块链确认... 交易哈希：') + tx.hash.slice(0, 10) + '...',
+      );
+
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      if (receipt.status === 1) {
+        showSuccess(
+          t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'),
+        );
+        setOpen(false);
+      } else {
+        showError(t('交易失败，请重试'));
+      }
+    } catch (e) {
+      console.error('Ethereum payment error:', e);
+      let msg = e.message || t('支付失败');
+      if (e.code === 'ACTION_REJECTED') {
+        msg = t('用户拒绝了签名');
+      } else if (e.code === 'INSUFFICIENT_FUNDS') {
+        msg = t('钱包余额不足');
+      }
+      showError(msg);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const getWaffoPancakeAmount = async (value) => {
     if (value === undefined) {
       value = topUpCount;
@@ -656,6 +786,8 @@ const TopUp = () => {
           setWaffoMinTopUp(data.waffo_min_topup || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
+          setEnableEthereumTopUp(data.enable_ethereum_topup || false);
+          setEthereumInfo(data.ethereum_info || null);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -951,6 +1083,9 @@ const TopUp = () => {
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}
           enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
+          enableEthereumTopUp={enableEthereumTopUp}
+          ethereumInfo={ethereumInfo}
+          onPayEthereum={payEthereum}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
