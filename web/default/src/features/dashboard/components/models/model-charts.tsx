@@ -13,8 +13,12 @@ let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
 > | null = null
 
-type ChartTab = 'trend' | 'proportion' | 'top'
-type ChartSpecKey = 'spec_model_line' | 'spec_pie' | 'spec_rank_bar'
+type ChartTab = 'trend' | 'proportion' | 'top' | 'token-top'
+type ChartSpecKey =
+  | 'spec_model_line'
+  | 'spec_pie'
+  | 'spec_rank_bar'
+  | 'spec_token_rank_bar'
 
 const CHART_TABS: {
   value: ChartTab
@@ -28,6 +32,11 @@ const CHART_TABS: {
     specKey: 'spec_pie',
   },
   { value: 'top', labelKey: 'Call Count Ranking', specKey: 'spec_rank_bar' },
+  {
+    value: 'token-top',
+    labelKey: 'Model Token Consumption Ranking',
+    specKey: 'spec_token_rank_bar',
+  },
 ]
 
 interface ModelChartsProps {

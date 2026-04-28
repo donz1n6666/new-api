@@ -1,24 +1,23 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getNormalizedDateRange, type TimeGranularity } from '@/lib/time'
+import { computeTimeRange, type TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
 import { useTheme } from '@/context/theme-provider'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
-import {
-  TIME_GRANULARITY_OPTIONS,
-  TIME_RANGE_PRESETS,
-} from '@/features/dashboard/constants'
+import { DEFAULT_TIME_GRANULARITY } from '@/features/dashboard/constants'
 import {
   getDefaultDays,
   getSavedGranularity,
-  saveGranularity,
   processUserChartData,
 } from '@/features/dashboard/lib'
-import type { ProcessedUserChartData } from '@/features/dashboard/types'
+import type {
+  DashboardFilters,
+  ProcessedUserChartData,
+} from '@/features/dashboard/types'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -35,6 +34,11 @@ const USER_CHARTS: {
     specKey: 'spec_user_rank',
   },
   {
+    value: 'token-rank',
+    labelKey: 'User Token Consumption Ranking',
+    specKey: 'spec_user_token_rank',
+  },
+  {
     value: 'trend',
     labelKey: 'User Consumption Trend',
     specKey: 'spec_user_trend',
@@ -43,7 +47,7 @@ const USER_CHARTS: {
 
 const TOP_USER_LIMIT_OPTIONS = [5, 10, 20, 50]
 
-export function UserCharts() {
+export function UserCharts({ filters }: { filters?: DashboardFilters }) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const [themeReady, setThemeReady] = useState(false)
@@ -51,41 +55,20 @@ export function UserCharts() {
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
   >(null)
 
-  const [timeGranularity, setTimeGranularity] = useState<TimeGranularity>(() =>
-    getSavedGranularity()
-  )
-  const [selectedRange, setSelectedRange] = useState<number>(() =>
-    getDefaultDays(timeGranularity)
-  )
   const [topUserLimit, setTopUserLimit] = useState(10)
-  const [timeRange, setTimeRange] = useState(() => {
-    const days = getDefaultDays(timeGranularity)
-    const { start, end } = getNormalizedDateRange(days)
-    return {
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    }
-  })
+  const timeGranularity =
+    filters?.time_granularity ||
+    (getSavedGranularity() as TimeGranularity) ||
+    DEFAULT_TIME_GRANULARITY
 
-  const handleRangeChange = useCallback((days: number) => {
-    setSelectedRange(days)
-    const { start, end } = getNormalizedDateRange(days)
-    setTimeRange({
-      start_timestamp: Math.floor(start.getTime() / 1000),
-      end_timestamp: Math.floor(end.getTime() / 1000),
-    })
-  }, [])
-
-  const handleGranularityChange = useCallback(
-    (g: TimeGranularity) => {
-      setTimeGranularity(g)
-      saveGranularity(g)
-      const days = getDefaultDays(g)
-      if (days !== selectedRange) {
-        handleRangeChange(days)
-      }
-    },
-    [selectedRange, handleRangeChange]
+  const timeRange = useMemo(
+    () =>
+      computeTimeRange(
+        getDefaultDays(timeGranularity),
+        filters?.start_timestamp,
+        filters?.end_timestamp
+      ),
+    [filters?.start_timestamp, filters?.end_timestamp, timeGranularity]
   )
 
   useEffect(() => {
@@ -105,8 +88,12 @@ export function UserCharts() {
   }, [resolvedTheme])
 
   const { data: userData, isLoading } = useQuery({
-    queryKey: ['dashboard', 'user-quota', timeRange],
-    queryFn: () => getUserQuotaDataByUsers(timeRange),
+    queryKey: ['dashboard', 'user-quota', timeRange, filters?.channel || ''],
+    queryFn: () =>
+      getUserQuotaDataByUsers({
+        ...timeRange,
+        ...(filters?.channel ? { channel: filters.channel } : {}),
+      }),
     select: (res) => (res.success ? res.data : []),
     staleTime: 60_000,
   })
@@ -124,44 +111,8 @@ export function UserCharts() {
 
   return (
     <div className='space-y-4'>
-      {/* Toolbar: time range presets + granularity */}
+      {/* Toolbar: top-user limit only */}
       <div className='flex flex-wrap items-center gap-2'>
-        <div className='flex items-center gap-1.5 rounded-md border p-0.5'>
-          {TIME_RANGE_PRESETS.map((preset) => (
-            <button
-              key={preset.days}
-              type='button'
-              onClick={() => handleRangeChange(preset.days)}
-              className={`rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors ${
-                selectedRange === preset.days
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              {t(preset.label)}
-            </button>
-          ))}
-        </div>
-
-        <div className='flex items-center gap-1.5 rounded-md border p-0.5'>
-          {TIME_GRANULARITY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type='button'
-              onClick={() =>
-                handleGranularityChange(opt.value as TimeGranularity)
-              }
-              className={`rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors ${
-                timeGranularity === opt.value
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              {t(opt.label)}
-            </button>
-          ))}
-        </div>
-
         <div className='flex items-center gap-1.5 rounded-md border p-0.5'>
           <span className='text-muted-foreground px-2 text-xs font-medium'>
             {t('Top Users')}

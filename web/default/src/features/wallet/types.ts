@@ -37,6 +37,32 @@ export type WaffoPancakePaymentResponse = ApiResponse<
   | string
 >
 
+export interface EthereumTokenConfig {
+  symbol: string
+  address: string
+  decimals: number
+  price: string
+}
+
+export interface EthereumTopupInfo {
+  chain_id: number
+  contract_address: string
+  min_topup: number
+  tokens: EthereumTokenConfig[]
+}
+
+export interface EthereumOrderData {
+  order_id: string
+  contract_address: string
+  chain_id: number
+  token_address: string
+  pay_amount: string
+  symbol: string
+  decimals: number
+}
+
+export type EthereumPaymentResponse = ApiResponse<EthereumOrderData>
+
 /**
  * Creem product configuration
  */
@@ -127,6 +153,12 @@ export interface TopupInfo {
   enable_waffo_pancake_topup?: boolean
   /** Minimum topup amount for Waffo Pancake */
   waffo_pancake_min_topup?: number
+  /** Whether Ethereum topup is enabled */
+  enable_ethereum_topup?: boolean
+  /** Minimum topup amount for Ethereum */
+  ethereum_min_topup?: number
+  /** Ethereum topup details */
+  ethereum_info?: EthereumTopupInfo
 }
 
 /**
@@ -173,6 +205,11 @@ export interface WaffoPaymentRequest {
 export interface WaffoPancakePaymentRequest {
   /** Topup amount */
   amount: number
+}
+
+export interface EthereumPaymentRequest {
+  amount: number
+  token_address: string
 }
 
 /**

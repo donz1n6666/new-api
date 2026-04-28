@@ -5,6 +5,7 @@ import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { InvitationCard } from './components/invitation-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
@@ -19,6 +20,7 @@ import {
   useAffiliate,
   useRedemption,
   useCreemPayment,
+  useEthereumPayment,
   useWaffoPayment,
   useWaffoPancakePayment,
 } from './hooks'
@@ -32,6 +34,7 @@ import type {
   PaymentMethod,
   PresetAmount,
   CreemProduct,
+  EthereumTokenConfig,
 } from './types'
 
 interface WalletProps {
@@ -58,6 +61,7 @@ export function Wallet(props: WalletProps) {
   const { status } = useStatus()
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
+  const invitationCodeEnabled = Boolean(status?.invitation_code_enabled)
 
   // Calculate effective exchange rate - when display type is USD, use rate of 1
   const effectiveUsdExchangeRate = useMemo(() => {
@@ -80,6 +84,7 @@ export function Wallet(props: WalletProps) {
   } = useAffiliate()
   const { redeeming, redeemCode } = useRedemption()
   const { processing: creemProcessing, processCreemPayment } = useCreemPayment()
+  const { processEthereumPayment } = useEthereumPayment()
   const { processWaffoPayment } = useWaffoPayment()
   const { processing: pancakeProcessing, processWaffoPancakePayment } =
     useWaffoPancakePayment()
@@ -226,6 +231,20 @@ export function Wallet(props: WalletProps) {
     }
   }
 
+  const handleEthereumTokenSelect = async (token: EthereumTokenConfig) => {
+    const loadingKey = `ethereum:${token.address}`
+    setPaymentLoading(loadingKey)
+
+    try {
+      const txHash = await processEthereumPayment(topupAmount, token.address)
+      if (txHash) {
+        await fetchUser()
+      }
+    } finally {
+      setPaymentLoading(null)
+    }
+  }
+
   // Get discount rate for current topup amount
   const getDiscountRate = useCallback(() => {
     return topupInfo?.discount?.[topupAmount] || DEFAULT_DISCOUNT_RATE
@@ -271,17 +290,24 @@ export function Wallet(props: WalletProps) {
                 waffoMinTopup={topupInfo?.waffo_min_topup}
                 onWaffoMethodSelect={handleWaffoMethodSelect}
                 enableWaffoPancakeTopup={topupInfo?.enable_waffo_pancake_topup}
+                enableEthereumTopup={topupInfo?.enable_ethereum_topup}
+                ethereumInfo={topupInfo?.ethereum_info}
+                onEthereumTokenSelect={handleEthereumTokenSelect}
               />
             </div>
 
             {/* Right Column - Affiliate & Subscriptions */}
             <div className='space-y-6 lg:col-span-1'>
-              <AffiliateRewardsCard
-                user={user}
-                affiliateLink={affiliateLink}
-                onTransfer={() => setTransferDialogOpen(true)}
-                loading={affiliateLoading}
-              />
+              {invitationCodeEnabled ? (
+                <InvitationCard />
+              ) : (
+                <AffiliateRewardsCard
+                  user={user}
+                  affiliateLink={affiliateLink}
+                  onTransfer={() => setTransferDialogOpen(true)}
+                  loading={affiliateLoading}
+                />
+              )}
             </div>
           </div>
 

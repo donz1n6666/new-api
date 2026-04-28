@@ -71,6 +71,9 @@ export type AuthSettings = {
   PasswordRegisterEnabled: boolean
   EmailVerificationEnabled: boolean
   RegisterEnabled: boolean
+  InvitationCodeEnabled: boolean
+  InvitationCodePrice: number
+  InvitationCodeRewardRatio: number
   EmailDomainRestrictionEnabled: boolean
   EmailAliasRestrictionEnabled: boolean
   EmailDomainWhitelist: string
@@ -172,6 +175,12 @@ export type IntegrationSettings = {
   CreemWebhookSecret: string
   CreemTestMode: boolean
   CreemProducts: string
+  EthereumEnabled: boolean
+  EthereumChainId: number
+  EthereumContractAddress: string
+  EthereumAlchemyWebhookSigningKey: string
+  EthereumMinTopUp: number
+  EthereumSupportedTokens: string
   WaffoEnabled: boolean
   WaffoApiKey: string
   WaffoPrivateKey: string
@@ -207,6 +216,8 @@ export type ModelSettings = {
   'global.chat_completions_to_responses_policy': string
   'general_setting.ping_interval_enabled': boolean
   'general_setting.ping_interval_seconds': number
+  'channel_route_setting.enabled': boolean
+  'channel_route_setting.rules': string
   'gemini.safety_settings': string
   'gemini.version_settings': string
   'gemini.supported_imagine_models': string
@@ -242,6 +253,7 @@ export type ModelSettings = {
 }
 
 export type MaintenanceSettings = {
+  'theme.frontend': string
   Notice: string
   LogConsumeEnabled: boolean
   HeaderNavModules: string

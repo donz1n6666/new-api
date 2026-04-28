@@ -31,6 +31,15 @@ export interface UptimeGroupResult {
   monitors: UptimeMonitor[]
 }
 
+export interface ModelAvailabilityItem {
+  model_name: string
+  total_count: number
+  success_count: number
+  error_count: number
+  success_rate: number
+  status: 'normal' | 'warning' | 'error' | 'no_data'
+}
+
 // ============================================================================
 // Dashboard Filter Types
 // ============================================================================
@@ -40,6 +49,7 @@ export interface DashboardFilters {
   end_timestamp?: Date
   time_granularity?: TimeGranularity
   username?: string
+  channel?: string
 }
 
 // ============================================================================
@@ -74,12 +84,14 @@ export interface ProcessedChartData {
   spec_area: VChartSpec
   spec_model_line: VChartSpec
   spec_rank_bar: VChartSpec
+  spec_token_rank_bar: VChartSpec
   totalQuotaDisplay: string
   totalCountDisplay: string
 }
 
 export interface ProcessedUserChartData {
   spec_user_rank: VChartSpec
+  spec_user_token_rank: VChartSpec
   spec_user_trend: VChartSpec
 }
 

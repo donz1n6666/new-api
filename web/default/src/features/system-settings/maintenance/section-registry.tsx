@@ -19,13 +19,16 @@ const MAINTENANCE_SECTIONS = [
     titleKey: 'System maintenance',
     descriptionKey: 'Check for system updates',
     build: (
-      _settings: MaintenanceSettings,
+      settings: MaintenanceSettings,
       currentVersion?: string | null,
       startTime?: number | null
     ) => (
       <UpdateCheckerSection
         currentVersion={currentVersion}
         startTime={startTime}
+        currentFrontendTheme={
+          settings['theme.frontend'] === 'classic' ? 'classic' : 'default'
+        }
       />
     ),
   },

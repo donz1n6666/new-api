@@ -172,6 +172,18 @@ export function processChartData(
           text: tt('Call Count Ranking'),
         },
       },
+      spec_token_rank_bar: {
+        type: 'bar',
+        data: [{ id: 'tokenRankData', values: [] }],
+        xField: 'Model',
+        yField: 'Tokens',
+        seriesField: 'Model',
+        legends: { visible: true, selectMode: 'single' },
+        title: {
+          visible: true,
+          text: tt('Model Token Consumption Ranking'),
+        },
+      },
       totalQuotaDisplay: formatQuotaTotal(0),
       totalCountDisplay: formatInt(0),
     }
@@ -406,6 +418,24 @@ export function processChartData(
     rankValues = allRankValues
   }
 
+  const allTokenRankValues = Array.from(modelTotalsMap.entries())
+    .map(([model, stats]) => ({
+      Model: model,
+      Tokens: Number(stats.tokens) || 0,
+    }))
+    .sort((a, b) => b.Tokens - a.Tokens)
+
+  let tokenRankValues: typeof allTokenRankValues
+  if (allTokenRankValues.length > MAX_RANK_MODELS) {
+    const topModels = allTokenRankValues.slice(0, MAX_RANK_MODELS)
+    const otherTokens = allTokenRankValues
+      .slice(MAX_RANK_MODELS)
+      .reduce((sum, item) => sum + item.Tokens, 0)
+    tokenRankValues = [...topModels, { Model: otherLabel, Tokens: otherTokens }]
+  } else {
+    tokenRankValues = allTokenRankValues
+  }
+
   return {
     spec_pie: {
       type: 'pie',
@@ -628,6 +658,37 @@ export function processChartData(
       background: { fill: 'transparent' },
       animation: true,
     },
+    spec_token_rank_bar: {
+      type: 'bar',
+      data: [{ id: 'tokenRankData', values: tokenRankValues }],
+      xField: 'Model',
+      yField: 'Tokens',
+      seriesField: 'Model',
+      legends: { visible: true, selectMode: 'single' },
+      color: modelColor,
+      title: {
+        visible: true,
+        text: tt('Model Token Consumption Ranking'),
+      },
+      bar: {
+        state: {
+          hover: { stroke: '#000', lineWidth: 1 },
+        },
+      },
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.Model,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.Tokens) || 0),
+            },
+          ],
+        },
+      },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
     totalQuotaDisplay: formatQuotaTotal(totalQuotaRaw),
     totalCountDisplay: formatInt(totalTimes),
   }
@@ -657,6 +718,8 @@ export function processUserChartData(
   const quotaPerUnit = config.quotaPerUnit
 
   const formatVal = (raw: number) => renderQuotaCompat(raw, 2)
+  const formatInt = (value: number) =>
+    Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
 
   const emptyResult: ProcessedUserChartData = {
     spec_user_rank: {
@@ -669,6 +732,22 @@ export function processUserChartData(
       title: {
         visible: true,
         text: tt('User Consumption Ranking'),
+        subtext: tt('No data available'),
+      },
+      legends: { visible: false },
+      color: { type: 'ordinal', range: USER_COLORS },
+      background: { fill: 'transparent' },
+    },
+    spec_user_token_rank: {
+      type: 'bar',
+      data: [{ id: 'userTokenRankData', values: [] }],
+      xField: 'rawTokens',
+      yField: 'User',
+      seriesField: 'User',
+      direction: 'horizontal',
+      title: {
+        visible: true,
+        text: tt('User Token Consumption Ranking'),
         subtext: tt('No data available'),
       },
       legends: { visible: false },
@@ -696,10 +775,13 @@ export function processUserChartData(
   if (!data || data.length === 0) return emptyResult
 
   const userQuotaTotal = new Map<string, number>()
+  const userTokenTotal = new Map<string, number>()
   data.forEach((item) => {
     const username = item.username || 'unknown'
     const prev = userQuotaTotal.get(username) || 0
     userQuotaTotal.set(username, prev + (Number(item.quota) || 0))
+    const prevTokens = userTokenTotal.get(username) || 0
+    userTokenTotal.set(username, prevTokens + (Number(item.token_used) || 0))
   })
 
   const sorted = Array.from(userQuotaTotal.entries()).sort(
@@ -708,12 +790,23 @@ export function processUserChartData(
   const topUsers = sorted.slice(0, limit).map(([u]) => u)
   const topUserSet = new Set(topUsers)
   const totalQuota = sorted.slice(0, limit).reduce((s, [, q]) => s + q, 0)
+  const totalTokens = topUsers.reduce(
+    (sum, user) => sum + (userTokenTotal.get(user) || 0),
+    0
+  )
 
   const rankValues = sorted.slice(0, limit).map(([username, quota]) => ({
     User: username,
     rawQuota: quota,
     Usage: Number((quota / quotaPerUnit).toFixed(4)),
   }))
+
+  const tokenRankValues = topUsers
+    .map((username) => ({
+      User: username,
+      rawTokens: userTokenTotal.get(username) || 0,
+    }))
+    .sort((a, b) => b.rawTokens - a.rawTokens)
 
   const userColorMap = topUsers.reduce<Record<string, string>>(
     (acc, user, i) => {
@@ -808,6 +901,47 @@ export function processUserChartData(
             }
             return array
           },
+        },
+      },
+      color: { specified: userColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_user_token_rank: {
+      type: 'bar',
+      data: [{ id: 'userTokenRankData', values: tokenRankValues }],
+      xField: 'rawTokens',
+      yField: 'User',
+      seriesField: 'User',
+      direction: 'horizontal',
+      title: {
+        visible: true,
+        text: tt('User Token Consumption Ranking'),
+        subtext: `${tt('Total:')} ${formatInt(totalTokens)}`,
+      },
+      legends: { visible: false },
+      bar: {
+        state: { hover: { stroke: '#000', lineWidth: 1 } },
+      },
+      label: {
+        visible: true,
+        position: 'outside',
+        formatMethod: (value: number) => formatInt(value),
+        style: { fontSize: 11 },
+      },
+      axes: [
+        { orient: 'left', type: 'band' },
+        { orient: 'bottom', type: 'linear', visible: false },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: (datum: Record<string, unknown>) => datum?.User,
+              value: (datum: Record<string, unknown>) =>
+                formatInt(Number(datum?.rawTokens) || 0),
+            },
+          ],
         },
       },
       color: { specified: userColorMap },

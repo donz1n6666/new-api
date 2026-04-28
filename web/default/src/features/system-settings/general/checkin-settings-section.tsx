@@ -11,17 +11,19 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { quotaUnitsToDollars } from '@/lib/format'
+import { QuotaAmountFieldPair } from '../components/quota-amount-field-pair'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const schema = z.object({
   enabled: z.boolean(),
   minQuota: z.coerce.number().int().min(0),
+  minQuotaAmount: z.coerce.number().min(0),
   maxQuota: z.coerce.number().int().min(0),
+  maxQuotaAmount: z.coerce.number().min(0),
 })
 
 type Values = z.infer<typeof schema>
@@ -43,7 +45,13 @@ export function CheckinSettingsSection({
     defaultValues: {
       enabled: defaultValues.enabled,
       minQuota: defaultValues.minQuota,
+      minQuotaAmount: Number(
+        quotaUnitsToDollars(defaultValues.minQuota).toFixed(6)
+      ),
       maxQuota: defaultValues.maxQuota,
+      maxQuotaAmount: Number(
+        quotaUnitsToDollars(defaultValues.maxQuota).toFixed(6)
+      ),
     },
   })
 
@@ -124,49 +132,29 @@ export function CheckinSettingsSection({
           />
 
           {enabled && (
-            <div className='grid gap-6 sm:grid-cols-2'>
-              <FormField
-                control={form.control}
-                name='minQuota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Minimum check-in quota')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        placeholder={t('1000')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Minimum quota amount awarded for check-in')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            <div className='space-y-6'>
+              <QuotaAmountFieldPair
+                form={form}
+                amountName='minQuotaAmount'
+                quotaName='minQuota'
+                amountLabel={t('Minimum check-in amount')}
+                quotaLabel={t('Minimum check-in quota')}
+                amountDescription={t('Minimum balance awarded for check-in')}
+                quotaDescription={t('Minimum quota amount awarded for check-in')}
+                amountPlaceholder='0'
+                quotaPlaceholder='0'
               />
 
-              <FormField
-                control={form.control}
-                name='maxQuota'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Maximum check-in quota')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type='number'
-                        min={0}
-                        placeholder={t('10000')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('Maximum quota amount awarded for check-in')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
+              <QuotaAmountFieldPair
+                form={form}
+                amountName='maxQuotaAmount'
+                quotaName='maxQuota'
+                amountLabel={t('Maximum check-in amount')}
+                quotaLabel={t('Maximum check-in quota')}
+                amountDescription={t('Maximum balance awarded for check-in')}
+                quotaDescription={t('Maximum quota amount awarded for check-in')}
+                amountPlaceholder='0'
+                quotaPlaceholder='0'
               />
             </div>
           )}

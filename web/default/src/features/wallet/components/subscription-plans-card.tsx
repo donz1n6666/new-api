@@ -72,6 +72,7 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
   const enableStripe = !!status?.enable_stripe_topup
   const enableCreem = !!props.topupInfo?.enable_creem_topup
   const enableOnlineTopUp = !!status?.enable_online_topup
+  const enableEthereum = !!props.topupInfo?.enable_ethereum_topup
   const epayMethods = useMemo(
     () => getEpayMethods(props.topupInfo?.pay_methods),
     [props.topupInfo?.pay_methods]
@@ -567,6 +568,8 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
         enableStripe={enableStripe}
         enableCreem={enableCreem}
         enableOnlineTopUp={enableOnlineTopUp}
+        enableEthereum={enableEthereum}
+        ethereumInfo={props.topupInfo?.ethereum_info}
         epayMethods={epayMethods}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user

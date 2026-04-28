@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { Crown, CalendarClock, Package } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { executeEthereumOrder, isEthereumUserRejected } from '@/features/wallet/lib/ethereum'
+import type {
+  EthereumTokenConfig,
+  EthereumTopupInfo,
+} from '@/features/wallet/types'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +27,7 @@ import {
   paySubscriptionStripe,
   paySubscriptionCreem,
   paySubscriptionEpay,
+  paySubscriptionEthereum,
 } from '../../api'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
@@ -39,6 +45,8 @@ interface Props {
   enableCreem?: boolean
   enableOnlineTopUp?: boolean
   epayMethods?: PaymentMethod[]
+  enableEthereum?: boolean
+  ethereumInfo?: EthereumTopupInfo
   purchaseLimit?: number
   purchaseCount?: number
 }
@@ -63,7 +71,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const hasCreem = props.enableCreem && !!plan.creem_product_id
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay
+  const hasEthereum =
+    props.enableEthereum &&
+    Array.isArray(props.ethereumInfo?.tokens) &&
+    props.ethereumInfo.tokens.length > 0
+  const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasEthereum
   const totalAmount = Number(plan.total_amount || 0)
   const price = Number(plan.price_amount || 0).toFixed(2)
   const limitReached =
@@ -157,6 +169,40 @@ export function SubscriptionPurchaseDialog(props: Props) {
       }
     } catch {
       toast.error(t('Payment request failed'))
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  const handlePayEthereum = async (token: EthereumTokenConfig) => {
+    setPaying(true)
+    try {
+      const res = await paySubscriptionEthereum({
+        plan_id: plan.id,
+        token_address: token.address,
+      })
+
+      if (!res.success || !res.data) {
+        toast.error(res.message || t('Payment request failed'))
+        return
+      }
+
+      toast.info(t('Please confirm the transaction in your wallet'))
+      await executeEthereumOrder(res.data)
+      toast.success(
+        t(
+          'Transaction confirmed. Subscription will be activated after webhook confirmation.'
+        )
+      )
+      props.onOpenChange(false)
+    } catch (error) {
+      if (isEthereumUserRejected(error)) {
+        toast.error(t('You rejected the wallet request'))
+      } else {
+        toast.error(
+          error instanceof Error ? error.message : t('Payment request failed')
+        )
+      }
     } finally {
       setPaying(false)
     }
@@ -285,6 +331,21 @@ export function SubscriptionPurchaseDialog(props: Props) {
                   >
                     {t('Pay')}
                   </Button>
+                </div>
+              )}
+              {hasEthereum && (
+                <div className='flex flex-wrap gap-2'>
+                  {props.ethereumInfo?.tokens.map((token) => (
+                    <Button
+                      key={token.address}
+                      variant='outline'
+                      className='flex-1'
+                      onClick={() => handlePayEthereum(token)}
+                      disabled={paying || limitReached}
+                    >
+                      {t('Pay with {{token}}', { token: token.symbol })}
+                    </Button>
+                  ))}
                 </div>
               )}
             </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Filter, RotateCcw, Calendar, Search } from 'lucide-react'
+import { Calendar, Filter, RotateCcw, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { getNormalizedDateRange, type TimeGranularity } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -27,26 +27,18 @@ import {
 import { DateTimePicker } from '@/components/datetime-picker'
 import {
   DEFAULT_TIME_GRANULARITY,
+  EMPTY_DASHBOARD_FILTERS,
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
-  EMPTY_DASHBOARD_FILTERS,
 } from '@/features/dashboard/constants'
 import {
   cleanFilters,
+  getDefaultDays,
   getSavedGranularity,
   saveGranularity,
-  getDefaultDays,
 } from '@/features/dashboard/lib'
 import { type DashboardFilters } from '@/features/dashboard/types'
 
-interface ModelsFilterProps {
-  onFilterChange: (filters: DashboardFilters) => void
-  onReset: () => void
-}
-
-/**
- * Section divider component for better visual organization
- */
 const SectionDivider = ({ label }: { label: string }) => (
   <div className='relative'>
     <div className='absolute inset-0 flex items-center'>
@@ -58,12 +50,14 @@ const SectionDivider = ({ label }: { label: string }) => (
   </div>
 )
 
-export function ModelsFilter({ onFilterChange, onReset }: ModelsFilterProps) {
-  const { t } = useTranslation()
-  // 使用已缓存的用户数据，避免重复调用 API
-  const user = useAuthStore((state) => state.auth.user)
-  const isAdmin = user?.role && user.role >= 10
+interface UsersFilterProps {
+  onFilterChange: (filters: DashboardFilters) => void
+  onReset: () => void
+}
 
+export function UsersFilter({ onFilterChange, onReset }: UsersFilterProps) {
+  const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   const [open, setOpen] = useState(false)
   const [filters, setFilters] = useState<DashboardFilters>(() => {
     const granularity = getSavedGranularity()
@@ -109,15 +103,16 @@ export function ModelsFilter({ onFilterChange, onReset }: ModelsFilterProps) {
     value: Date | string | undefined
   ) => {
     setFilters((prev) => ({ ...prev, [field]: value }))
-    if (field === 'start_timestamp' || field === 'end_timestamp')
+    if (field === 'start_timestamp' || field === 'end_timestamp') {
       setSelectedRange(null)
-    if (field === 'time_granularity' && typeof value === 'string')
+    }
+    if (field === 'time_granularity' && typeof value === 'string') {
       saveGranularity(value as TimeGranularity)
+    }
   }
 
   const handleQuickRange = (days: number) => {
     const { start, end } = getNormalizedDateRange(days)
-
     setFilters((prev) => ({
       ...prev,
       start_timestamp: start,
@@ -136,17 +131,14 @@ export function ModelsFilter({ onFilterChange, onReset }: ModelsFilterProps) {
       </DialogTrigger>
       <DialogContent className='flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-lg'>
         <DialogHeader>
-          <DialogTitle>{t('Filter Dashboard Models')}</DialogTitle>
+          <DialogTitle>{t('Filter User Analytics')}</DialogTitle>
           <DialogDescription>
-            {t(
-              'Set filters to customize your dashboard statistics and charts.'
-            )}
+            {t('Set filters to customize user analytics and charts.')}
           </DialogDescription>
         </DialogHeader>
 
         <ScrollArea className='flex-1 pr-4'>
           <div className='grid gap-4 py-4'>
-            {/* Quick time range selection */}
             <div className='grid gap-2'>
               <Label className='flex items-center gap-2'>
                 <Calendar className='h-4 w-4' />
@@ -176,7 +168,6 @@ export function ModelsFilter({ onFilterChange, onReset }: ModelsFilterProps) {
 
             <SectionDivider label={t('Custom Time Range')} />
 
-            {/* Custom time range */}
             <div className='grid gap-4'>
               <div className='grid gap-2'>
                 <Label htmlFor='start_timestamp'>{t('Start Time')}</Label>
@@ -224,20 +215,9 @@ export function ModelsFilter({ onFilterChange, onReset }: ModelsFilterProps) {
               </Select>
             </div>
 
-            {/* Admin-only fields */}
             {isAdmin && (
               <>
                 <SectionDivider label={t('Admin Only')} />
-
-                <div className='grid gap-2'>
-                  <Label htmlFor='username'>{t('Username')}</Label>
-                  <Input
-                    id='username'
-                    placeholder={t('Filter by username')}
-                    value={filters.username}
-                    onChange={(e) => handleChange('username', e.target.value)}
-                  />
-                </div>
 
                 <div className='grid gap-2'>
                   <Label htmlFor='channel'>{t('Channel ID')}</Label>

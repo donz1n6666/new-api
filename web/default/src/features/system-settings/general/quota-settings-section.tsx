@@ -16,15 +16,21 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
+import { QuotaAmountFieldPair } from '../components/quota-amount-field-pair'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { quotaUnitsToDollars } from '@/lib/format'
 
 const quotaSchema = z.object({
   QuotaForNewUser: z.coerce.number().min(0),
+  QuotaForNewUserAmount: z.coerce.number().min(0),
   PreConsumedQuota: z.coerce.number().min(0),
+  PreConsumedQuotaAmount: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
+  QuotaForInviterAmount: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
+  QuotaForInviteeAmount: z.coerce.number().min(0),
   TopUpLink: z.string().url().optional().or(z.literal('')),
   'general_setting.docs_link': z.string().url().optional().or(z.literal('')),
   'quota_setting.enable_free_model_pre_consume': z.boolean(),
@@ -32,8 +38,16 @@ const quotaSchema = z.object({
 
 type QuotaFormValues = z.infer<typeof quotaSchema>
 
+type QuotaSettingsDefaults = Omit<
+  QuotaFormValues,
+  | 'QuotaForNewUserAmount'
+  | 'PreConsumedQuotaAmount'
+  | 'QuotaForInviterAmount'
+  | 'QuotaForInviteeAmount'
+>
+
 type QuotaSettingsSectionProps = {
-  defaultValues: QuotaFormValues
+  defaultValues: QuotaSettingsDefaults
 }
 
 export function QuotaSettingsSection({
@@ -41,6 +55,21 @@ export function QuotaSettingsSection({
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const formDefaults: QuotaFormValues = {
+    ...defaultValues,
+    QuotaForNewUserAmount: Number(
+      quotaUnitsToDollars(defaultValues.QuotaForNewUser).toFixed(6)
+    ),
+    PreConsumedQuotaAmount: Number(
+      quotaUnitsToDollars(defaultValues.PreConsumedQuota).toFixed(6)
+    ),
+    QuotaForInviterAmount: Number(
+      quotaUnitsToDollars(defaultValues.QuotaForInviter).toFixed(6)
+    ),
+    QuotaForInviteeAmount: Number(
+      quotaUnitsToDollars(defaultValues.QuotaForInvitee).toFixed(6)
+    ),
+  }
 
   const { form, handleSubmit, isDirty, isSubmitting } =
     useSettingsForm<QuotaFormValues>({
@@ -49,9 +78,12 @@ export function QuotaSettingsSection({
         unknown,
         QuotaFormValues
       >,
-      defaultValues,
+      defaultValues: formDefaults,
       onSubmit: async (_data, changedFields) => {
         for (const [key, value] of Object.entries(changedFields)) {
+          if (key.endsWith('Amount')) {
+            continue
+          }
           await updateOption.mutateAsync({
             key,
             value: value as string | number | boolean,
@@ -70,100 +102,52 @@ export function QuotaSettingsSection({
       <Form {...form}>
         <form onSubmit={handleSubmit} className='space-y-6'>
           <FormDirtyIndicator isDirty={isDirty} />
-          <FormField
-            control={form.control}
-            name='QuotaForNewUser'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('New User Quota')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='number'
-                    value={field.value as number}
-                    onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t('Initial quota given to new users')}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
+          <QuotaAmountFieldPair
+            form={form}
+            amountName='QuotaForNewUserAmount'
+            quotaName='QuotaForNewUser'
+            amountLabel={t('New User Amount')}
+            quotaLabel={t('New User Quota')}
+            amountDescription={t('Initial balance shown to new users')}
+            quotaDescription={t('Initial raw quota given to new users')}
+            amountPlaceholder='0'
+            quotaPlaceholder='0'
           />
 
-          <FormField
-            control={form.control}
-            name='PreConsumedQuota'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Pre-Consumed Quota')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='number'
-                    value={field.value as number}
-                    onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t('Quota consumed before charging users')}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
+          <QuotaAmountFieldPair
+            form={form}
+            amountName='PreConsumedQuotaAmount'
+            quotaName='PreConsumedQuota'
+            amountLabel={t('Pre-Consumed Amount')}
+            quotaLabel={t('Pre-Consumed Quota')}
+            amountDescription={t('Pre-consumed balance before final settlement')}
+            quotaDescription={t('Raw quota consumed before charging users')}
+            amountPlaceholder='0'
+            quotaPlaceholder='0'
           />
 
-          <FormField
-            control={form.control}
-            name='QuotaForInviter'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Inviter Reward')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='number'
-                    value={field.value as number}
-                    onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t('Quota given to users who invite others')}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
+          <QuotaAmountFieldPair
+            form={form}
+            amountName='QuotaForInviterAmount'
+            quotaName='QuotaForInviter'
+            amountLabel={t('Inviter Reward Amount')}
+            quotaLabel={t('Inviter Reward')}
+            amountDescription={t('Balance reward granted to inviters')}
+            quotaDescription={t('Quota reward given to users who invite others')}
+            amountPlaceholder='0'
+            quotaPlaceholder='0'
           />
 
-          <FormField
-            control={form.control}
-            name='QuotaForInvitee'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Invitee Reward')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='number'
-                    value={field.value as number}
-                    onChange={(e) => field.onChange(e.target.valueAsNumber)}
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t('Quota given to invited users')}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
+          <QuotaAmountFieldPair
+            form={form}
+            amountName='QuotaForInviteeAmount'
+            quotaName='QuotaForInvitee'
+            amountLabel={t('Invitee Reward Amount')}
+            quotaLabel={t('Invitee Reward')}
+            amountDescription={t('Balance reward granted to invited users')}
+            quotaDescription={t('Quota reward given to invited users')}
+            amountPlaceholder='0'
+            quotaPlaceholder='0'
           />
 
           <FormField

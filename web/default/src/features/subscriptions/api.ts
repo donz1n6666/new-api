@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { EthereumPaymentResponse } from '@/features/wallet/types'
 import type {
   ApiResponse,
   PlanRecord,
@@ -112,6 +113,16 @@ export async function paySubscriptionEpay(
     ...res.data,
     url: res.data.url || (res as unknown as { url?: string }).url,
   }
+}
+
+export async function paySubscriptionEthereum(data: {
+  plan_id: number
+  token_address: string
+}): Promise<EthereumPaymentResponse> {
+  const res = await api.post('/api/subscription/ethereum/pay', data, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
 }
 
 // ============================================================================

@@ -67,10 +67,14 @@ export async function githubOAuthStart(clientId: string, state: string) {
 }
 
 // Get OAuth state for CSRF protection
-export async function getOAuthState(): Promise<string> {
+export async function getOAuthState(invitationCode?: string): Promise<string> {
   const aff =
     typeof window !== 'undefined' ? (localStorage.getItem('aff') ?? '') : ''
-  const res = await api.get('/api/oauth/state', { params: { aff } })
+  const params: Record<string, string> = { aff }
+  if (invitationCode?.trim()) {
+    params.invitation_code = invitationCode.trim()
+  }
+  const res = await api.get('/api/oauth/state', { params })
   if (res.data?.success) return res.data.data
   return ''
 }

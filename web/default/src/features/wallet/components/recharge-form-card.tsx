@@ -28,6 +28,8 @@ import type {
   TopupInfo,
   CreemProduct,
   WaffoPayMethod,
+  EthereumTokenConfig,
+  EthereumTopupInfo,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
 
@@ -59,6 +61,9 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  enableEthereumTopup?: boolean
+  ethereumInfo?: EthereumTopupInfo
+  onEthereumTokenSelect?: (token: EthereumTokenConfig) => void
 }
 
 export function RechargeFormCard({
@@ -89,6 +94,9 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  enableEthereumTopup,
+  ethereumInfo,
+  onEthereumTokenSelect,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -109,7 +117,8 @@ export function RechargeFormCard({
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
     enableWaffoTopup ||
-    enableWaffoPancakeTopup
+    enableWaffoPancakeTopup ||
+    enableEthereumTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
   const hasStandardPaymentMethods =
     Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
@@ -393,6 +402,65 @@ export function RechargeFormCard({
                                 <TooltipContent>
                                   {t('Minimum topup amount: {{amount}}', {
                                     amount: waffoMin,
+                                  })}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            button
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                {enableEthereumTopup &&
+                  Array.isArray(ethereumInfo?.tokens) &&
+                  ethereumInfo.tokens.length > 0 &&
+                  onEthereumTokenSelect && (
+                    <div className='space-y-3'>
+                      <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                        {t('Ethereum Payment')}
+                      </Label>
+                      <div className='flex flex-wrap gap-3'>
+                        {ethereumInfo.tokens.map((token) => {
+                          const loadingKey = `ethereum:${token.address}`
+                          const ethereumMin =
+                            topupInfo?.ethereum_min_topup ||
+                            ethereumInfo.min_topup ||
+                            0
+                          const belowMin = ethereumMin > topupAmount
+
+                          const button = (
+                            <Button
+                              key={token.address}
+                              variant='outline'
+                              onClick={() => onEthereumTokenSelect(token)}
+                              disabled={belowMin || !!paymentLoading}
+                              className='gap-2 rounded-lg'
+                            >
+                              {paymentLoading === loadingKey ? (
+                                <Loader2 className='h-4 w-4 animate-spin' />
+                              ) : (
+                                <span className='font-mono text-xs'>
+                                  {token.symbol}
+                                </span>
+                              )}
+                              {t('Pay with {{token}}', {
+                                token: token.symbol,
+                              })}
+                            </Button>
+                          )
+
+                          return belowMin ? (
+                            <TooltipProvider key={token.address}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {button}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {t('Minimum topup amount: {{amount}}', {
+                                    amount: ethereumMin,
                                   })}
                                 </TooltipContent>
                               </Tooltip>

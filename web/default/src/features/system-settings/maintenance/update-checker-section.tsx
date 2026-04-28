@@ -5,6 +5,13 @@ import { toast } from 'sonner'
 import { formatTimestamp, formatTimestampToDate } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Markdown } from '@/components/ui/markdown'
 import { SettingsSection } from '../components/settings-section'
+import { useUpdateOption } from '../hooks/use-update-option'
 
 type ReleaseInfo = {
   tag_name: string
@@ -26,16 +34,23 @@ type ReleaseInfo = {
 type UpdateCheckerSectionProps = {
   currentVersion?: string | null
   startTime?: number | null
+  currentFrontendTheme?: 'default' | 'classic'
 }
 
 export function UpdateCheckerSection({
   currentVersion,
   startTime,
+  currentFrontendTheme = 'default',
 }: UpdateCheckerSectionProps) {
   const { t } = useTranslation()
+  const updateOption = useUpdateOption()
   const [checking, setChecking] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [release, setRelease] = useState<ReleaseInfo | null>(null)
+  const [frontendTheme, setFrontendTheme] = useState<'default' | 'classic'>(
+    currentFrontendTheme
+  )
+  const [switchingTheme, setSwitchingTheme] = useState(false)
 
   const uptime = startTime ? formatTimestamp(startTime) : t('Unknown')
   const version = currentVersion || t('Unknown')
@@ -90,6 +105,30 @@ export function UpdateCheckerSection({
     }
   }
 
+  const handleSaveFrontendTheme = async () => {
+    if (frontendTheme === currentFrontendTheme) {
+      toast.info(t('No changes to save'))
+      return
+    }
+
+    setSwitchingTheme(true)
+    try {
+      const res = await updateOption.mutateAsync({
+        key: 'theme.frontend',
+        value: frontendTheme,
+      })
+
+      if (res.success) {
+        toast.success(t('Theme change saved. Redirecting to home page...'))
+        window.setTimeout(() => {
+          window.location.assign('/')
+        }, 300)
+      }
+    } finally {
+      setSwitchingTheme(false)
+    }
+  }
+
   return (
     <>
       <SettingsSection
@@ -122,6 +161,47 @@ export function UpdateCheckerSection({
               </>
             )}
           </Button>
+
+          <div className='rounded-lg border p-4'>
+            <div className='space-y-3'>
+              <div>
+                <div className='text-sm font-medium'>{t('Frontend Theme')}</div>
+                <div className='text-muted-foreground text-sm'>
+                  {t(
+                    'Switch between the new frontend and the classic frontend. Changes take effect after page reload.'
+                  )}
+                </div>
+              </div>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
+                <Select
+                  value={frontendTheme}
+                  onValueChange={(value) =>
+                    setFrontendTheme(value as 'default' | 'classic')
+                  }
+                >
+                  <SelectTrigger className='sm:w-[260px]'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='default'>
+                      {t('Default (New Frontend)')}
+                    </SelectItem>
+                    <SelectItem value='classic'>
+                      {t('Classic (Legacy Frontend)')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleSaveFrontendTheme}
+                  disabled={switchingTheme || updateOption.isPending}
+                >
+                  {switchingTheme
+                    ? t('Saving...')
+                    : t('Save frontend theme')}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </SettingsSection>
 

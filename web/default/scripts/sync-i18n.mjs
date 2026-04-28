@@ -3,7 +3,104 @@ import path from 'node:path'
 
 // This script is executed from the web/ package root (see package.json script).
 const LOCALES_DIR = path.resolve('src/i18n/locales')
+const BASE_LOCALE = 'en'
 const FALLBACK_COMPARE_LOCALE = 'en' // used for "still English" detection only
+
+const BRAND_NAMES = new Set([
+  'AI Proxy',
+  'AIGC2D',
+  'Anthropic',
+  'API2GPT',
+  'Baidu V2',
+  'ChatGPT',
+  'Claude',
+  'Cloudflare',
+  'Cohere',
+  'DeepSeek',
+  'Discord',
+  'DoubaoVideo',
+  'FastGPT',
+  'Gemini',
+  'GitHub',
+  'Jimeng',
+  'JustSong',
+  'LingYiWanWu',
+  'LinuxDO',
+  'Lobe Chat',
+  'Midjourney',
+  'Midjourney-Proxy',
+  'MidjourneyPlus',
+  'MiniMax',
+  'Mistral',
+  'MokaAI',
+  'Moonshot',
+  'neko-api-key-tool',
+  'New API',
+  'NewAPI',
+  'OhMyGPT',
+  'Ollama',
+  'One API',
+  'OpenAI',
+  'OpenAIMax',
+  'OpenRouter',
+  'Passkey',
+  'Perplexity',
+  'QuantumNous',
+  'Replicate',
+  'SiliconFlow',
+  'Stripe',
+  'Submodel',
+  'SunoAPI',
+  'Telegram',
+  'Tencent',
+  'Uptime Kuma',
+  'Uptime Kuma URL',
+  'Vertex AI',
+  'VolcEngine',
+  'WeChat',
+  'Xinference',
+  'Xunfei',
+  'Zhipu V4',
+])
+
+const EXACT_UNTRANSLATED_ALLOWLIST = new Set([
+  'API URL',
+  'Client ID',
+  'Client Secret',
+  'OAuth Client Secret',
+  'Quota:',
+  'Webhook URL',
+  'Webhook URL:',
+  'Well-Known URL',
+  'Worker URL',
+  'my-status',
+  'edit_this',
+])
+
+const PREFIX_ALLOWLIST = [
+  'footer.columns.',
+  'org-',
+  'price_',
+  'checkout.',
+  'smtp.',
+  'whsec_',
+  'gpt-',
+  'AZURE_',
+]
+
+const REGEX_ALLOWLIST = [
+  /^https?:\/\//i,
+  /^socks5:\/\//i,
+  /^\/status\//,
+  /^\/your\//,
+  /^".*":\s*".*"$/s,
+  /^name@/i,
+  /^noreply@/i,
+  /^example\.com/i,
+  /^AccessKey\s*\/\s*SecretAccessKey$/i,
+  /^New API\s*&lt;.*&gt;$/i,
+  /^[\[{].*[\]}]$/s,
+]
 
 function isPlainObject(v) {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -63,9 +160,21 @@ function reorderLikeBase(base, target, fill, extras, missing, currentPath = []) 
   return target === undefined ? (fill ?? base) : target
 }
 
+function shouldIgnoreUntranslated(baseValue) {
+  if (typeof baseValue !== 'string') return true
+  const s = baseValue.trim()
+  if (!s) return true
+  if (BRAND_NAMES.has(s)) return true
+  if (EXACT_UNTRANSLATED_ALLOWLIST.has(s)) return true
+  if (PREFIX_ALLOWLIST.some((prefix) => s.startsWith(prefix))) return true
+  if (REGEX_ALLOWLIST.some((pattern) => pattern.test(s))) return true
+  return false
+}
+
 function isLikelyUntranslated({ locale, baseValue, value }) {
   if (typeof value !== 'string' || typeof baseValue !== 'string') return false
   if (value !== baseValue) return false
+  if (shouldIgnoreUntranslated(baseValue)) return false
 
   // Skip short tokens / acronyms / ids
   const s = baseValue.trim()
@@ -89,7 +198,8 @@ async function main() {
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b))
 
-  // Auto-pick base locale as the one with the most leaf keys under translation (most "rich").
+  // Prefer the canonical English locale as base to keep ordering stable.
+  // Fall back to the richest locale only if en.json is unavailable.
   const parsedByLocale = {}
   for (const filename of localeFiles) {
     const locale = filename.replace(/\.json$/i, '')
@@ -97,13 +207,16 @@ async function main() {
     parsedByLocale[locale] = JSON.parse(raw)
   }
 
-  const baseLocale = Object.keys(parsedByLocale)
-    .map((locale) => {
-      const json = parsedByLocale[locale]
-      const trans = json?.translation ?? {}
-      return { locale, score: countLeafKeys(trans) }
-    })
-    .sort((a, b) => b.score - a.score || a.locale.localeCompare(b.locale))[0]?.locale
+  const baseLocale =
+    parsedByLocale[BASE_LOCALE]
+      ? BASE_LOCALE
+      : Object.keys(parsedByLocale)
+          .map((locale) => {
+            const json = parsedByLocale[locale]
+            const trans = json?.translation ?? {}
+            return { locale, score: countLeafKeys(trans) }
+          })
+          .sort((a, b) => b.score - a.score || a.locale.localeCompare(b.locale))[0]?.locale
 
   if (!baseLocale) throw new Error('No locale files found.')
 
@@ -159,6 +272,8 @@ async function main() {
 
     if (Object.keys(extras).length > 0) {
       await fs.writeFile(path.join(extrasDir, `${locale}.extras.json`), stableStringify(extras), 'utf8')
+    } else {
+      await fs.rm(path.join(extrasDir, `${locale}.extras.json`), { force: true })
     }
     if (Object.keys(untranslated).length > 0) {
       await fs.writeFile(
@@ -166,6 +281,8 @@ async function main() {
         stableStringify(untranslated),
         'utf8',
       )
+    } else {
+      await fs.rm(path.join(reportsDir, `${locale}.untranslated.json`), { force: true })
     }
 
     // Rewrite locale file in base order (even for en to normalize formatting)

@@ -23,6 +23,10 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import {
+  EthereumSettingsSection,
+  type EthereumSettingsValues,
+} from './ethereum-settings-section'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -109,12 +113,14 @@ type PaymentFormValues = z.infer<typeof paymentSchema>
 
 type PaymentSettingsSectionProps = {
   defaultValues: PaymentFormValues
+  ethereumDefaultValues: EthereumSettingsValues
   waffoDefaultValues: WaffoSettingsValues
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
 }
 
 export function PaymentSettingsSection({
   defaultValues,
+  ethereumDefaultValues,
   waffoDefaultValues,
   waffoPancakeDefaultValues,
 }: PaymentSettingsSectionProps) {
@@ -1285,6 +1291,8 @@ export function PaymentSettingsSection({
       </Form>
 
       <Separator />
+
+      <EthereumSettingsSection defaultValues={ethereumDefaultValues} />
 
       <WaffoSettingsSection defaultValues={waffoDefaultValues} />
 

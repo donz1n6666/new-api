@@ -1,5 +1,6 @@
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ChannelRouteSettingsCard } from './channel-route-settings-card'
 import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
@@ -134,6 +135,19 @@ const MODELS_SECTIONS = [
           DefaultUseAutoGroup: settings.DefaultUseAutoGroup,
           GroupSpecialUsableGroup:
             settings['group_ratio_setting.group_special_usable_group'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'channel-route',
+    titleKey: 'Static Channel Route',
+    descriptionKey: 'Restrict channel selection by model, group, and request path',
+    build: (settings: ModelSettings) => (
+      <ChannelRouteSettingsCard
+        defaultValues={{
+          enabled: settings['channel_route_setting.enabled'] ?? false,
+          rules: settings['channel_route_setting.rules'] ?? '[]',
         }}
       />
     ),

@@ -34,6 +34,15 @@ const INTEGRATIONS_SECTIONS = [
           CreemTestMode: settings.CreemTestMode,
           CreemProducts: settings.CreemProducts,
         }}
+        ethereumDefaultValues={{
+          EthereumEnabled: settings.EthereumEnabled ?? false,
+          EthereumChainId: settings.EthereumChainId ?? 11155111,
+          EthereumContractAddress: settings.EthereumContractAddress ?? '',
+          EthereumAlchemyWebhookSigningKey:
+            settings.EthereumAlchemyWebhookSigningKey ?? '',
+          EthereumMinTopUp: settings.EthereumMinTopUp ?? 1,
+          EthereumSupportedTokens: settings.EthereumSupportedTokens ?? '[]',
+        }}
         waffoDefaultValues={{
           WaffoEnabled: settings.WaffoEnabled ?? false,
           WaffoApiKey: settings.WaffoApiKey ?? '',

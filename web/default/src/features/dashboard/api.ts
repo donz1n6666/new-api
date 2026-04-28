@@ -1,5 +1,9 @@
 import { api } from '@/lib/api'
-import type { QuotaDataItem, UptimeGroupResult } from './types'
+import type {
+  ModelAvailabilityItem,
+  QuotaDataItem,
+  UptimeGroupResult,
+} from './types'
 
 // ============================================================================
 // Dashboard APIs
@@ -35,6 +39,7 @@ export async function getUserQuotaDates(
 export async function getUserQuotaDataByUsers(params: {
   start_timestamp: number
   end_timestamp: number
+  channel?: string
 }) {
   const res = await api.get<{ success: boolean; data: QuotaDataItem[] }>(
     '/api/data/users',
@@ -47,6 +52,14 @@ export async function getUserQuotaDataByUsers(params: {
 export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
+  )
+  return res.data
+}
+
+export async function getModelAvailability() {
+  const res = await api.get<{ success: boolean; data: ModelAvailabilityItem[] }>(
+    '/api/user/models/availability',
+    { params: { hours: 24 } }
   )
   return res.data
 }

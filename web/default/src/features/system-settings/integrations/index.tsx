@@ -47,6 +47,13 @@ const defaultIntegrationSettings: IntegrationSettingsType = {
   CreemWebhookSecret: '',
   CreemTestMode: false,
   CreemProducts: '[]',
+  EthereumEnabled: false,
+  EthereumChainId: 11155111,
+  EthereumContractAddress: '',
+  EthereumAlchemyWebhookSigningKey: '',
+  EthereumMinTopUp: 1,
+  EthereumSupportedTokens:
+    '[{"symbol":"ETH","address":"0x0000000000000000000000000000000000000000","decimals":18,"price":"0.001"}]',
   WaffoEnabled: false,
   WaffoApiKey: '',
   WaffoPrivateKey: '',

@@ -63,6 +63,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
 }
 
 export const DEFAULT_MAINTENANCE_SETTINGS: MaintenanceSettings = {
+  'theme.frontend': 'default',
   Notice: '',
   LogConsumeEnabled: false,
   HeaderNavModules: JSON.stringify(HEADER_NAV_DEFAULT),

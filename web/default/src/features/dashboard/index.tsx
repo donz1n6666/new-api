@@ -9,6 +9,7 @@ import {
   FadeIn,
 } from '@/components/page-transition'
 import { ModelsFilter } from './components/models/models-filter-dialog'
+import { UsersFilter } from './components/users/users-filter-dialog'
 import { AnnouncementsPanel } from './components/overview/announcements-panel'
 import { ApiInfoPanel } from './components/overview/api-info-panel'
 import { FAQPanel } from './components/overview/faq-panel'
@@ -102,6 +103,7 @@ export function Dashboard() {
     DASHBOARD_DEFAULT_SECTION) as DashboardSectionId
 
   const [modelFilters, setModelFilters] = useState<DashboardFilters>({})
+  const [userFilters, setUserFilters] = useState<DashboardFilters>({})
   const [modelData, setModelData] = useState<QuotaDataItem[]>([])
   const [dataLoading, setDataLoading] = useState(false)
 
@@ -111,6 +113,14 @@ export function Dashboard() {
 
   const handleResetFilters = useCallback(() => {
     setModelFilters({})
+  }, [])
+
+  const handleUserFilterChange = useCallback((filters: DashboardFilters) => {
+    setUserFilters(filters)
+  }, [])
+
+  const handleResetUserFilters = useCallback(() => {
+    setUserFilters({})
   }, [])
 
   const handleDataUpdate = useCallback(
@@ -134,6 +144,14 @@ export function Dashboard() {
           <ModelsFilter
             onFilterChange={handleFilterChange}
             onReset={handleResetFilters}
+          />
+        </SectionPageLayout.Actions>
+      )}
+      {activeSection === 'users' && (
+        <SectionPageLayout.Actions>
+          <UsersFilter
+            onFilterChange={handleUserFilterChange}
+            onReset={handleResetUserFilters}
           />
         </SectionPageLayout.Actions>
       )}
@@ -195,7 +213,7 @@ export function Dashboard() {
           {activeSection === 'users' && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts />
+                <LazyUserCharts filters={userFilters} />
               </Suspense>
             </FadeIn>
           )}

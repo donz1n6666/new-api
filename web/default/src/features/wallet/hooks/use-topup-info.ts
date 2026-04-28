@@ -11,6 +11,8 @@ import type {
   CreemProduct,
   PaymentMethod,
   WaffoPayMethod,
+  EthereumTopupInfo,
+  EthereumTokenConfig,
 } from '../types'
 
 // ============================================================================
@@ -143,6 +145,34 @@ function parseDiscountMap(data: unknown): Record<number, number> {
   )
 }
 
+function parseEthereumInfo(data: unknown): EthereumTopupInfo | undefined {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return undefined
+  }
+
+  const raw = data as Record<string, unknown>
+  const tokens = parseJsonArray(raw.tokens)
+    .filter(
+      (item): item is Record<string, unknown> =>
+        !!item && typeof item === 'object'
+    )
+    .map<EthereumTokenConfig>((item) => ({
+      symbol: typeof item.symbol === 'string' ? item.symbol : '',
+      address: typeof item.address === 'string' ? item.address : '',
+      decimals: Number(item.decimals) || 18,
+      price: typeof item.price === 'string' ? item.price : '0',
+    }))
+    .filter((item) => item.symbol && item.address)
+
+  return {
+    chain_id: Number(raw.chain_id) || 0,
+    contract_address:
+      typeof raw.contract_address === 'string' ? raw.contract_address : '',
+    min_topup: Number(raw.min_topup) || 0,
+    tokens,
+  }
+}
+
 export function useTopupInfo() {
   const [topupInfo, setTopupInfo] = useState<TopupInfo | null>(null)
   const [presetAmounts, setPresetAmounts] = useState<PresetAmount[]>([])
@@ -172,6 +202,7 @@ export function useTopupInfo() {
         waffo_pay_methods: parseWaffoPayMethods(
           response.data.waffo_pay_methods
         ),
+        ethereum_info: parseEthereumInfo(response.data.ethereum_info),
       }
 
       setTopupInfo(processedData)
