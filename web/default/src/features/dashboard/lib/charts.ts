@@ -1,5 +1,6 @@
 import { dataScheme as vchartDefaultDataScheme } from '@visactor/vchart/esm/theme/color-scheme/builtin/default'
 import { getCurrencyDisplay } from '@/lib/currency'
+import { formatTokenCount } from '@/lib/format'
 import { formatChartTime, type TimeGranularity } from '@/lib/time'
 import { MAX_CHART_TREND_POINTS } from '@/features/dashboard/constants'
 import type {
@@ -55,6 +56,8 @@ export function processChartData(
 
   const formatInt = (value: number) =>
     Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
+  const formatTokens = (value: number) =>
+    formatTokenCount(value, { zeroAsDash: false })
   const formatQuotaValue = (value: number) => renderQuotaCompat(value, 4)
   const formatQuotaTotal = (value: number) => renderQuotaCompat(value, 2)
 
@@ -681,11 +684,27 @@ export function processChartData(
             {
               key: (datum: Record<string, unknown>) => datum?.Model,
               value: (datum: Record<string, unknown>) =>
-                formatInt(Number(datum?.Tokens) || 0),
+                formatTokens(Number(datum?.Tokens) || 0),
             },
           ],
         },
       },
+      label: {
+        visible: true,
+        position: 'top',
+        formatMethod: (value: number) => formatTokens(Number(value) || 0),
+        style: { fontSize: 11 },
+      },
+      axes: [
+        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'left',
+          type: 'linear',
+          label: {
+            formatMethod: (value: number) => formatTokens(Number(value) || 0),
+          },
+        },
+      ],
       background: { fill: 'transparent' },
       animation: true,
     },
@@ -720,6 +739,8 @@ export function processUserChartData(
   const formatVal = (raw: number) => renderQuotaCompat(raw, 2)
   const formatInt = (value: number) =>
     Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
+  const formatTokens = (value: number) =>
+    formatTokenCount(value, { zeroAsDash: false })
 
   const emptyResult: ProcessedUserChartData = {
     spec_user_rank: {
@@ -917,7 +938,7 @@ export function processUserChartData(
       title: {
         visible: true,
         text: tt('User Token Consumption Ranking'),
-        subtext: `${tt('Total:')} ${formatInt(totalTokens)}`,
+        subtext: `${tt('Total:')} ${formatTokens(totalTokens)}`,
       },
       legends: { visible: false },
       bar: {
@@ -926,7 +947,7 @@ export function processUserChartData(
       label: {
         visible: true,
         position: 'outside',
-        formatMethod: (value: number) => formatInt(value),
+        formatMethod: (value: number) => formatTokens(value),
         style: { fontSize: 11 },
       },
       axes: [
@@ -939,7 +960,7 @@ export function processUserChartData(
             {
               key: (datum: Record<string, unknown>) => datum?.User,
               value: (datum: Record<string, unknown>) =>
-                formatInt(Number(datum?.rawTokens) || 0),
+                formatTokens(Number(datum?.rawTokens) || 0),
             },
           ],
         },

@@ -58,6 +58,13 @@ export function isStripePayment(paymentType: string): boolean {
 }
 
 /**
+ * Check if payment method is Ethereum
+ */
+export function isEthereumPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ETHEREUM
+}
+
+/**
  * Check if payment method is Waffo Pancake
  *
  * Pancake is a metered-style payment that goes through a dedicated checkout

@@ -53,7 +53,9 @@ function parsePaymentMethods(
       return {
         name: typeof item.name === 'string' ? item.name : '',
         type,
+        address: typeof item.address === 'string' ? item.address : undefined,
         color: typeof item.color === 'string' ? item.color : undefined,
+        icon: typeof item.icon === 'string' ? item.icon : undefined,
         min_topup:
           type === 'stripe' && normalizedMinTopup <= 0
             ? stripeMinTopup

@@ -16,6 +16,7 @@ export const PAYMENT_TYPES = {
   WECHAT: 'wxpay',
   STRIPE: 'stripe',
   CREEM: 'creem',
+  ETHEREUM: 'ethereum',
   WAFFO: 'waffo',
   WAFFO_PANCAKE: 'waffo_pancake',
 } as const

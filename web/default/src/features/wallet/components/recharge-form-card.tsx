@@ -21,6 +21,7 @@ import {
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  isEthereumPayment,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -32,6 +33,38 @@ import type {
   EthereumTopupInfo,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+
+function resolveEthereumToken(
+  method: PaymentMethod,
+  ethereumInfo?: EthereumTopupInfo
+): EthereumTokenConfig | null {
+  const tokens = ethereumInfo?.tokens || []
+  if (tokens.length === 0 || !isEthereumPayment(method.type)) {
+    return null
+  }
+
+  const normalizedAddress = method.address?.toLowerCase()
+  if (normalizedAddress) {
+    const matchedByAddress = tokens.find(
+      (token) => token.address.toLowerCase() === normalizedAddress
+    )
+    if (matchedByAddress) {
+      return matchedByAddress
+    }
+  }
+
+  const normalizedName = method.name?.trim().toLowerCase()
+  if (normalizedName) {
+    const matchedBySymbol = tokens.find(
+      (token) => token.symbol.trim().toLowerCase() === normalizedName
+    )
+    if (matchedBySymbol) {
+      return matchedBySymbol
+    }
+  }
+
+  return tokens.length === 1 ? tokens[0] : null
+}
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -125,6 +158,17 @@ export function RechargeFormCard({
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
+  const configuredEthereumAddresses = new Set(
+    (topupInfo?.pay_methods || [])
+      .filter((method) => isEthereumPayment(method.type))
+      .map((method) => resolveEthereumToken(method, ethereumInfo)?.address)
+      .filter((address): address is string => !!address)
+      .map((address) => address.toLowerCase())
+  )
+  const automaticEthereumTokens =
+    ethereumInfo?.tokens?.filter(
+      (token) => !configuredEthereumAddresses.has(token.address.toLowerCase())
+    ) || []
 
   if (loading) {
     return (
@@ -306,17 +350,32 @@ export function RechargeFormCard({
                     <div className='flex flex-wrap gap-3'>
                       {topupInfo?.pay_methods?.map((method) => {
                         const minTopup = method.min_topup || 0
-                        const disabled = minTopup > topupAmount
+                        const isEthereumMethod = isEthereumPayment(method.type)
+                        const resolvedEthereumToken = isEthereumMethod
+                          ? resolveEthereumToken(method, ethereumInfo)
+                          : null
+                        const disabled =
+                          minTopup > topupAmount ||
+                          (isEthereumMethod && !resolvedEthereumToken)
 
                         const button = (
                           <Button
                             key={method.type}
                             variant='outline'
-                            onClick={() => onPaymentMethodSelect(method)}
+                            onClick={() => {
+                              if (isEthereumMethod && resolvedEthereumToken) {
+                                onEthereumTokenSelect?.(resolvedEthereumToken)
+                                return
+                              }
+                              onPaymentMethodSelect(method)
+                            }}
                             disabled={disabled || !!paymentLoading}
                             className='gap-2 rounded-lg'
                           >
-                            {paymentLoading === method.type ? (
+                            {paymentLoading ===
+                            (isEthereumMethod && resolvedEthereumToken
+                              ? `ethereum:${resolvedEthereumToken.address}`
+                              : method.type) ? (
                               <Loader2 className='h-4 w-4 animate-spin' />
                             ) : (
                               getPaymentIcon(
@@ -415,15 +474,14 @@ export function RechargeFormCard({
                   )}
 
                 {enableEthereumTopup &&
-                  Array.isArray(ethereumInfo?.tokens) &&
-                  ethereumInfo.tokens.length > 0 &&
+                  automaticEthereumTokens.length > 0 &&
                   onEthereumTokenSelect && (
                     <div className='space-y-3'>
                       <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                         {t('Ethereum Payment')}
                       </Label>
                       <div className='flex flex-wrap gap-3'>
-                        {ethereumInfo.tokens.map((token) => {
+                        {automaticEthereumTokens.map((token) => {
                           const loadingKey = `ethereum:${token.address}`
                           const ethereumMin =
                             topupInfo?.ethereum_min_topup ||

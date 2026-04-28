@@ -599,6 +599,8 @@ func handleConfigUpdate(key, value string) bool {
 	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
+	} else if configName == "theme" {
+		system_setting.UpdateAndSyncTheme()
 	} else if configName == "tool_price_setting" {
 		operation_setting.RebuildToolPriceIndex()
 	} else if configName == "billing_setting" {

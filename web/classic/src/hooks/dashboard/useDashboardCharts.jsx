@@ -22,6 +22,7 @@ import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   modelColorMap,
   renderNumber,
+  renderTokenNumber,
   renderQuota,
   modelToColor,
   getQuotaWithUnit,
@@ -38,8 +39,16 @@ import {
 } from '../../helpers/dashboard';
 
 const USER_COLORS = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+  '#3b82f6',
+  '#ef4444',
+  '#10b981',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#f97316',
+  '#6366f1',
+  '#14b8a6',
 ];
 
 export const useDashboardCharts = (
@@ -285,7 +294,7 @@ export const useDashboardCharts = (
       specified: modelColorMap,
     },
   });
-  
+
   // ========== 模型词元消耗排行 ==========
   const [spec_token_rank_bar, setSpecTokenRankBar] = useState({
     type: 'bar',
@@ -304,12 +313,28 @@ export const useDashboardCharts = (
     },
     tooltip: {
       mark: {
-        content: [{
-          key: (datum) => datum['Model'],
-          value: (datum) => renderNumber(datum['Tokens'] || 0),
-        }],
+        content: [
+          {
+            key: (datum) => datum['Model'],
+            value: (datum) => renderTokenNumber(datum['Tokens'] || 0),
+          },
+        ],
       },
     },
+    label: {
+      visible: true,
+      position: 'top',
+      formatMethod: (value, datum) =>
+        renderTokenNumber(datum['Tokens'] || value || 0),
+    },
+    axes: [
+      {
+        orient: 'left',
+        label: {
+          formatMethod: (value) => renderTokenNumber(value || 0),
+        },
+      },
+    ],
     color: { specified: modelColorMap },
   });
 
@@ -333,28 +358,33 @@ export const useDashboardCharts = (
     label: {
       visible: true,
       position: 'outside',
-      formatMethod: (value, datum) => renderNumber(datum['rawTokens'] || 0),
+      formatMethod: (value, datum) =>
+        renderTokenNumber(datum['rawTokens'] || 0),
     },
-    axes: [{
-      orient: 'left',
-      type: 'band',
-      label: { visible: true },
-    }, {
-      orient: 'bottom',
-      type: 'linear',
-      visible: false,
-    }],
+    axes: [
+      {
+        orient: 'left',
+        type: 'band',
+        label: { visible: true },
+      },
+      {
+        orient: 'bottom',
+        type: 'linear',
+        visible: false,
+      },
+    ],
     tooltip: {
       mark: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => renderNumber(datum['rawTokens'] || 0),
-        }],
+        content: [
+          {
+            key: (datum) => datum['User'],
+            value: (datum) => renderTokenNumber(datum['rawTokens'] || 0),
+          },
+        ],
       },
     },
     color: { type: 'ordinal', range: USER_COLORS },
   });
-
 
   // ========== Admin: 用户消耗排行 ==========
   const [spec_user_rank, setSpecUserRank] = useState({
@@ -378,21 +408,26 @@ export const useDashboardCharts = (
       position: 'outside',
       formatMethod: (value, datum) => renderQuota(datum['rawQuota'] || 0, 2),
     },
-    axes: [{
-      orient: 'left',
-      type: 'band',
-      label: { visible: true },
-    }, {
-      orient: 'bottom',
-      type: 'linear',
-      visible: false,
-    }],
+    axes: [
+      {
+        orient: 'left',
+        type: 'band',
+        label: { visible: true },
+      },
+      {
+        orient: 'bottom',
+        type: 'linear',
+        visible: false,
+      },
+    ],
     tooltip: {
       mark: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
-        }],
+        content: [
+          {
+            key: (datum) => datum['User'],
+            value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
+          },
+        ],
       },
     },
     color: { type: 'ordinal', range: USER_COLORS },
@@ -412,27 +447,33 @@ export const useDashboardCharts = (
       text: t('用户消耗趋势'),
       subtext: '',
     },
-    axes: [{
-      orient: 'left',
-      label: {
-        formatMethod: (value) => renderQuota(value, 2),
+    axes: [
+      {
+        orient: 'left',
+        label: {
+          formatMethod: (value) => renderQuota(value, 2),
+        },
       },
-    }],
+    ],
     area: { style: { fillOpacity: 0.15 } },
     line: { style: { lineWidth: 2 } },
     point: { visible: false },
     tooltip: {
       mark: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
-        }],
+        content: [
+          {
+            key: (datum) => datum['User'],
+            value: (datum) => renderQuota(datum['rawQuota'] || 0, 4),
+          },
+        ],
       },
       dimension: {
-        content: [{
-          key: (datum) => datum['User'],
-          value: (datum) => datum['rawQuota'] || 0,
-        }],
+        content: [
+          {
+            key: (datum) => datum['User'],
+            value: (datum) => datum['rawQuota'] || 0,
+          },
+        ],
         updateContent: (array) => {
           array.sort((a, b) => b.value - a.value);
           let sum = 0;
@@ -631,7 +672,10 @@ export const useDashboardCharts = (
         const otherTokenCount = allTokenRankData
           .slice(MAX_RANK_MODELS)
           .reduce((sum, item) => sum + item.Tokens, 0);
-        tokenRankData = [...topTokenModels, { Model: t('其他'), Tokens: otherTokenCount }];
+        tokenRankData = [
+          ...topTokenModels,
+          { Model: t('其他'), Tokens: otherTokenCount },
+        ];
       } else {
         tokenRankData = allTokenRankData;
       }
@@ -639,7 +683,7 @@ export const useDashboardCharts = (
       updateChartSpec(
         setSpecTokenRankBar,
         tokenRankData,
-        `${t('总计')}：${renderNumber(totalTokens)}`,
+        `${t('总计')}：${renderTokenNumber(totalTokens)}`,
         newModelColors,
         'tokenRankData',
       );
@@ -673,11 +717,13 @@ export const useDashboardCharts = (
         10,
       );
 
-      const userRankValues = rankingData.map((item) => ({
-        User: item.User,
-        rawQuota: item.Quota,
-        Quota: getQuotaWithUnit(item.Quota, 4),
-      })).sort((a, b) => b.rawQuota - a.rawQuota);
+      const userRankValues = rankingData
+        .map((item) => ({
+          User: item.User,
+          rawQuota: item.Quota,
+          Quota: getQuotaWithUnit(item.Quota, 4),
+        }))
+        .sort((a, b) => b.rawQuota - a.rawQuota);
 
       const totalUserQuota = rankingData.reduce((s, i) => s + i.Quota, 0);
 
@@ -707,10 +753,12 @@ export const useDashboardCharts = (
       }));
 
       // ===== 用户词元消耗排行 =====
-      const userTokenRankValues = rankingData.map((item) => ({
-        User: item.User,
-        rawTokens: item.Tokens,
-      })).sort((a, b) => b.rawTokens - a.rawTokens);
+      const userTokenRankValues = rankingData
+        .map((item) => ({
+          User: item.User,
+          rawTokens: item.Tokens,
+        }))
+        .sort((a, b) => b.rawTokens - a.rawTokens);
 
       const totalUserTokens = rankingData.reduce((s, i) => s + i.Tokens, 0);
 
@@ -719,7 +767,7 @@ export const useDashboardCharts = (
         data: [{ id: 'userTokenRankData', values: userTokenRankValues }],
         title: {
           ...prev.title,
-          subtext: `${t('总计')}：${renderNumber(totalUserTokens)}`,
+          subtext: `${t('总计')}：${renderTokenNumber(totalUserTokens)}`,
         },
       }));
     },

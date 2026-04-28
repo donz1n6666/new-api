@@ -151,11 +151,47 @@ export function formatLogQuota(quota: number): string {
 /**
  * Format tokens count with K/M suffixes
  */
+function trimTrailingZeros(value: string): string {
+  return value.replace(/\.0+$|(\.\d*[1-9])0+$/, '$1')
+}
+
+export function formatTokenCount(
+  tokens: number | null | undefined,
+  options?: {
+    zeroAsDash?: boolean
+  }
+): string {
+  if (tokens == null || Number.isNaN(tokens)) return '-'
+
+  const zeroAsDash = options?.zeroAsDash ?? false
+  if (tokens === 0) return zeroAsDash ? '-' : '0'
+
+  const abs = Math.abs(tokens)
+  const sign = tokens < 0 ? '-' : ''
+  const units = [
+    { threshold: 1_000_000_000_000, suffix: 'T' },
+    { threshold: 1_000_000_000, suffix: 'B' },
+    { threshold: 1_000_000, suffix: 'M' },
+    { threshold: 1_000, suffix: 'K' },
+  ] as const
+
+  for (const unit of units) {
+    if (abs >= unit.threshold) {
+      const normalized = abs / unit.threshold
+      const fractionDigits = normalized >= 100 ? 0 : normalized >= 10 ? 1 : 2
+      return `${sign}${trimTrailingZeros(
+        normalized.toFixed(fractionDigits)
+      )}${unit.suffix}`
+    }
+  }
+
+  return `${sign}${Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 0,
+  }).format(abs)}`
+}
+
 export function formatTokens(tokens: number): string {
-  if (tokens === 0) return '-'
-  if (tokens < 1000) return tokens.toString()
-  if (tokens < 1000000) return `${(tokens / 1000).toFixed(1)}K`
-  return `${(tokens / 1000000).toFixed(2)}M`
+  return formatTokenCount(tokens, { zeroAsDash: true })
 }
 
 /**
