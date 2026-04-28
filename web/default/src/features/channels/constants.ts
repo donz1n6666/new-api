@@ -58,6 +58,7 @@ export const CHANNEL_TYPES = {
   55: 'Sora',
   56: 'Replicate',
   57: 'Codex',
+  58: 'OA2 Combined Channel (OpenAI + Claude)',
 } as const
 
 export const CHANNEL_TYPE_OPTIONS = Object.entries(CHANNEL_TYPES)
@@ -347,7 +348,7 @@ export const FIELD_DESCRIPTIONS = {
 // ============================================================================
 
 export const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 17, 20, 23, 24, 25, 26, 31, 34, 35, 40, 42, 43, 47, 48,
+  1, 4, 14, 17, 20, 23, 24, 25, 26, 31, 34, 35, 40, 42, 43, 47, 48, 58,
 ])
 
 export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
@@ -359,6 +360,7 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
   50: 'Format: AccessKey|SecretKey (or just ApiKey if upstream is New API)',
   51: 'Format: Access Key ID|Secret Access Key',
   57: 'Paste Codex OAuth JSON credential (access_token / refresh_token / account_id)',
+  58: 'Shared API key for OA2 OpenAI + Claude upstreams',
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {

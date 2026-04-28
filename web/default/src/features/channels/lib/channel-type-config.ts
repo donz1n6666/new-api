@@ -116,6 +116,16 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       baseUrl: 'Default: https://api.replicate.com',
     },
   },
+  58: {
+    id: 58,
+    name: CHANNEL_TYPES[58],
+    icon: 'openai',
+    hints: {
+      key: 'Shared API key for both OpenAI-style and Claude-style upstreams',
+      models: 'Merged models from OpenAI and Claude upstream endpoints',
+      other: 'Configure independent OpenAI / Claude base URLs below',
+    },
+  },
 }
 
 /**

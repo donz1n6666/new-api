@@ -78,6 +78,16 @@ export interface ChannelOtherSettings {
   allow_service_tier?: boolean
   disable_store?: boolean
   allow_safety_identifier?: boolean
+  allow_include_obfuscation?: boolean
+  allow_inference_geo?: boolean
+  allow_speed?: boolean
+  claude_beta_query?: boolean
+  upstream_model_update_check_enabled?: boolean
+  upstream_model_update_auto_sync_enabled?: boolean
+  oa2_openai_enabled?: boolean
+  oa2_claude_enabled?: boolean
+  oa2_base_url_openai?: string
+  oa2_base_url_claude?: string
 }
 
 // ============================================================================
@@ -281,6 +291,8 @@ export interface ChannelFormData {
   multi_key_mode?: 'single' | 'batch' | 'multi_to_single'
   multi_key_type?: 'random' | 'polling'
   batch_add_set_key_prefix_2_name?: boolean
+  oa2_base_url_openai?: string
+  oa2_base_url_claude?: string
 }
 
 // ============================================================================
