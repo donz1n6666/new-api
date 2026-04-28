@@ -63,6 +63,7 @@ jobs:
       - name: Build frontend (classic)
         env:
           CI: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           cd web/classic
           bun install
