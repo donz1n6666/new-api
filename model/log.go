@@ -626,6 +626,8 @@ func GetModelAvailabilityByGroup(group string, hours int) ([]ModelAvailability, 
 }
 
 // GetUserModelAvailability 获取用户可用模型的可用性
+// 【统计方式】：使用全局所有用户的调用记录，只按模型名聚合统计（不受分组影响）
+// 【展示方式】：只返回该用户所在分组有权限使用的模型
 func GetUserModelAvailability(userId int, hours int) ([]ModelAvailability, error) {
 	// 获取用户分组
 	userGroup, err := GetUserGroup(userId, false)
@@ -636,9 +638,9 @@ func GetUserModelAvailability(userId int, hours int) ([]ModelAvailability, error
 	// 获取该分组的所有可用模型
 	enabledModels := GetGroupEnabledModels(userGroup)
 
-	// 获取模型可用性统计
+	// 获取模型可用性统计（使用全局所有用户的调用记录统计）
 	availabilityMap := make(map[string]ModelAvailability)
-	stats, err := GetModelAvailabilityByGroup(userGroup, hours)
+	stats, err := GetModelAvailabilityByGroup("", hours)
 	if err != nil {
 		return nil, err
 	}
