@@ -258,19 +258,49 @@ const OtherSetting = () => {
       // Create a cached version of the response to avoid frequent GitHub API calls
       // const res = await API.get('/api/status/github-latest-release');
 
-      const { tag_name, body } = res;
+      const { tag_name, body, message } = res;
+
+      // GitHub API 错误处理（限流、认证失败等）
+      if (message || !tag_name) {
+        showError(`检查更新失败: ${message || '无法获取版本信息'}`);
+        return;
+      }
+
       if (tag_name === statusState?.status?.version) {
         showSuccess(`已是最新版本：${tag_name}`);
       } else {
+        // 安全解析更新日志，解析失败也显示版本
+        let updateContent = '';
+        try {
+          updateContent = body ? marked.parse(body) : '';
+        } catch (e) {
+          console.warn('Failed to parse changelog:', e);
+        }
         setUpdateData({
           tag_name: tag_name,
-          content: marked.parse(body),
+          content: updateContent,
         });
         setShowUpdateModal(true);
       }
     } catch (error) {
       console.error('Failed to check for updates:', error);
-      showError('检查更新失败，请稍后再试');
+      showError(
+        <>
+          <div>检查更新失败</div>
+          <div style={{ fontSize: '12px', marginTop: '4px', opacity: 0.7 }}>
+            可前往{' '}
+            <a
+              href="https://github.com/GuJi08233/new-api/releases/latest"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'var(--semi-color-primary)' }}
+            >
+              GitHub Releases
+            </a>{' '}
+            手动查看
+          </div>
+        </>,
+      );
     } finally {
       setLoadingInput((loadingInput) => ({
         ...loadingInput,
