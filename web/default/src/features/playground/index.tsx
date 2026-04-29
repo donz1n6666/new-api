@@ -34,13 +34,29 @@ export function Playground() {
   // Load models
   const { data: modelsData, isLoading: isLoadingModels } = useQuery({
     queryKey: ['playground-models'],
-    queryFn: getUserModels,
+    queryFn: async () => {
+      try {
+        return await getUserModels()
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load playground models:', error)
+        return []
+      }
+    },
   })
 
   // Load groups
   const { data: groupsData } = useQuery({
     queryKey: ['playground-groups'],
-    queryFn: getUserGroups,
+    queryFn: async () => {
+      try {
+        return await getUserGroups()
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load playground groups:', error)
+        return []
+      }
+    },
   })
 
   // Update models when data changes
