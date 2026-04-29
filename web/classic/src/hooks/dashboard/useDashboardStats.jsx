@@ -29,7 +29,7 @@ import {
   IconTypograph,
   IconSend,
 } from '@douyinfe/semi-icons';
-import { renderQuota, renderTokenNumber } from '../../helpers';
+import { renderQuota } from '../../helpers';
 import { createSectionTitle } from '../../helpers/dashboard';
 
 export const useDashboardStats = (
@@ -102,7 +102,9 @@ export const useDashboardStats = (
           },
           {
             title: t('统计Tokens'),
-            value: renderTokenNumber(isNaN(consumeTokens) ? 0 : consumeTokens),
+            value: isNaN(consumeTokens)
+              ? 0
+              : Number(consumeTokens).toLocaleString(),
             icon: <IconTextStroked />,
             avatarColor: 'pink',
             trendData: trendData.tokens,
@@ -124,7 +126,7 @@ export const useDashboardStats = (
           },
           {
             title: t('平均TPM'),
-            value: renderTokenNumber(performanceMetrics.avgTPM),
+            value: Number(performanceMetrics.avgTPM || 0).toLocaleString(),
             icon: <IconTypograph />,
             avatarColor: 'orange',
             trendData: trendData.tpm,
