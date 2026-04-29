@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
-import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
-import { ChevronDown, Eye, EyeOff, Loader2, RotateCcw, Search } from 'lucide-react'
+import { useNavigate, getRouteApi } from '@tanstack/react-router'
+import {
+  ChevronDown,
+  Eye,
+  EyeOff,
+  Loader2,
+  RotateCcw,
+  Search,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useIsAdmin } from '@/hooks/use-admin'
@@ -22,7 +29,13 @@ import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
-type LogTypeValue = '0' | '1' | '2' | '3' | '4' | '5' | '6'
+const logTypeValues = ['0', '1', '2', '3', '4', '5', '6'] as const
+
+type LogTypeValue = (typeof logTypeValues)[number]
+
+function isLogTypeValue(value: string): value is LogTypeValue {
+  return (logTypeValues as readonly string[]).includes(value)
+}
 
 interface CommonLogsFilterBarProps {
   stats?: ReactNode
@@ -164,9 +177,9 @@ export function CommonLogsFilterBar({
         />
         <Select
           value={logType}
-          onValueChange={(v) =>
-            setLogType(v === 'all' ? '' : (v as LogTypeValue))
-          }
+          onValueChange={(value) => {
+            setLogType(isLogTypeValue(value) ? value : '')
+          }}
         >
           <SelectTrigger className='h-9'>
             <SelectValue placeholder={t('All Types')} />
@@ -202,9 +215,7 @@ export function CommonLogsFilterBar({
       <div
         className={cn(
           'grid gap-2 overflow-hidden transition-all duration-200',
-          expanded
-            ? 'grid-rows-[1fr] opacity-100'
-            : 'grid-rows-[0fr] opacity-0'
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         )}
       >
         <div className='min-h-0 overflow-hidden'>
@@ -276,7 +287,12 @@ export function CommonLogsFilterBar({
             <RotateCcw className='size-3.5' />
             {t('Reset')}
           </Button>
-          <Button size='sm' className='h-8' onClick={handleApply} disabled={fetchingLogs > 0}>
+          <Button
+            size='sm'
+            className='h-8'
+            onClick={handleApply}
+            disabled={fetchingLogs > 0}
+          >
             {fetchingLogs > 0 ? (
               <Loader2 className='size-3.5 animate-spin' />
             ) : (
