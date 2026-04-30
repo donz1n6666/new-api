@@ -63,6 +63,7 @@ export const channelFormSchema = z.object({
   // Upstream model update settings (stored in settings JSON)
   upstream_model_update_check_enabled: z.boolean().optional(),
   upstream_model_update_auto_sync_enabled: z.boolean().optional(),
+  upstream_model_update_ignored_models: z.string().optional(),
 })
 
 export type ChannelFormValues = z.infer<typeof channelFormSchema>
@@ -121,6 +122,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_inference_geo: false,
   allow_speed: false,
   claude_beta_query: false,
+  upstream_model_update_check_enabled: false,
+  upstream_model_update_auto_sync_enabled: false,
+  upstream_model_update_ignored_models: '',
 }
 
 // ============================================================================
@@ -178,6 +182,7 @@ export function transformChannelToFormDefaults(
   let claudeBetaQuery = false
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
+  let upstreamModelUpdateIgnoredModels = ''
 
   if (channel.settings) {
     try {
@@ -201,6 +206,11 @@ export function transformChannelToFormDefaults(
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
         parsed.upstream_model_update_auto_sync_enabled === true
+      upstreamModelUpdateIgnoredModels = Array.isArray(
+        parsed.upstream_model_update_ignored_models
+      )
+        ? parsed.upstream_model_update_ignored_models.join(',')
+        : ''
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -253,6 +263,7 @@ export function transformChannelToFormDefaults(
     allow_safety_identifier: allowSafetyIdentifier,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
+    upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
   }
 }
 
@@ -370,7 +381,25 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.upstream_model_update_check_enabled =
       formData.upstream_model_update_check_enabled === true
     settingsObj.upstream_model_update_auto_sync_enabled =
+      settingsObj.upstream_model_update_check_enabled === true &&
       formData.upstream_model_update_auto_sync_enabled === true
+    settingsObj.upstream_model_update_ignored_models = Array.from(
+      new Set(
+        String(formData.upstream_model_update_ignored_models || '')
+          .split(',')
+          .map((model) => model.trim())
+          .filter(Boolean)
+      )
+    )
+    if (
+      !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
+      settingsObj.upstream_model_update_check_enabled !== true
+    ) {
+      settingsObj.upstream_model_update_last_detected_models = []
+    }
+    if (typeof settingsObj.upstream_model_update_last_check_time !== 'number') {
+      settingsObj.upstream_model_update_last_check_time = 0
+    }
   }
 
   return JSON.stringify(settingsObj)

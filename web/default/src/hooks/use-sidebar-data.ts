@@ -14,6 +14,7 @@ import {
   MessageSquare,
   CreditCard,
   ListTodo,
+  Settings,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -79,6 +80,12 @@ export function useSidebarData(): SidebarData {
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
           },
+        ],
+      },
+      {
+        id: 'personal',
+        title: t('Personal'),
+        items: [
           {
             title: t('Wallet'),
             url: '/wallet',
@@ -119,6 +126,12 @@ export function useSidebarData(): SidebarData {
             title: t('Subscription Management'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('System Settings'),
+            url: '/system-settings/general',
+            activeUrls: ['/system-settings'],
+            icon: Settings,
           },
         ],
       },
