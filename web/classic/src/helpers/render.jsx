@@ -94,7 +94,6 @@ import {
   SiGitlab,
   SiGoogle,
   SiKeycloak,
-  SiLinkedin,
   SiNextcloud,
   SiNotion,
   SiOkta,
@@ -993,6 +992,38 @@ export function renderNumber(num) {
   } else {
     return num;
   }
+}
+
+function trimCompactNumber(numStr) {
+  return numStr.replace(/\.0+$|(\.\d*[1-9])0+$/, '$1');
+}
+
+export function renderTokenNumber(num) {
+  if (typeof num !== 'number' || isNaN(num)) {
+    return '-';
+  }
+  if (num === 0) {
+    return '0';
+  }
+
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+  const units = [
+    { threshold: 1000000000000, suffix: 'T' },
+    { threshold: 1000000000, suffix: 'B' },
+    { threshold: 1000000, suffix: 'M' },
+    { threshold: 1000, suffix: 'K' },
+  ];
+
+  for (const unit of units) {
+    if (abs >= unit.threshold) {
+      const normalized = abs / unit.threshold;
+      const digits = normalized >= 100 ? 0 : normalized >= 10 ? 1 : 2;
+      return `${sign}${trimCompactNumber(normalized.toFixed(digits))}${unit.suffix}`;
+    }
+  }
+
+  return `${sign}${Math.round(abs)}`;
 }
 
 export function renderQuotaNumberWithDigit(num, digits = 2) {
