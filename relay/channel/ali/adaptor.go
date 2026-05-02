@@ -14,7 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/transform"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -75,23 +75,14 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 		return req, nil
 	}
 
-	claudeJSON, err := common.Marshal(req)
+	oaiReq, err := service.ClaudeToOpenAIRequest(*req, info)
 	if err != nil {
-		return nil, err
-	}
-	flags := transform.GetModelFlags(req.Model)
-	openAIJSON, err := transform.RequestClaudeToOpenAI(claudeJSON, flags)
-	if err != nil {
-		return nil, err
-	}
-	var oaiReq dto.GeneralOpenAIRequest
-	if err = common.Unmarshal(openAIJSON, &oaiReq); err != nil {
 		return nil, err
 	}
 	if info.SupportStreamOptions && info.IsStream {
 		oaiReq.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
-	return a.ConvertOpenAIRequest(c, info, &oaiReq)
+	return a.ConvertOpenAIRequest(c, info, oaiReq)
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
