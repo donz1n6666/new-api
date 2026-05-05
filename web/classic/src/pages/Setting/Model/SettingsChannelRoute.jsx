@@ -71,6 +71,65 @@ const formatTokenHint = (value) => {
   return `= ${value} tokens`;
 };
 
+const formatTokenShort = (value) => {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return String(value);
+};
+
+const autoTierLabel = (conditions) => {
+  if (!conditions || conditions.length === 0) return '';
+  return conditions.map((c) => `${c.var} ${c.op} ${formatTokenShort(c.value)}`).join(' AND ');
+};
+
+const validateTiers = (tiers) => {
+  const warnings = [];
+  if (tiers.length <= 1) return warnings;
+  for (let i = 0; i < tiers.length - 1; i++) {
+    if (tiers[i].conditions.length === 0) {
+      warnings.push(`档位 ${i + 1} 无条件（兜底）但不是最后一档，会阻塞后续档位。`);
+    }
+  }
+  for (let i = 1; i < tiers.length; i++) {
+    const tier = tiers[i];
+    if (tier.conditions.length === 0) continue;
+    for (const cond of tier.conditions) {
+      for (let j = 0; j < i; j++) {
+        const prevTier = tiers[j];
+        if (prevTier.conditions.length === 0) continue;
+        for (const prevCond of prevTier.conditions) {
+          if (prevCond.var !== cond.var) continue;
+          if (prevCond.op === '<' && cond.op === '<' && cond.value <= prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} < ${formatTokenShort(cond.value)}" 已被档位 ${j + 1} "${prevCond.var} < ${formatTokenShort(prevCond.value)}" 覆盖。`);
+          }
+          if (prevCond.op === '<=' && cond.op === '<=' && cond.value <= prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} <= ${formatTokenShort(cond.value)}" 已被档位 ${j + 1} "${prevCond.var} <= ${formatTokenShort(prevCond.value)}" 覆盖。`);
+          }
+          if (prevCond.op === '>=' && cond.op === '>=' && cond.value <= prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} >= ${formatTokenShort(cond.value)}" 已被档位 ${j + 1} "${prevCond.var} >= ${formatTokenShort(prevCond.value)}" 覆盖。`);
+          }
+          if (prevCond.op === '>' && cond.op === '>' && cond.value <= prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} > ${formatTokenShort(cond.value)}" 已被档位 ${j + 1} "${prevCond.var} > ${formatTokenShort(prevCond.value)}" 覆盖。`);
+          }
+          if (prevCond.op === '<' && cond.op === '>=' && cond.value < prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} >= ${formatTokenShort(cond.value)}" 与档位 ${j + 1} "${prevCond.var} < ${formatTokenShort(prevCond.value)}" 重叠。`);
+          }
+          if (prevCond.op === '<=' && cond.op === '>' && cond.value < prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} > ${formatTokenShort(cond.value)}" 与档位 ${j + 1} "${prevCond.var} <= ${formatTokenShort(prevCond.value)}" 重叠。`);
+          }
+          if (prevCond.op === '>=' && cond.op === '<' && cond.value > prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} < ${formatTokenShort(cond.value)}" 与档位 ${j + 1} "${prevCond.var} >= ${formatTokenShort(prevCond.value)}" 重叠。`);
+          }
+          if (prevCond.op === '>' && cond.op === '<=' && cond.value > prevCond.value) {
+            warnings.push(`档位 ${i + 1} "${cond.var} <= ${formatTokenShort(cond.value)}" 与档位 ${j + 1} "${prevCond.var} > ${formatTokenShort(prevCond.value)}" 重叠。`);
+          }
+        }
+      }
+    }
+  }
+  return warnings;
+};
+
 const emptyTier = () => ({ label: '', conditions: [], channel_ids: [] });
 
 const rulesExample = JSON.stringify(
@@ -281,10 +340,13 @@ function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition 
           <Input
             value={tier.label}
             onChange={(value) => onChange({ ...tier, label: value })}
-            placeholder={t('档位名称')}
+            placeholder={autoTierLabel(tier.conditions) || t('档位名称')}
             size='small'
             style={{ width: 140 }}
           />
+          {!tier.label && autoTierLabel(tier.conditions) && (
+            <Text type='tertiary' size='small'>{autoTierLabel(tier.conditions)}</Text>
+          )}
           {isCatchAll && <Tag color='green'>{t('兜底')}</Tag>}
         </Space>
         <Button
@@ -498,7 +560,7 @@ export default function SettingsChannelRoute(props) {
               {record.route_tiers.map((tier, i) => (
                 <Space key={i} spacing={4}>
                   <Tag color='blue' size='small'>
-                    {tier.label || `Tier ${i + 1}`}
+                    {tier.label || autoTierLabel(tier.conditions || []) || `Tier ${i + 1}`}
                   </Tag>
                   {tier.conditions?.length > 0 && (
                     <Text size='small' type='tertiary'>
@@ -609,6 +671,21 @@ export default function SettingsChannelRoute(props) {
         return showError(t('渠道 ID 必须是正整数，支持换行或逗号分隔'));
       }
 
+      // Validate tier configuration (overlaps, dead tiers, catch-all position)
+      if (validTiers.length > 1) {
+        const warnings = validateTiers(validTiers);
+        if (warnings.length > 0) {
+          return showError(warnings[0]);
+        }
+      }
+
+      // Auto-generate labels for tiers without labels
+      const tiersWithLabels = validTiers.map((tier) => ({
+        label: tier.label || autoTierLabel(tier.conditions),
+        conditions: tier.conditions,
+        channel_ids: tier.channel_ids,
+      }));
+
       const rulePayload = {
         id: isEdit ? editingRule?.id : rules.length,
         name: (values.name || '').trim(),
@@ -621,12 +698,8 @@ export default function SettingsChannelRoute(props) {
       if (!rulePayload.name) {
         return showError(t('名称不能为空'));
       }
-      if (validTiers.length > 0) {
-        rulePayload.route_tiers = validTiers.map((tier) => ({
-          label: tier.label,
-          conditions: tier.conditions,
-          channel_ids: tier.channel_ids,
-        }));
+      if (tiersWithLabels.length > 0) {
+        rulePayload.route_tiers = tiersWithLabels;
       }
 
       const nextRules = [...(rules || [])];

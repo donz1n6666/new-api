@@ -160,6 +160,118 @@ function formatTokenHint(value: number): string {
   return `= ${value} tokens`
 }
 
+function formatTokenShort(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`
+  return String(value)
+}
+
+/** Auto-generate a label from tier conditions when user leaves it empty. */
+function autoTierLabel(conditions: RouteTierCondition[]): string {
+  if (!conditions || conditions.length === 0) return ''
+  return conditions
+    .map((c) => `${c.var} ${c.op} ${formatTokenShort(c.value)}`)
+    .join(' AND ')
+}
+
+/** Validate tier configuration. Returns an array of warning strings. */
+function validateTiers(tiers: RouteTier[]): string[] {
+  const warnings: string[] = []
+  if (tiers.length <= 1) return warnings
+
+  // Check: catch-all (no conditions) must be the last tier
+  for (let i = 0; i < tiers.length - 1; i++) {
+    if (tiers[i].conditions.length === 0) {
+      warnings.push(
+        `Tier ${i + 1} has no conditions (catch-all) but is not the last tier. It will block all subsequent tiers from matching.`
+      )
+    }
+  }
+
+  // Check for dead tiers and overlaps by building effective ranges per variable
+  // For each variable (len, p, c), track the constraints imposed by earlier tiers
+  const vars: Array<'len' | 'p' | 'c'> = ['len', 'p', 'c']
+
+  for (let i = 1; i < tiers.length; i++) {
+    const tier = tiers[i]
+    if (tier.conditions.length === 0) continue // catch-all, skip
+
+    // Check if this tier's conditions are unreachable given previous tiers
+    for (const cond of tier.conditions) {
+      for (let j = 0; j < i; j++) {
+        const prevTier = tiers[j]
+        if (prevTier.conditions.length === 0) continue
+
+        for (const prevCond of prevTier.conditions) {
+          if (prevCond.var !== cond.var) continue
+
+          // Check if prev tier's condition makes this tier's condition impossible
+          // prev: x < 100, current: x >= 200 → dead (impossible since prev catches all x < 100)
+          // But if there's a gap (100 <= x < 200), the current tier could still match
+          // The issue is: if prev tier matches all x < 100, and current needs x >= 200,
+          // then values 100-199 fall through to current tier (not dead, just gap)
+          // A tier is truly dead only if ALL previous tiers' conditions completely cover it
+
+          // Simple overlap detection:
+          // prev: x < A, current: x < B where B <= A → current is dead (subset)
+          if (prevCond.op === '<' && cond.op === '<' && cond.value <= prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} < ${formatTokenShort(cond.value)}" is already covered by Tier ${j + 1} "${prevCond.var} < ${formatTokenShort(prevCond.value)}".`
+            )
+          }
+          // prev: x <= A, current: x <= B where B <= A → current is dead
+          if (prevCond.op === '<=' && cond.op === '<=' && cond.value <= prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} <= ${formatTokenShort(cond.value)}" is already covered by Tier ${j + 1} "${prevCond.var} <= ${formatTokenShort(prevCond.value)}".`
+            )
+          }
+          // prev: x >= A, current: x >= B where B <= A → current is dead
+          if (prevCond.op === '>=' && cond.op === '>=' && cond.value <= prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} >= ${formatTokenShort(cond.value)}" is already covered by Tier ${j + 1} "${prevCond.var} >= ${formatTokenShort(prevCond.value)}".`
+            )
+          }
+          // prev: x > A, current: x > B where B <= A → current is dead
+          if (prevCond.op === '>' && cond.op === '>' && cond.value <= prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} > ${formatTokenShort(cond.value)}" is already covered by Tier ${j + 1} "${prevCond.var} > ${formatTokenShort(prevCond.value)}".`
+            )
+          }
+          // prev: x < A, current: x >= A → exact boundary, no overlap (valid)
+          // prev: x < A, current: x >= B where B < A → overlap on [B, A)
+          if (prevCond.op === '<' && cond.op === '>=' && cond.value < prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} >= ${formatTokenShort(cond.value)}" overlaps with Tier ${j + 1} "${prevCond.var} < ${formatTokenShort(prevCond.value)}" (range ${formatTokenShort(cond.value)}~${formatTokenShort(prevCond.value)}).`
+            )
+          }
+          // prev: x <= A, current: x > A → exact boundary, no overlap (valid)
+          // prev: x <= A, current: x > B where B < A → overlap on (B, A]
+          if (prevCond.op === '<=' && cond.op === '>' && cond.value < prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} > ${formatTokenShort(cond.value)}" overlaps with Tier ${j + 1} "${prevCond.var} <= ${formatTokenShort(prevCond.value)}" (range ${formatTokenShort(cond.value)}~${formatTokenShort(prevCond.value)}).`
+            )
+          }
+          // prev: x >= A, current: x < A → exact boundary, no overlap (valid)
+          // prev: x >= A, current: x < B where B > A → overlap on [A, B)
+          if (prevCond.op === '>=' && cond.op === '<' && cond.value > prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} < ${formatTokenShort(cond.value)}" overlaps with Tier ${j + 1} "${prevCond.var} >= ${formatTokenShort(prevCond.value)}" (range ${formatTokenShort(prevCond.value)}~${formatTokenShort(cond.value)}).`
+            )
+          }
+          // prev: x > A, current: x <= B where B > A → overlap on (A, B]
+          if (prevCond.op === '>' && cond.op === '<=' && cond.value > prevCond.value) {
+            warnings.push(
+              `Tier ${i + 1} condition "${cond.var} <= ${formatTokenShort(cond.value)}" overlaps with Tier ${j + 1} "${prevCond.var} > ${formatTokenShort(prevCond.value)}" (range ${formatTokenShort(prevCond.value)}~${formatTokenShort(cond.value)}).`
+            )
+          }
+        }
+      }
+    }
+  }
+
+  return warnings
+}
+
 function normalizeStringList(text?: string) {
   return (text || '')
     .split('\n')
@@ -379,9 +491,14 @@ function RouteTierCard({
           <Input
             value={tier.label}
             onChange={(e) => onChange({ ...tier, label: e.target.value })}
-            placeholder={t('Tier name')}
+            placeholder={autoTierLabel(tier.conditions) || t('Tier name')}
             className='h-8 w-40'
           />
+          {!tier.label && autoTierLabel(tier.conditions) && (
+            <span className='text-muted-foreground text-xs'>
+              {autoTierLabel(tier.conditions)}
+            </span>
+          )}
           {isCatchAll && (
             <Badge variant='secondary' className='text-xs'>
               {t('catch-all')}
@@ -659,6 +776,22 @@ export function ChannelRouteSettingsCard({
       return
     }
 
+    // Validate tier configuration (overlaps, dead tiers, catch-all position)
+    if (validTiers.length > 1) {
+      const warnings = validateTiers(validTiers)
+      if (warnings.length > 0) {
+        toast.warning(warnings[0], { duration: 5000 })
+        return
+      }
+    }
+
+    // Auto-generate labels for tiers without labels
+    const tiersWithLabels = validTiers.map((tier) => ({
+      label: tier.label || autoTierLabel(tier.conditions),
+      conditions: tier.conditions,
+      channel_ids: tier.channel_ids,
+    }))
+
     const nextRule: ChannelRouteRule = {
       id: editingRule?.id ?? rules.length,
       name: payload.name.trim(),
@@ -670,12 +803,8 @@ export function ChannelRouteSettingsCard({
     }
 
     // Only include tiers if there are valid ones
-    if (validTiers.length > 0) {
-      nextRule.route_tiers = validTiers.map((tier) => ({
-        label: tier.label,
-        conditions: tier.conditions,
-        channel_ids: tier.channel_ids,
-      }))
+    if (tiersWithLabels.length > 0) {
+      nextRule.route_tiers = tiersWithLabels
     }
 
     if (editingRule) {
@@ -853,7 +982,7 @@ export function ChannelRouteSettingsCard({
                                     className='flex items-center gap-2 text-sm text-muted-foreground'
                                   >
                                     <span className='rounded bg-muted px-1.5 py-0.5 text-xs font-medium'>
-                                      {tier.label || `Tier ${i + 1}`}
+                                      {tier.label || autoTierLabel(tier.conditions || []) || `Tier ${i + 1}`}
                                     </span>
                                     {tier.conditions && tier.conditions.length > 0 && (
                                       <span>
