@@ -154,6 +154,10 @@ export const ENDPOINT_TEMPLATES: Record<
   'jina-rerank': { path: '/rerank', method: 'POST' },
   'image-generation': { path: '/v1/images/generations', method: 'POST' },
   embeddings: { path: '/v1/embeddings', method: 'POST' },
+  'audio-transcriptions': { path: '/v1/audio/transcriptions', method: 'POST' },
+  'audio-speech': { path: '/v1/audio/speech', method: 'POST' },
+  moderations: { path: '/v1/moderations', method: 'POST' },
+  files: { path: '/v1/files', method: 'POST' },
 }
 
 // ============================================================================
