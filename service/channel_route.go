@@ -70,8 +70,9 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 					if len(tier.ChannelIDs) > 0 {
 						channelIDs = tier.ChannelIDs
 						matchedTier = tier.Label
+						break
 					}
-					break
+					// ChannelIDs empty, continue to next tier
 				}
 			}
 		}

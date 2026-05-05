@@ -336,3 +336,62 @@ func TestGetChannelByRoute_TieredRouting_MultiCondition(t *testing.T) {
 		t.Fatalf("expected matched_tier=mid, got %v", info["matched_tier"])
 	}
 }
+
+func TestGetChannelByRoute_TieredRouting_SkipsEmptyPoolTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyEstimatedTokens, 500)
+	common.SetContextKey(ctx, constant.ContextKeyUsingGroup, "default")
+
+	cfg := operation_setting.GetChannelRouteSetting()
+	origEnabled := cfg.Enabled
+	origRules := cfg.Rules
+	cfg.Enabled = true
+	cfg.Rules = []operation_setting.ChannelRouteRule{
+		{
+			Name:       "test-skip-empty",
+			ModelRegex: []string{"^gpt-4o$"},
+			ChannelIDs: []int{99},
+			RouteTiers: []operation_setting.RouteTier{
+				{
+					Label:      "empty-pool",
+					Conditions: []operation_setting.RouteTierCondition{{Var: "len", Op: "<", Value: 1000}},
+					ChannelIDs: []int{}, // empty pool
+				},
+				{
+					Label:      "has-pool",
+					Conditions: []operation_setting.RouteTierCondition{{Var: "len", Op: "<", Value: 1000}},
+					ChannelIDs: []int{3, 4},
+				},
+			},
+		},
+	}
+	defer func() {
+		cfg.Enabled = origEnabled
+		cfg.Rules = origRules
+	}()
+
+	result, err := GetChannelByRoute(&RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "default",
+		ModelName:  "gpt-4o",
+		Retry:      common.GetPointer(0),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Matched {
+		t.Fatalf("expected rule to match")
+	}
+	logInfo, ok := ctx.Get(ginKeyChannelRouteLogInfo)
+	if !ok {
+		t.Fatalf("expected log info to be set")
+	}
+	info := logInfo.(gin.H)
+	// First tier matches but has empty pool, should skip to second tier
+	if info["matched_tier"] != "has-pool" {
+		t.Fatalf("expected matched_tier=has-pool, got %v", info["matched_tier"])
+	}
+}
