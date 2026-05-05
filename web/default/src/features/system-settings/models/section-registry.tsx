@@ -36,6 +36,8 @@ const MODELS_SECTIONS = [
               settings['global.chat_completions_to_responses_policy'],
               '{}'
             ),
+            model_endpoint_protect_enabled:
+              settings['global.model_endpoint_protect_enabled'],
           },
           general_setting: {
             ping_interval_enabled:

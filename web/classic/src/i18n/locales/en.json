@@ -1034,6 +1034,8 @@
     "启用绘图功能": "Enable drawing function",
     "启用请求体透传功能": "Enable request body pass-through functionality",
     "启用请求透传": "Enable request pass-through",
+    "模型端点保护": "Model Endpoint Protection",
+    "开启后，请求将根据模型配置的端点进行校验，未配置端点的模型不受影响": "When enabled, requests will be validated against the configured endpoints for each model. Models without endpoint configuration will not be affected.",
     "启用违规扣费": "Enable violation deduction",
     "启用额度消费日志记录": "Enable quota consumption logging",
     "启用验证": "Enable Authentication",

@@ -1227,6 +1227,8 @@
     "Enable Performance Monitoring": "启用性能监控",
     "Enable rate limiting": "启用速率限制",
     "Enable Request Passthrough": "启用请求透传",
+    "Model Endpoint Protection": "模型端点保护",
+    "When enabled, requests will be validated against the configured endpoints for each model. Models without endpoint configuration will not be affected.": "开启后，请求将根据模型配置的端点进行校验，未配置端点的模型不受影响。",
     "Enable selected channels": "启用选定的渠道",
     "Enable selected models": "启用选定的模型",
     "Enable SSL/TLS": "启用 SSL/TLS",

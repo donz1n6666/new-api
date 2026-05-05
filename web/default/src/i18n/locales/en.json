@@ -1227,6 +1227,8 @@
     "Enable Performance Monitoring": "Enable Performance Monitoring",
     "Enable rate limiting": "Enable rate limiting",
     "Enable Request Passthrough": "Enable Request Passthrough",
+    "Model Endpoint Protection": "Model Endpoint Protection",
+    "When enabled, requests will be validated against the configured endpoints for each model. Models without endpoint configuration will not be affected.": "When enabled, requests will be validated against the configured endpoints for each model. Models without endpoint configuration will not be affected.",
     "Enable selected channels": "Enable selected channels",
     "Enable selected models": "Enable selected models",
     "Enable SSL/TLS": "Enable SSL/TLS",

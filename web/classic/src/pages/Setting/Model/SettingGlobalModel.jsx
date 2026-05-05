@@ -70,6 +70,7 @@ const defaultGlobalSettingInputs = {
   'global.pass_through_request_enabled': false,
   'global.thinking_model_blacklist': '[]',
   'global.chat_completions_to_responses_policy': '{}',
+  'global.model_endpoint_protect_enabled': false,
   'general_setting.ping_interval_enabled': false,
   'general_setting.ping_interval_seconds': 60,
 };
@@ -201,6 +202,21 @@ export default function SettingGlobalModel(props) {
                   }
                   extraText={t(
                     '开启后，所有请求将直接透传给上游，不会进行任何处理（重定向和渠道适配也将失效）,请谨慎开启',
+                  )}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  label={t('模型端点保护')}
+                  field={'global.model_endpoint_protect_enabled'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'global.model_endpoint_protect_enabled': value,
+                    })
+                  }
+                  extraText={t(
+                    '开启后，请求将根据模型配置的端点进行校验，未配置端点的模型不受影响',
                   )}
                 />
               </Col>
