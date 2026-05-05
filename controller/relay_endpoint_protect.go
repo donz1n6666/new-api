@@ -52,7 +52,7 @@ func checkModelEndpointProtection(c *gin.Context, modelName string, requestPath 
 		modelName, requestPath, allowedEndpoints))
 
 	// 返回友好错误
-	errMsg := fmt.Sprintf("模型 %s 不支持当前请求路径 %s，请使用正确的端点", modelName, requestPath)
+	errMsg := fmt.Sprintf("模型 %s 不支持当前请求路径 %s，支持的端点: %s", modelName, requestPath, strings.Join(allowedEndpoints, ", "))
 	return types.NewError(errors.New(errMsg), types.ErrorCodeInvalidRequest, types.ErrOptionWithStatusCode(http.StatusForbidden))
 }
 
