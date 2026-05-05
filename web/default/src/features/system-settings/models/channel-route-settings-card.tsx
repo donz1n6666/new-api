@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { Check, Code, Pencil, Plus, Table2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,11 +25,35 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { validateJsonString } from './utils'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type RouteTierCondition = {
+  var: 'len' | 'p' | 'c'
+  op: '<' | '<=' | '>' | '>='
+  value: number
+}
+
+type RouteTier = {
+  conditions: RouteTierCondition[]
+  channel_ids: number[]
+  label: string
+}
 
 type ChannelRouteRule = {
   id: number
@@ -38,6 +63,7 @@ type ChannelRouteRule = {
   path_regex: string[]
   channel_ids: number[]
   strict: boolean
+  route_tiers?: RouteTier[]
 }
 
 type ChannelRouteSettingsCardProps = {
@@ -46,6 +72,21 @@ type ChannelRouteSettingsCardProps = {
     rules: string
   }
 }
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const VAR_OPTIONS: { value: RouteTierCondition['var']; label: string }[] = [
+  { value: 'len', label: 'len (input length)' },
+  { value: 'p', label: 'p (prompt tokens)' },
+  { value: 'c', label: 'c (completion)' },
+]
+const OPS: RouteTierCondition['op'][] = ['<', '<=', '>', '>=']
+
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
 
 const routeSchema = z.object({
   enabled: z.boolean(),
@@ -68,12 +109,16 @@ const ruleEditorSchema = z.object({
   group_regex_text: z.string().optional(),
   model_regex_text: z.string().min(1),
   path_regex_text: z.string().optional(),
-  channel_ids_text: z.string().min(1),
+  channel_ids_text: z.string().optional(),
   strict: z.boolean(),
 })
 
 type ChannelRouteFormValues = z.infer<typeof routeSchema>
 type RuleEditorValues = z.infer<typeof ruleEditorSchema>
+
+// ---------------------------------------------------------------------------
+// Examples
+// ---------------------------------------------------------------------------
 
 const rulesExample = JSON.stringify(
   [
@@ -86,17 +131,34 @@ const rulesExample = JSON.stringify(
       strict: true,
     },
     {
-      name: 'qwen chat native',
-      group_regex: ['^vip$'],
-      model_regex: ['^Qwen3\\.5-35B-A3B$'],
-      path_regex: ['^/v1/chat/completions$'],
-      channel_ids: [34, 35],
-      strict: true,
+      name: 'GPT-4o tiered routing',
+      model_regex: ['^gpt-4o$'],
+      channel_ids: [5, 6, 7, 8],
+      route_tiers: [
+        {
+          label: 'short',
+          conditions: [{ var: 'len', op: '<', value: 17000 }],
+          channel_ids: [5, 6],
+        },
+        { label: 'long', conditions: [], channel_ids: [7, 8] },
+      ],
+      strict: false,
     },
   ],
   null,
   2
 )
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatTokenHint(value: number): string {
+  if (!value || value <= 0) return ''
+  if (value >= 1_000_000) return `= ${(value / 1_000_000).toFixed(1)}M tokens`
+  if (value >= 1_000) return `= ${(value / 1_000).toFixed(0)}K tokens`
+  return `= ${value} tokens`
+}
 
 function normalizeStringList(text?: string) {
   return (text || '')
@@ -110,13 +172,10 @@ function normalizeChannelIds(text?: string) {
     .split(/[\n,]/)
     .map((item) => item.trim())
     .filter(Boolean)
-
   const values: number[] = []
   for (const token of tokens) {
     const num = Number(token)
-    if (!Number.isInteger(num) || num <= 0) {
-      return null
-    }
+    if (!Number.isInteger(num) || num <= 0) return null
     values.push(num)
   }
   return [...new Set(values)]
@@ -136,14 +195,39 @@ function normalizeJson(value: string) {
   }
 }
 
+function migrateOldFormat(rule: Record<string, unknown>): Record<string, unknown> {
+  if (rule.route_tiers) return rule
+  const threshold = rule.token_threshold as number | undefined
+  const shortIds = rule.short_channel_ids as number[] | undefined
+  const longIds = rule.long_channel_ids as number[] | undefined
+  if (threshold && threshold > 0) {
+    const tiers: RouteTier[] = []
+    if (shortIds && shortIds.length > 0) {
+      tiers.push({
+        label: 'short',
+        conditions: [{ var: 'len', op: '<', value: threshold }],
+        channel_ids: shortIds,
+      })
+    }
+    if (longIds && longIds.length > 0) {
+      tiers.push({ label: 'long', conditions: [], channel_ids: longIds })
+    }
+    if (tiers.length > 0) rule.route_tiers = tiers
+  }
+  delete rule.token_threshold
+  delete rule.short_channel_ids
+  delete rule.long_channel_ids
+  return rule
+}
+
 function parseRulesJson(value: string) {
   try {
     const parsed = JSON.parse(value || '[]')
     if (!Array.isArray(parsed)) return []
-    return parsed.map((rule, index) => ({
-      id: index,
-      ...(rule || {}),
-    })) as ChannelRouteRule[]
+    return parsed.map((rule, index) => {
+      const migrated = migrateOldFormat(rule || {})
+      return { id: index, ...migrated }
+    }) as ChannelRouteRule[]
   } catch {
     return []
   }
@@ -158,6 +242,10 @@ function rulesToJson(rules: ChannelRouteRule[]) {
   )
 }
 
+function emptyTier(): RouteTier {
+  return { label: '', conditions: [], channel_ids: [] }
+}
+
 function buildRuleEditorValues(rule?: ChannelRouteRule): RuleEditorValues {
   return {
     name: rule?.name || '',
@@ -168,6 +256,275 @@ function buildRuleEditorValues(rule?: ChannelRouteRule): RuleEditorValues {
     strict: rule?.strict ?? true,
   }
 }
+
+// ---------------------------------------------------------------------------
+// ConditionRow — reuses the same pattern as tiered-pricing-editor
+// ---------------------------------------------------------------------------
+
+function ConditionRow({
+  condition,
+  onChange,
+  onRemove,
+}: {
+  condition: RouteTierCondition
+  onChange: (next: RouteTierCondition) => void
+  onRemove: () => void
+}) {
+  return (
+    <div className='flex items-center gap-2'>
+      <Select
+        value={condition.var}
+        onValueChange={(value) =>
+          onChange({ ...condition, var: value as RouteTierCondition['var'] })
+        }
+      >
+        <SelectTrigger className='w-32' size='sm'>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {VAR_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={condition.op}
+        onValueChange={(value) =>
+          onChange({ ...condition, op: value as RouteTierCondition['op'] })
+        }
+      >
+        <SelectTrigger className='w-20' size='sm'>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {OPS.map((op) => (
+            <SelectItem key={op} value={op}>
+              {op}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        type='number'
+        min={0}
+        value={condition.value || ''}
+        onChange={(e) =>
+          onChange({ ...condition, value: Number(e.target.value) || 0 })
+        }
+        placeholder='tokens'
+        className='h-8 w-32'
+      />
+      <span className='text-muted-foreground text-xs'>
+        {formatTokenHint(condition.value)}
+      </span>
+      <Button
+        variant='ghost'
+        size='icon'
+        onClick={onRemove}
+        aria-label='remove'
+        className='ml-auto'
+      >
+        <Trash2 className='text-destructive h-4 w-4' />
+      </Button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RouteTierCard — single tier with conditions + channel pool
+// ---------------------------------------------------------------------------
+
+function RouteTierCard({
+  tier,
+  index,
+  total,
+  onChange,
+  onRemove,
+  onAddCondition,
+}: {
+  tier: RouteTier
+  index: number
+  total: number
+  onChange: (next: RouteTier) => void
+  onRemove: () => void
+  onAddCondition: () => void
+}) {
+  const { t } = useTranslation()
+  const isCatchAll = tier.conditions.length === 0 && index === total - 1
+
+  const handleConditionChange = (ci: number, next: RouteTierCondition) => {
+    const conditions = [...tier.conditions]
+    conditions[ci] = next
+    onChange({ ...tier, conditions })
+  }
+
+  const handleConditionRemove = (ci: number) => {
+    onChange({ ...tier, conditions: tier.conditions.filter((_, i) => i !== ci) })
+  }
+
+  const handleChannelIdsChange = (text: string) => {
+    const ids = normalizeChannelIds(text)
+    onChange({ ...tier, channel_ids: ids || [] })
+  }
+
+  return (
+    <div className='bg-muted/30 space-y-3 rounded-md border p-3'>
+      <div className='flex items-center justify-between gap-2'>
+        <div className='flex items-center gap-2'>
+          <Badge variant='outline'>
+            {t('Tier')} {index + 1} / {total}
+          </Badge>
+          <Input
+            value={tier.label}
+            onChange={(e) => onChange({ ...tier, label: e.target.value })}
+            placeholder={t('Tier name')}
+            className='h-8 w-40'
+          />
+          {isCatchAll && (
+            <Badge variant='secondary' className='text-xs'>
+              {t('catch-all')}
+            </Badge>
+          )}
+        </div>
+        <Button
+          variant='ghost'
+          size='icon'
+          onClick={onRemove}
+          disabled={total <= 1}
+          aria-label={t('Remove tier')}
+        >
+          <Trash2 className='text-destructive h-4 w-4' />
+        </Button>
+      </div>
+
+      {!isCatchAll && (
+        <div className='space-y-2'>
+          <div className='flex items-center justify-between'>
+            <Label className='text-xs'>{t('Conditions (AND)')}</Label>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={onAddCondition}
+              disabled={tier.conditions.length >= 2}
+              className='h-7 px-2 text-xs'
+            >
+              <Plus className='mr-1 h-3 w-3' />
+              {t('Add condition')}
+            </Button>
+          </div>
+          {tier.conditions.length === 0 ? (
+            <p className='text-muted-foreground text-xs'>
+              {t('Always matches (default tier).')}
+            </p>
+          ) : (
+            tier.conditions.map((cond, ci) => (
+              <ConditionRow
+                key={ci}
+                condition={cond}
+                onChange={(next) => handleConditionChange(ci, next)}
+                onRemove={() => handleConditionRemove(ci)}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      <div className='space-y-1'>
+        <Label className='text-xs'>{t('Channel Pool')}</Label>
+        <Textarea
+          rows={2}
+          value={(tier.channel_ids || []).join('\n')}
+          onChange={(e) => handleChannelIdsChange(e.target.value)}
+          placeholder='12\n34'
+          className='text-sm'
+        />
+        <p className='text-muted-foreground text-xs'>
+          {t('Channel IDs, one per line or comma-separated.')}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RouteTierEditor — manages list of tier cards
+// ---------------------------------------------------------------------------
+
+function RouteTierEditor({
+  tiers,
+  onChange,
+}: {
+  tiers: RouteTier[]
+  onChange: (next: RouteTier[]) => void
+}) {
+  const { t } = useTranslation()
+
+  const handleTierChange = (index: number, next: RouteTier) => {
+    const nextTiers = [...tiers]
+    nextTiers[index] = next
+    onChange(nextTiers)
+  }
+
+  const handleAddTier = () => {
+    const nextTiers = [...tiers]
+    // Give the previous catch-all a default condition when adding a new tier
+    const lastIndex = nextTiers.length - 1
+    if (lastIndex >= 0 && nextTiers[lastIndex].conditions.length === 0) {
+      nextTiers[lastIndex] = {
+        ...nextTiers[lastIndex],
+        conditions: [{ var: 'len', op: '<', value: 200000 }],
+      }
+    }
+    nextTiers.push(emptyTier())
+    onChange(nextTiers)
+  }
+
+  const handleRemoveTier = (index: number) => {
+    const nextTiers = tiers.filter((_, i) => i !== index)
+    onChange(nextTiers.length > 0 ? nextTiers : [emptyTier()])
+  }
+
+  const handleAddCondition = (index: number) => {
+    if (tiers[index].conditions.length >= 2) return
+    const usedVars = new Set(tiers[index].conditions.map((c) => c.var))
+    const nextVar: RouteTierCondition['var'] = usedVars.has('len') ? 'c' : 'len'
+    const nextTiers = tiers.map((tier, i) =>
+      i === index
+        ? {
+            ...tier,
+            conditions: [...tier.conditions, { var: nextVar, op: '<', value: 200000 }],
+          }
+        : tier
+    )
+    onChange(nextTiers)
+  }
+
+  return (
+    <div className='space-y-3'>
+      {tiers.map((tier, index) => (
+        <RouteTierCard
+          key={index}
+          tier={tier}
+          index={index}
+          total={tiers.length}
+          onChange={(next) => handleTierChange(index, next)}
+          onRemove={() => handleRemoveTier(index)}
+          onAddCondition={() => handleAddCondition(index)}
+        />
+      ))}
+      <Button variant='outline' size='sm' onClick={handleAddTier}>
+        <Plus className='mr-2 h-3 w-3' />
+        {t('Add tier')}
+      </Button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function ChannelRouteSettingsCard({
   defaultValues,
@@ -180,6 +537,9 @@ export function ChannelRouteSettingsCard({
   )
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<ChannelRouteRule | null>(null)
+
+  // Tier editor state (managed separately from the form)
+  const [editingTiers, setEditingTiers] = useState<RouteTier[]>([])
 
   const form = useForm<ChannelRouteFormValues>({
     resolver: zodResolver(routeSchema),
@@ -239,12 +599,23 @@ export function ChannelRouteSettingsCard({
   const openCreateDialog = () => {
     setEditingRule(null)
     editorForm.reset(buildRuleEditorValues())
+    setEditingTiers([emptyTier()])
     setDialogOpen(true)
   }
 
   const openEditDialog = (rule: ChannelRouteRule) => {
     setEditingRule(rule)
     editorForm.reset(buildRuleEditorValues(rule))
+    setEditingTiers(
+      rule.route_tiers?.length
+        ? rule.route_tiers.map((t) => ({
+            ...t,
+            conditions: t.conditions || [],
+            channel_ids: t.channel_ids || [],
+            label: t.label || '',
+          }))
+        : [emptyTier()]
+    )
     setDialogOpen(true)
   }
 
@@ -258,8 +629,16 @@ export function ChannelRouteSettingsCard({
     if (!values) return
 
     const payload = editorForm.getValues()
+
+    // Validate tiers first
+    const validTiers = editingTiers.filter(
+      (tier) => tier.channel_ids.length > 0
+    )
+    const hasTiers = validTiers.length > 0
+
+    // Channel IDs are required only when no tiers are configured
     const channelIds = normalizeChannelIds(payload.channel_ids_text)
-    if (!channelIds || channelIds.length === 0) {
+    if (!hasTiers && (!channelIds || channelIds.length === 0)) {
       toast.error(t('Channel IDs must be positive integers'))
       return
     }
@@ -270,14 +649,33 @@ export function ChannelRouteSettingsCard({
       return
     }
 
+    // Validate tiers
+    const validTiers = editingTiers.filter(
+      (tier) => tier.channel_ids.length > 0
+    )
+    // Check that at least one tier has a non-empty pool if tiers are configured
+    if (editingTiers.length > 0 && validTiers.length === 0) {
+      toast.error(t('At least one tier must have channel IDs'))
+      return
+    }
+
     const nextRule: ChannelRouteRule = {
       id: editingRule?.id ?? rules.length,
       name: payload.name.trim(),
       group_regex: normalizeStringList(payload.group_regex_text),
       model_regex: modelRegex,
       path_regex: normalizeStringList(payload.path_regex_text),
-      channel_ids: channelIds,
+      channel_ids: channelIds || [],
       strict: payload.strict,
+    }
+
+    // Only include tiers if there are valid ones
+    if (validTiers.length > 0) {
+      nextRule.route_tiers = validTiers.map((tier) => ({
+        label: tier.label,
+        conditions: tier.conditions,
+        channel_ids: tier.channel_ids,
+      }))
     }
 
     if (editingRule) {
@@ -327,9 +725,9 @@ export function ChannelRouteSettingsCard({
   return (
     <>
       <SettingsSection
-        title={t('Static Channel Route')}
+        title={t('Channel Route')}
         description={t(
-          'Restrict candidate channels by group, model, and request path before normal weighted selection.'
+          'Route requests to specific channel pools based on group, model, path, and token conditions.'
         )}
       >
         <Form {...form}>
@@ -344,11 +742,11 @@ export function ChannelRouteSettingsCard({
                 <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
                   <div className='space-y-0.5'>
                     <FormLabel className='text-base'>
-                      {t('Enable Static Channel Route')}
+                      {t('Enable Channel Route')}
                     </FormLabel>
                     <FormDescription>
                       {t(
-                        'Useful when one model has multiple native-format channels and you want to constrain selection by request path.'
+                        'Route to specific channels by group, model, path, and optional token-based tiered conditions.'
                       )}
                     </FormDescription>
                   </div>
@@ -390,7 +788,7 @@ export function ChannelRouteSettingsCard({
                   </Button>
                   <p className='text-sm text-muted-foreground'>
                     {t(
-                      'Match order is group, model, then path. After a rule is hit, the system only selects channels from the configured pool.'
+                      'Match order: group, model, path. Tiers are evaluated in order; first match wins.'
                     )}
                   </p>
                 </div>
@@ -437,13 +835,54 @@ export function ChannelRouteSettingsCard({
                               </div>
                               <div>
                                 <span className='font-medium text-foreground'>
-                                  {t('Channel Pool')}:
+                                  {t('Fallback Pool')}:
                                 </span>{' '}
                                 {(rule.channel_ids || [])
                                   .map((id) => `#${id}`)
                                   .join(', ') || '-'}
                               </div>
                             </div>
+                            {rule.route_tiers && rule.route_tiers.length > 0 && (
+                              <div className='mt-2 space-y-1'>
+                                <div className='text-sm font-medium text-foreground'>
+                                  {t('Route Tiers')}:
+                                </div>
+                                {rule.route_tiers.map((tier, i) => (
+                                  <div
+                                    key={i}
+                                    className='flex items-center gap-2 text-sm text-muted-foreground'
+                                  >
+                                    <span className='rounded bg-muted px-1.5 py-0.5 text-xs font-medium'>
+                                      {tier.label || `Tier ${i + 1}`}
+                                    </span>
+                                    {tier.conditions && tier.conditions.length > 0 && (
+                                      <span>
+                                        {tier.conditions
+                                          .map(
+                                            (c) =>
+                                              `${c.var} ${c.op} ${c.value.toLocaleString()}`
+                                          )
+                                          .join(' AND ')}
+                                      </span>
+                                    )}
+                                    {!tier.conditions?.length &&
+                                      i === rule.route_tiers!.length - 1 && (
+                                        <span className='text-xs italic'>
+                                          {t('catch-all')}
+                                        </span>
+                                      )}
+                                    <span className='text-muted-foreground'>
+                                      →
+                                    </span>
+                                    <span>
+                                      {tier.channel_ids
+                                        .map((id) => `#${id}`)
+                                        .join(', ')}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div className='flex gap-2'>
                             <Button
@@ -485,7 +924,7 @@ export function ChannelRouteSettingsCard({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Supported fields: name, group_regex, model_regex, path_regex, channel_ids, strict.'
+                        'Fields: name, group_regex, model_regex, path_regex, channel_ids, strict, route_tiers.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -507,9 +946,7 @@ export function ChannelRouteSettingsCard({
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open)
-          if (!open) {
-            setEditingRule(null)
-          }
+          if (!open) setEditingRule(null)
         }}
       >
         <DialogContent className='max-w-3xl'>
@@ -519,7 +956,7 @@ export function ChannelRouteSettingsCard({
             </DialogTitle>
             <DialogDescription>
               {t(
-                'Use regex patterns to match group, model, and request path, then constrain selection to the specified channel pool.'
+                'Configure routing rules with optional tiered conditions based on token count.'
               )}
             </DialogDescription>
           </DialogHeader>
@@ -551,11 +988,7 @@ export function ChannelRouteSettingsCard({
                     <FormItem>
                       <FormLabel>{t('Group Regex')}</FormLabel>
                       <FormControl>
-                        <Textarea
-                          rows={5}
-                          placeholder='^default$'
-                          {...field}
-                        />
+                        <Textarea rows={5} placeholder='^default$' {...field} />
                       </FormControl>
                       <FormDescription>
                         {t('Optional. Leave empty to ignore user group.')}
@@ -564,7 +997,6 @@ export function ChannelRouteSettingsCard({
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={editorForm.control}
                   name='model_regex_text'
@@ -585,7 +1017,6 @@ export function ChannelRouteSettingsCard({
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={editorForm.control}
                   name='path_regex_text'
@@ -613,23 +1044,39 @@ export function ChannelRouteSettingsCard({
                 name='channel_ids_text'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Channel Pool')}</FormLabel>
+                    <FormLabel>{t('Fallback Channel Pool')}</FormLabel>
                     <FormControl>
                       <Textarea
-                        rows={4}
+                        rows={3}
                         placeholder={'12\n34\n56'}
                         {...field}
                       />
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Enter channel IDs separated by new lines or commas.'
+                        'Default pool used when no tier matches. Required when route tiers are not configured, optional otherwise.'
                       )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* Visual tier editor */}
+              <div className='space-y-2'>
+                <Label className='text-sm font-medium'>
+                  {t('Route Tiers (Optional)')}
+                </Label>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Each tier supports 0~2 conditions on len/p/c (AND logic). The last tier is the catch-all without conditions.'
+                  )}
+                </p>
+                <RouteTierEditor
+                  tiers={editingTiers}
+                  onChange={setEditingTiers}
+                />
+              </div>
 
               <FormField
                 control={editorForm.control}

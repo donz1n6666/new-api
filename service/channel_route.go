@@ -60,7 +60,23 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 		result.Strict = rule.Strict
 		result.RuleName = strings.TrimSpace(rule.Name)
 
-		channel, selectGroup, exhausted, err := getRouteSatisfiedChannel(param, rule.ChannelIDs)
+		// Tiered channel routing
+		channelIDs := rule.ChannelIDs
+		matchedTier := ""
+		estimatedTokens := common.GetContextKeyInt(param.Ctx, constant.ContextKeyEstimatedTokens)
+		if len(rule.RouteTiers) > 0 && estimatedTokens > 0 {
+			for _, tier := range rule.RouteTiers {
+				if evaluateRouteTier(tier.Conditions, estimatedTokens) {
+					if len(tier.ChannelIDs) > 0 {
+						channelIDs = tier.ChannelIDs
+						matchedTier = tier.Label
+					}
+					break
+				}
+			}
+		}
+
+		channel, selectGroup, exhausted, err := getRouteSatisfiedChannel(param, channelIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -69,14 +85,50 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 		result.Exhausted = exhausted
 
 		if channel != nil {
-			markChannelRouteUsed(param.Ctx, rule, param.ModelName, param.TokenGroup, selectGroup, channel.Id, path)
+			markChannelRouteUsed(param.Ctx, rule, param.ModelName, param.TokenGroup, selectGroup, channel.Id, path, estimatedTokens, matchedTier)
 		} else {
-			markChannelRouteExhausted(param.Ctx, rule, param.ModelName, param.TokenGroup, path)
+			markChannelRouteExhausted(param.Ctx, rule, param.ModelName, param.TokenGroup, path, estimatedTokens, matchedTier)
 		}
 		return result, nil
 	}
 
 	return result, nil
+}
+
+func evaluateRouteTier(conditions []operation_setting.RouteTierCondition, estimatedTokens int) bool {
+	if len(conditions) == 0 {
+		return true
+	}
+	for _, cond := range conditions {
+		if !evaluateRouteCondition(cond, estimatedTokens) {
+			return false
+		}
+	}
+	return true
+}
+
+func evaluateRouteCondition(cond operation_setting.RouteTierCondition, estimatedTokens int) bool {
+	var actual int
+	switch cond.Var {
+	case "len", "p":
+		actual = estimatedTokens
+	case "c":
+		actual = 0 // completion tokens unknown at routing time
+	default:
+		return false
+	}
+	switch cond.Op {
+	case "<":
+		return actual < cond.Value
+	case "<=":
+		return actual <= cond.Value
+	case ">":
+		return actual > cond.Value
+	case ">=":
+		return actual >= cond.Value
+	default:
+		return false
+	}
 }
 
 func getChannelRouteMatchGroup(param *RetryParam) string {
@@ -277,11 +329,11 @@ func channelRouteMatchAnyRegex(patterns []string, value string) bool {
 	return false
 }
 
-func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, selectedGroup string, channelID int, requestPath string) {
+func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, selectedGroup string, channelID int, requestPath string, estimatedTokens int, matchedTier string) {
 	if c == nil {
 		return
 	}
-	c.Set(ginKeyChannelRouteLogInfo, gin.H{
+	logInfo := gin.H{
 		"rule_name":      strings.TrimSpace(rule.Name),
 		"model":          modelName,
 		"request_path":   requestPath,
@@ -290,14 +342,22 @@ func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRul
 		"channel_ids":    rule.ChannelIDs,
 		"channel_id":     channelID,
 		"strict":         rule.Strict,
-	})
+	}
+	if matchedTier != "" {
+		logInfo["matched_tier"] = matchedTier
+	}
+	if len(rule.RouteTiers) > 0 {
+		logInfo["estimated_tokens"] = estimatedTokens
+		logInfo["route_tiers"] = len(rule.RouteTiers)
+	}
+	c.Set(ginKeyChannelRouteLogInfo, logInfo)
 }
 
-func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, requestPath string) {
+func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, requestPath string, estimatedTokens int, matchedTier string) {
 	if c == nil {
 		return
 	}
-	c.Set(ginKeyChannelRouteLogInfo, gin.H{
+	logInfo := gin.H{
 		"rule_name":    strings.TrimSpace(rule.Name),
 		"model":        modelName,
 		"request_path": requestPath,
@@ -305,7 +365,15 @@ func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRou
 		"channel_ids":  rule.ChannelIDs,
 		"strict":       rule.Strict,
 		"exhausted":    true,
-	})
+	}
+	if matchedTier != "" {
+		logInfo["matched_tier"] = matchedTier
+	}
+	if len(rule.RouteTiers) > 0 {
+		logInfo["estimated_tokens"] = estimatedTokens
+		logInfo["route_tiers"] = len(rule.RouteTiers)
+	}
+	c.Set(ginKeyChannelRouteLogInfo, logInfo)
 }
 
 func AppendChannelRouteAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {

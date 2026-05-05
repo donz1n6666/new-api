@@ -17,15 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Banner,
   Button,
+  Card,
   Col,
   Divider,
   Form,
+  Input,
+  InputNumber,
   Modal,
   Row,
+  Select,
   Space,
   Spin,
   Table,
@@ -43,7 +47,7 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
 const KEY_ENABLED = 'channel_route_setting.enabled';
 const KEY_RULES = 'channel_route_setting.rules';
@@ -52,6 +56,22 @@ const defaultInputs = {
   [KEY_ENABLED]: false,
   [KEY_RULES]: '[]',
 };
+
+const CONDITION_VARS = [
+  { value: 'len', label: 'len (输入长度)' },
+  { value: 'p', label: 'p (prompt)' },
+  { value: 'c', label: 'c (completion)' },
+];
+const CONDITION_OPS = ['<', '<=', '>', '>='];
+
+const formatTokenHint = (value) => {
+  if (!value || value <= 0) return '';
+  if (value >= 1_000_000) return `= ${(value / 1_000_000).toFixed(1)}M tokens`;
+  if (value >= 1_000) return `= ${(value / 1_000).toFixed(0)}K tokens`;
+  return `= ${value} tokens`;
+};
+
+const emptyTier = () => ({ label: '', conditions: [], channel_ids: [] });
 
 const rulesExample = JSON.stringify(
   [
@@ -64,12 +84,18 @@ const rulesExample = JSON.stringify(
       strict: true,
     },
     {
-      name: 'qwen chat native',
-      group_regex: ['^vip$'],
-      model_regex: ['^Qwen3\\.5-35B-A3B$'],
-      path_regex: ['^/v1/chat/completions$'],
-      channel_ids: [34, 35],
-      strict: true,
+      name: 'GPT-4o 多档位渠道路由',
+      model_regex: ['^gpt-4o$'],
+      channel_ids: [5, 6, 7, 8],
+      route_tiers: [
+        {
+          label: '短请求',
+          conditions: [{ var: 'len', op: '<', value: 17000 }],
+          channel_ids: [5, 6],
+        },
+        { label: '长请求', conditions: [], channel_ids: [7, 8] },
+      ],
+      strict: false,
     },
   ],
   null,
@@ -101,8 +127,35 @@ const normalizeChannelIds = (text) => {
   return [...new Set(ids)];
 };
 
+const channelIdsToText = (ids) => (ids || []).join('\n');
+
 const stringifyPretty = (value) => JSON.stringify(value, null, 2);
 const stringifyCompact = (value) => JSON.stringify(value);
+
+const migrateOldFormat = (rule) => {
+  if (rule.route_tiers) return rule;
+  const threshold = rule.token_threshold;
+  const shortIds = rule.short_channel_ids;
+  const longIds = rule.long_channel_ids;
+  if (threshold && threshold > 0) {
+    const tiers = [];
+    if (shortIds && shortIds.length > 0) {
+      tiers.push({
+        label: '短请求',
+        conditions: [{ var: 'len', op: '<', value: threshold }],
+        channel_ids: shortIds,
+      });
+    }
+    if (longIds && longIds.length > 0) {
+      tiers.push({ label: '长请求', conditions: [], channel_ids: longIds });
+    }
+    if (tiers.length > 0) rule.route_tiers = tiers;
+  }
+  delete rule.token_threshold;
+  delete rule.short_channel_ids;
+  delete rule.long_channel_ids;
+  return rule;
+};
 
 const parseRulesJson = (jsonString) => {
   try {
@@ -110,7 +163,7 @@ const parseRulesJson = (jsonString) => {
     if (!Array.isArray(parsed)) return [];
     return parsed.map((rule, index) => ({
       id: index,
-      ...(rule || {}),
+      ...migrateOldFormat(rule || {}),
     }));
   } catch (e) {
     return [];
@@ -141,17 +194,223 @@ const tryParseRulesJsonArray = (jsonString) => {
   }
 };
 
-const buildModalFormValues = (rule) => {
-  const current = rule || {};
-  return {
-    name: current.name || '',
-    group_regex_text: (current.group_regex || []).join('\n'),
-    model_regex_text: (current.model_regex || []).join('\n'),
-    path_regex_text: (current.path_regex || []).join('\n'),
-    channel_ids_text: (current.channel_ids || []).join('\n'),
-    strict: !!current.strict,
+// ---------------------------------------------------------------------------
+// Visual Condition Row (Semi Design)
+// ---------------------------------------------------------------------------
+
+function ConditionRow({ condition, onChange, onRemove }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <Select
+        value={condition.var}
+        onChange={(value) => onChange({ ...condition, var: value })}
+        style={{ width: 140 }}
+        size='small'
+      >
+        {CONDITION_VARS.map((opt) => (
+          <Select.Option key={opt.value} value={opt.value}>
+            {opt.label}
+          </Select.Option>
+        ))}
+      </Select>
+      <Select
+        value={condition.op}
+        onChange={(value) => onChange({ ...condition, op: value })}
+        style={{ width: 80 }}
+        size='small'
+      >
+        {CONDITION_OPS.map((op) => (
+          <Select.Option key={op} value={op}>
+            {op}
+          </Select.Option>
+        ))}
+      </Select>
+      <InputNumber
+        value={condition.value}
+        onChange={(value) => onChange({ ...condition, value: value || 0 })}
+        min={0}
+        placeholder='tokens'
+        style={{ width: 120 }}
+        size='small'
+      />
+      <Text type='tertiary' size='small'>
+        {formatTokenHint(condition.value)}
+      </Text>
+      <Button
+        icon={<IconDelete />}
+        theme='borderless'
+        type='danger'
+        size='small'
+        onClick={onRemove}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Visual Tier Card (Semi Design)
+// ---------------------------------------------------------------------------
+
+function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition }) {
+  const { t } = useTranslation();
+  const isCatchAll = tier.conditions.length === 0 && index === total - 1;
+
+  const handleConditionChange = (ci, next) => {
+    const conditions = [...tier.conditions];
+    conditions[ci] = next;
+    onChange({ ...tier, conditions });
   };
-};
+
+  const handleConditionRemove = (ci) => {
+    onChange({ ...tier, conditions: tier.conditions.filter((_, i) => i !== ci) });
+  };
+
+  const handleChannelIdsChange = (text) => {
+    const ids = normalizeChannelIds(text);
+    onChange({ ...tier, channel_ids: ids || [] });
+  };
+
+  return (
+    <Card
+      style={{ marginBottom: 12 }}
+      bodyStyle={{ padding: 12 }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Space>
+          <Tag color='blue'>{t('档位')} {index + 1}/{total}</Tag>
+          <Input
+            value={tier.label}
+            onChange={(value) => onChange({ ...tier, label: value })}
+            placeholder={t('档位名称')}
+            size='small'
+            style={{ width: 140 }}
+          />
+          {isCatchAll && <Tag color='green'>{t('兜底')}</Tag>}
+        </Space>
+        <Button
+          icon={<IconDelete />}
+          theme='borderless'
+          type='danger'
+          size='small'
+          onClick={onRemove}
+          disabled={total <= 1}
+        />
+      </div>
+
+      {!isCatchAll && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text size='small' strong>{t('条件 (AND)')}</Text>
+            <Button
+              icon={<IconPlus />}
+              theme='borderless'
+              size='small'
+              onClick={onAddCondition}
+              disabled={tier.conditions.length >= 2}
+            >
+              {t('添加条件')}
+            </Button>
+          </div>
+          {tier.conditions.length === 0 ? (
+            <Text type='tertiary' size='small'>{t('始终匹配（默认档位）')}</Text>
+          ) : (
+            tier.conditions.map((cond, ci) => (
+              <ConditionRow
+                key={ci}
+                condition={cond}
+                onChange={(next) => handleConditionChange(ci, next)}
+                onRemove={() => handleConditionRemove(ci)}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      <div>
+        <Text size='small' strong>{t('渠道池')}</Text>
+        <Form.TextArea
+          rows={2}
+          value={channelIdsToText(tier.channel_ids)}
+          onChange={(value) => handleChannelIdsChange(value)}
+          placeholder={'12\n34'}
+          style={{ marginTop: 4 }}
+        />
+        <Text type='tertiary' size='small'>{t('填写渠道 ID，支持换行或逗号分隔。')}</Text>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Visual Tier Editor (Semi Design)
+// ---------------------------------------------------------------------------
+
+function RouteTierEditor({ tiers, onChange }) {
+  const { t } = useTranslation();
+
+  const handleTierChange = useCallback((index, next) => {
+    const nextTiers = [...tiers];
+    nextTiers[index] = next;
+    onChange(nextTiers);
+  }, [tiers, onChange]);
+
+  const handleAddTier = useCallback(() => {
+    const nextTiers = [...tiers];
+    const lastIndex = nextTiers.length - 1;
+    if (lastIndex >= 0 && nextTiers[lastIndex].conditions.length === 0) {
+      nextTiers[lastIndex] = {
+        ...nextTiers[lastIndex],
+        conditions: [{ var: 'len', op: '<', value: 200000 }],
+      };
+    }
+    nextTiers.push(emptyTier());
+    onChange(nextTiers);
+  }, [tiers, onChange]);
+
+  const handleRemoveTier = useCallback((index) => {
+    const nextTiers = tiers.filter((_, i) => i !== index);
+    onChange(nextTiers.length > 0 ? nextTiers : [emptyTier()]);
+  }, [tiers, onChange]);
+
+  const handleAddCondition = useCallback((index) => {
+    if (tiers[index].conditions.length >= 2) return;
+    const usedVars = new Set(tiers[index].conditions.map((c) => c.var));
+    const nextVar = usedVars.has('len') ? 'c' : 'len';
+    const nextTiers = tiers.map((tier, i) =>
+      i === index
+        ? { ...tier, conditions: [...tier.conditions, { var: nextVar, op: '<', value: 200000 }] }
+        : tier,
+    );
+    onChange(nextTiers);
+  }, [tiers, onChange]);
+
+  return (
+    <div>
+      {tiers.map((tier, index) => (
+        <RouteTierCard
+          key={index}
+          tier={tier}
+          index={index}
+          total={tiers.length}
+          onChange={(next) => handleTierChange(index, next)}
+          onRemove={() => handleRemoveTier(index)}
+          onAddCondition={() => handleAddCondition(index)}
+        />
+      ))}
+      <Button
+        icon={<IconPlus />}
+        onClick={handleAddTier}
+        style={{ marginTop: 4 }}
+      >
+        {t('添加档位')}
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 
 export default function SettingsChannelRoute(props) {
   const { t } = useTranslation();
@@ -163,8 +422,7 @@ export default function SettingsChannelRoute(props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [isEdit, setIsEdit] = useState(false);
-  const [modalInitValues, setModalInitValues] = useState(null);
-  const [modalFormKey, setModalFormKey] = useState(0);
+  const [editingTiers, setEditingTiers] = useState([emptyTier()]);
   const refForm = useRef();
   const modalFormRef = useRef();
 
@@ -212,7 +470,7 @@ export default function SettingsChannelRoute(props) {
             : <Text type='tertiary'>-</Text>,
       },
       {
-        title: t('渠道池'),
+        title: t('兜底渠道池'),
         dataIndex: 'channel_ids',
         render: (list) =>
           (list || []).length > 0
@@ -231,6 +489,35 @@ export default function SettingsChannelRoute(props) {
             {value ? t('严格') : t('可回退')}
           </Tag>
         ),
+      },
+      {
+        title: t('渠道路由档位'),
+        render: (_, record) =>
+          record.route_tiers && record.route_tiers.length > 0 ? (
+            <Space vertical align='start' spacing={2}>
+              {record.route_tiers.map((tier, i) => (
+                <Space key={i} spacing={4}>
+                  <Tag color='blue' size='small'>
+                    {tier.label || `Tier ${i + 1}`}
+                  </Tag>
+                  {tier.conditions?.length > 0 && (
+                    <Text size='small' type='tertiary'>
+                      {tier.conditions.map((c) => `${c.var} ${c.op} ${Number(c.value).toLocaleString()}`).join(' AND ')}
+                    </Text>
+                  )}
+                  {!tier.conditions?.length && i === record.route_tiers.length - 1 && (
+                    <Text size='small' type='tertiary' style={{ fontStyle: 'italic' }}>{t('兜底')}</Text>
+                  )}
+                  <Text size='small'>→</Text>
+                  <Text size='small'>
+                    {(tier.channel_ids || []).map((id) => `#${id}`).join(', ')}
+                  </Text>
+                </Space>
+              ))}
+            </Space>
+          ) : (
+            <Text type='tertiary'>-</Text>
+          ),
       },
       {
         title: t('操作'),
@@ -261,10 +548,7 @@ export default function SettingsChannelRoute(props) {
     }));
     const jsonString = rulesToJson(normalizedRules);
     setRules(normalizedRules);
-    setInputs((prev) => ({
-      ...prev,
-      [KEY_RULES]: jsonString,
-    }));
+    setInputs((prev) => ({ ...prev, [KEY_RULES]: jsonString }));
     if (refForm.current) {
       refForm.current.setValue(KEY_RULES, jsonString);
     }
@@ -272,17 +556,12 @@ export default function SettingsChannelRoute(props) {
 
   const openAddModal = () => {
     const nextRule = {
-      name: '',
-      group_regex: [],
-      model_regex: [],
-      path_regex: [],
-      channel_ids: [],
-      strict: true,
+      name: '', group_regex: [], model_regex: [], path_regex: [],
+      channel_ids: [], strict: true,
     };
     setEditingRule(nextRule);
     setIsEdit(false);
-    setModalInitValues(buildModalFormValues(nextRule));
-    setModalFormKey((value) => value + 1);
+    setEditingTiers([emptyTier()]);
     setModalVisible(true);
   };
 
@@ -290,8 +569,16 @@ export default function SettingsChannelRoute(props) {
     const nextRule = { ...(rule || {}) };
     setEditingRule(nextRule);
     setIsEdit(true);
-    setModalInitValues(buildModalFormValues(nextRule));
-    setModalFormKey((value) => value + 1);
+    setEditingTiers(
+      nextRule.route_tiers?.length
+        ? nextRule.route_tiers.map((t) => ({
+            ...t,
+            conditions: t.conditions || [],
+            channel_ids: t.channel_ids || [],
+            label: t.label || '',
+          }))
+        : [emptyTier()],
+    );
     setModalVisible(true);
   };
 
@@ -308,8 +595,17 @@ export default function SettingsChannelRoute(props) {
       if (modelRegex.length === 0) {
         return showError(t('模型正则不能为空'));
       }
+
+      // Validate tiers first
+      const validTiers = editingTiers.filter((tier) => tier.channel_ids.length > 0);
+      const hasTiers = validTiers.length > 0;
+      if (editingTiers.length > 0 && !hasTiers) {
+        return showError(t('至少一个档位必须填写渠道 ID'));
+      }
+
+      // Channel IDs are required only when no tiers are configured
       const channelIds = normalizeChannelIds(values.channel_ids_text);
-      if (!channelIds || channelIds.length === 0) {
+      if (!hasTiers && (!channelIds || channelIds.length === 0)) {
         return showError(t('渠道 ID 必须是正整数，支持换行或逗号分隔'));
       }
 
@@ -319,11 +615,18 @@ export default function SettingsChannelRoute(props) {
         group_regex: normalizeStringList(values.group_regex_text),
         model_regex: modelRegex,
         path_regex: normalizeStringList(values.path_regex_text),
-        channel_ids: channelIds,
+        channel_ids: channelIds || [],
         strict: !!values.strict,
       };
       if (!rulePayload.name) {
         return showError(t('名称不能为空'));
+      }
+      if (validTiers.length > 0) {
+        rulePayload.route_tiers = validTiers.map((tier) => ({
+          label: tier.label,
+          conditions: tier.conditions,
+          channel_ids: tier.channel_ids,
+        }));
       }
 
       const nextRules = [...(rules || [])];
@@ -337,7 +640,6 @@ export default function SettingsChannelRoute(props) {
       updateRulesState(nextRules);
       setModalVisible(false);
       setEditingRule(null);
-      setModalInitValues(null);
       showSuccess(t('保存成功'));
     } catch (error) {
       showError(t('请检查输入'));
@@ -356,10 +658,7 @@ export default function SettingsChannelRoute(props) {
 
   const switchToJsonMode = () => {
     const jsonString = rulesToJson(rules);
-    setInputs((prev) => ({
-      ...prev,
-      [KEY_RULES]: jsonString,
-    }));
+    setInputs((prev) => ({ ...prev, [KEY_RULES]: jsonString }));
     if (refForm.current) {
       refForm.current.setValue(KEY_RULES, jsonString);
     }
@@ -380,13 +679,8 @@ export default function SettingsChannelRoute(props) {
     }
     const requestQueue = updateArray.map((item) => {
       let value = inputs[item.key];
-      if (item.key === KEY_RULES) {
-        value = compactRules;
-      }
-      return API.put('/api/option/', {
-        key: item.key,
-        value: String(value),
-      });
+      if (item.key === KEY_RULES) value = compactRules;
+      return API.put('/api/option/', { key: item.key, value: String(value) });
     });
     setLoading(true);
     Promise.all(requestQueue)
@@ -394,19 +688,13 @@ export default function SettingsChannelRoute(props) {
         if (requestQueue.length === 1) {
           if (res.includes(undefined)) return;
         } else if (requestQueue.length > 1) {
-          if (res.includes(undefined)) {
-            return showError(t('部分保存失败，请重试'));
-          }
+          if (res.includes(undefined)) return showError(t('部分保存失败，请重试'));
         }
         showSuccess(t('保存成功'));
         props.refresh();
       })
-      .catch(() => {
-        showError(t('保存失败，请重试'));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      .catch(() => showError(t('保存失败，请重试')))
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -425,15 +713,11 @@ export default function SettingsChannelRoute(props) {
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
     setRules(parseRulesJson(currentInputs[KEY_RULES]));
-    if (refForm.current) {
-      refForm.current.setValues(currentInputs);
-    }
+    if (refForm.current) refForm.current.setValues(currentInputs);
   }, [props.options]);
 
   useEffect(() => {
-    if (editMode === 'visual') {
-      setRules(parseRulesJson(inputs[KEY_RULES]));
-    }
+    if (editMode === 'visual') setRules(parseRulesJson(inputs[KEY_RULES]));
   }, [editMode, inputs]);
 
   return (
@@ -444,12 +728,12 @@ export default function SettingsChannelRoute(props) {
           getFormApi={(formAPI) => (refForm.current = formAPI)}
           style={{ marginBottom: 15 }}
         >
-          <Form.Section text={t('静态渠道路由')}>
+          <Form.Section text={t('渠道路由')}>
             <Banner
               type='info'
               fullMode={false}
               description={t(
-                '根据分组、模型和请求路径静态限定渠道池。命中规则后只在指定渠道内继续按原优先级和权重选择，未配置时对现有行为无影响。',
+                '根据分组、模型、请求路径和 Token 条件智能选择渠道池。支持多档位条件匹配，未配置时对现有行为无影响。',
               )}
             />
             <Divider style={{ marginTop: 12, marginBottom: 12 }} />
@@ -457,34 +741,21 @@ export default function SettingsChannelRoute(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.Switch
                   field={KEY_ENABLED}
-                  label={t('启用静态渠道路由')}
+                  label={t('启用渠道路由')}
                   checkedText='|'
                   uncheckedText='O'
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      [KEY_ENABLED]: value,
-                    })
-                  }
-                  extraText={t(
-                    '适用于同模型存在多种原生格式渠道时，按调用路径和分组限定可选渠道，减少格式转换。',
-                  )}
+                  onChange={(value) => setInputs({ ...inputs, [KEY_ENABLED]: value })}
+                  extraText={t('按分组、模型、路径和 Token 条件将请求路由到指定渠道池。')}
                 />
               </Col>
             </Row>
 
             <Row style={{ marginTop: 12, marginBottom: 12 }}>
               <Space>
-                <Button
-                  type={editMode === 'visual' ? 'primary' : 'tertiary'}
-                  onClick={switchToVisualMode}
-                >
+                <Button type={editMode === 'visual' ? 'primary' : 'tertiary'} onClick={switchToVisualMode}>
                   {t('可视化编辑')}
                 </Button>
-                <Button
-                  type={editMode === 'json' ? 'primary' : 'tertiary'}
-                  onClick={switchToJsonMode}
-                >
+                <Button type={editMode === 'json' ? 'primary' : 'tertiary'} onClick={switchToJsonMode}>
                   JSON
                 </Button>
               </Space>
@@ -498,9 +769,7 @@ export default function SettingsChannelRoute(props) {
                       {t('新增规则')}
                     </Button>
                     <Text type='tertiary'>
-                      {t(
-                        '匹配顺序为分组、模型、路径。命中后只在渠道池内按原优先级和权重选。',
-                      )}
+                      {t('匹配顺序为分组、模型、路径。档位按顺序评估，首个匹配的档位生效。')}
                     </Text>
                   </Space>
                 </Row>
@@ -520,21 +789,9 @@ export default function SettingsChannelRoute(props) {
                     label={t('路由规则')}
                     rows={18}
                     placeholder={rulesExample}
-                    rules={[
-                      {
-                        validator: (rule, value) => verifyJSON(value || '[]'),
-                        message: t('不是合法的 JSON 字符串'),
-                      },
-                    ]}
-                    extraText={t(
-                      '字段支持：group_regex、name、model_regex、path_regex、channel_ids、strict。',
-                    )}
-                    onChange={(value) =>
-                      setInputs({
-                        ...inputs,
-                        [KEY_RULES]: value,
-                      })
-                    }
+                    rules={[{ validator: (rule, value) => verifyJSON(value || '[]'), message: t('不是合法的 JSON 字符串') }]}
+                    extraText={t('字段支持：name、group_regex、model_regex、path_regex、channel_ids、strict、route_tiers。')}
+                    onChange={(value) => setInputs({ ...inputs, [KEY_RULES]: value })}
                   />
                 </Col>
               </Row>
@@ -550,17 +807,24 @@ export default function SettingsChannelRoute(props) {
       <Modal
         title={isEdit ? t('编辑规则') : t('新增规则')}
         visible={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setEditingRule(null);
-          setModalInitValues(null);
-        }}
+        onCancel={() => { setModalVisible(false); setEditingRule(null); }}
         onOk={handleModalSave}
-        width={760}
+        width={800}
       >
         <Form
-          key={modalFormKey}
-          initValues={modalInitValues || {}}
+          key={isEdit ? `edit-${editingRule?.id}` : 'add'}
+          initValues={
+            editingRule
+              ? {
+                  name: editingRule.name || '',
+                  group_regex_text: (editingRule.group_regex || []).join('\n'),
+                  model_regex_text: (editingRule.model_regex || []).join('\n'),
+                  path_regex_text: (editingRule.path_regex || []).join('\n'),
+                  channel_ids_text: (editingRule.channel_ids || []).join('\n'),
+                  strict: editingRule.strict ?? true,
+                }
+              : {}
+          }
           getFormApi={(formAPI) => (modalFormRef.current = formAPI)}
           labelPosition='top'
         >
@@ -572,53 +836,38 @@ export default function SettingsChannelRoute(props) {
           />
           <Row gutter={12}>
             <Col span={8}>
-              <Form.TextArea
-                field='group_regex_text'
-                label={t('分组正则')}
-                rows={5}
-                placeholder={'^default$\n^vip$'}
-                extraText={t('可空。为空时表示不区分分组。')}
-              />
+              <Form.TextArea field='group_regex_text' label={t('分组正则')} rows={5} placeholder={'^default$\n^vip$'} extraText={t('可空。为空时表示不区分分组。')} />
             </Col>
             <Col span={8}>
-              <Form.TextArea
-                field='model_regex_text'
-                label={t('模型正则')}
-                rows={5}
-                placeholder={'^Qwen3\\.5-35B-A3B$'}
-                rules={[
-                  { required: true, message: t('模型正则不能为空') },
-                ]}
-              />
+              <Form.TextArea field='model_regex_text' label={t('模型正则')} rows={5} placeholder={'^Qwen3\\.5-35B-A3B$'} rules={[{ required: true, message: t('模型正则不能为空') }]} />
             </Col>
             <Col span={8}>
-              <Form.TextArea
-                field='path_regex_text'
-                label={t('路径正则')}
-                rows={5}
-                placeholder={'^/v1/messages$\n^/v1/chat/completions$'}
-                extraText={t('可空。为空时表示不区分路径。')}
-              />
+              <Form.TextArea field='path_regex_text' label={t('路径正则')} rows={5} placeholder={'^/v1/messages$\n^/v1/chat/completions$'} extraText={t('可空。为空时表示不区分路径。')} />
             </Col>
           </Row>
           <Form.TextArea
             field='channel_ids_text'
-            label={t('渠道池')}
-            rows={4}
+            label={t('兜底渠道池')}
+            rows={3}
             placeholder={'12\n34\n56'}
-            extraText={t('填写渠道 ID，支持换行或逗号分隔。')}
-            rules={[
-              { required: true, message: t('渠道池不能为空') },
-            ]}
+            extraText={t('无档位匹配时使用的默认渠道池。未配置档位时必填，配置档位后可选。')}
           />
+
+          {/* Visual Tier Editor */}
+          <div style={{ marginBottom: 12 }}>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>{t('渠道路由档位（可选）')}</Text>
+            <Text type='tertiary' size='small' style={{ display: 'block', marginBottom: 8 }}>
+              {t('每个档位可设置 0~2 个条件（对 len/p/c，AND 关系），最后一档为兜底无需条件。档位按顺序评估，首个匹配生效。')}
+            </Text>
+            <RouteTierEditor tiers={editingTiers} onChange={setEditingTiers} />
+          </div>
+
           <Form.Switch
             field='strict'
             label={t('严格模式')}
             checkedText='|'
             uncheckedText='O'
-            extraText={t(
-              '开启后，规则命中但渠道池无可用渠道时直接拒绝；关闭则回退到原始选路。',
-            )}
+            extraText={t('开启后，规则命中但渠道池无可用渠道时直接拒绝；关闭则回退到原始选路。')}
           />
         </Form>
       </Modal>
