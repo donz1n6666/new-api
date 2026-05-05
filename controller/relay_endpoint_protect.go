@@ -118,6 +118,9 @@ func parseEndpoints(endpoints string) []string {
 }
 
 // parseJSONEndpoints 解析 JSON 格式的 Endpoints
+// 支持两种格式：
+// 1. 简单格式: {"/v1/chat/completions": {...}}
+// 2. 嵌套格式: {"chat": {"path": "/v1/chat/completions", "method": "POST"}}
 func parseJSONEndpoints(endpoints string) []string {
 	var raw map[string]interface{}
 	if err := common.Unmarshal([]byte(endpoints), &raw); err != nil {
@@ -126,7 +129,20 @@ func parseJSONEndpoints(endpoints string) []string {
 	}
 
 	result := make([]string, 0, len(raw))
-	for key := range raw {
+	for key, value := range raw {
+		// 尝试从嵌套对象中提取 path 字段
+		if obj, ok := value.(map[string]interface{}); ok {
+			if path, exists := obj["path"]; exists {
+				if pathStr, ok := path.(string); ok {
+					pathStr = strings.TrimSpace(pathStr)
+					if pathStr != "" {
+						result = append(result, pathStr)
+						continue
+					}
+				}
+			}
+		}
+		// 否则使用顶层 key 作为端点
 		key = strings.TrimSpace(key)
 		if key != "" {
 			result = append(result, key)
