@@ -38,6 +38,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { validateJsonString } from './utils'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  GroupSelector,
+  ModelNameMatcher,
+  PathSelector,
+  ChannelSelector,
+  useChannelNameMap,
+} from './channel-route-selectors'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,17 +111,7 @@ const routeSchema = z.object({
   }),
 })
 
-const ruleEditorSchema = z.object({
-  name: z.string().min(1),
-  group_regex_text: z.string().optional(),
-  model_regex_text: z.string().min(1),
-  path_regex_text: z.string().optional(),
-  channel_ids_text: z.string().optional(),
-  strict: z.boolean(),
-})
-
 type ChannelRouteFormValues = z.infer<typeof routeSchema>
-type RuleEditorValues = z.infer<typeof ruleEditorSchema>
 
 // ---------------------------------------------------------------------------
 // Examples
@@ -358,17 +355,6 @@ function emptyTier(): RouteTier {
   return { label: '', conditions: [], channel_ids: [] }
 }
 
-function buildRuleEditorValues(rule?: ChannelRouteRule): RuleEditorValues {
-  return {
-    name: rule?.name || '',
-    group_regex_text: (rule?.group_regex || []).join('\n'),
-    model_regex_text: (rule?.model_regex || []).join('\n'),
-    path_regex_text: (rule?.path_regex || []).join('\n'),
-    channel_ids_text: (rule?.channel_ids || []).join('\n'),
-    strict: rule?.strict ?? true,
-  }
-}
-
 // ---------------------------------------------------------------------------
 // ConditionRow — reuses the same pattern as tiered-pricing-editor
 // ---------------------------------------------------------------------------
@@ -476,11 +462,6 @@ function RouteTierCard({
     onChange({ ...tier, conditions: tier.conditions.filter((_, i) => i !== ci) })
   }
 
-  const handleChannelIdsChange = (text: string) => {
-    const ids = normalizeChannelIds(text)
-    onChange({ ...tier, channel_ids: ids || [] })
-  }
-
   return (
     <div className='bg-muted/30 space-y-3 rounded-md border p-3'>
       <div className='flex items-center justify-between gap-2'>
@@ -548,19 +529,14 @@ function RouteTierCard({
         </div>
       )}
 
-      <div className='space-y-1'>
-        <Label className='text-xs'>{t('Channel Pool')}</Label>
-        <Textarea
-          rows={2}
-          value={(tier.channel_ids || []).join('\n')}
-          onChange={(e) => handleChannelIdsChange(e.target.value)}
-          placeholder='12\n34'
-          className='text-sm'
-        />
-        <p className='text-muted-foreground text-xs'>
-          {t('Channel IDs, one per line or comma-separated.')}
-        </p>
-      </div>
+      <ChannelSelector
+        value={(tier.channel_ids || []).join('\n')}
+        onChange={(text) => {
+          const ids = normalizeChannelIds(text)
+          onChange({ ...tier, channel_ids: ids || [] })
+        }}
+        compact
+      />
     </div>
   )
 }
@@ -658,17 +634,15 @@ export function ChannelRouteSettingsCard({
   // Tier editor state (managed separately from the form)
   const [editingTiers, setEditingTiers] = useState<RouteTier[]>([])
 
+  // Channel name resolver for displaying names in rule list
+  const getChannelName = useChannelNameMap()
+
   const form = useForm<ChannelRouteFormValues>({
     resolver: zodResolver(routeSchema),
     defaultValues: {
       enabled: defaultValues.enabled,
       rules: rulesToJson(parseRulesJson(defaultValues.rules)),
     },
-  })
-
-  const editorForm = useForm<RuleEditorValues>({
-    resolver: zodResolver(ruleEditorSchema),
-    defaultValues: buildRuleEditorValues(),
   })
 
   useEffect(() => {
@@ -713,16 +687,34 @@ export function ChannelRouteSettingsCard({
     setMode('json')
   }
 
+  // Dialog field states (not using react-hook-form to avoid lifecycle issues)
+  const [dlgName, setDlgName] = useState('')
+  const [dlgGroupRegex, setDlgGroupRegex] = useState('')
+  const [dlgModelRegex, setDlgModelRegex] = useState('')
+  const [dlgPathRegex, setDlgPathRegex] = useState('')
+  const [dlgChannelIds, setDlgChannelIds] = useState('')
+  const [dlgStrict, setDlgStrict] = useState(true)
+
   const openCreateDialog = () => {
     setEditingRule(null)
-    editorForm.reset(buildRuleEditorValues())
+    setDlgName('')
+    setDlgGroupRegex('')
+    setDlgModelRegex('')
+    setDlgPathRegex('')
+    setDlgChannelIds('')
+    setDlgStrict(true)
     setEditingTiers([emptyTier()])
     setDialogOpen(true)
   }
 
   const openEditDialog = (rule: ChannelRouteRule) => {
     setEditingRule(rule)
-    editorForm.reset(buildRuleEditorValues(rule))
+    setDlgName(rule.name || '')
+    setDlgGroupRegex((rule.group_regex || []).join('\n'))
+    setDlgModelRegex((rule.model_regex || []).join('\n'))
+    setDlgPathRegex((rule.path_regex || []).join('\n'))
+    setDlgChannelIds((rule.channel_ids || []).join('\n'))
+    setDlgStrict(rule.strict ?? true)
     setEditingTiers(
       rule.route_tiers?.length
         ? rule.route_tiers.map((t) => ({
@@ -741,11 +733,12 @@ export function ChannelRouteSettingsCard({
     toast.success(t('Deleted successfully'))
   }
 
-  const handleSaveRule = async () => {
-    const values = await editorForm.trigger()
-    if (!values) return
-
-    const payload = editorForm.getValues()
+  const handleSaveRule = () => {
+    // Validate name
+    if (!dlgName.trim()) {
+      toast.error(t('Rule name is required'))
+      return
+    }
 
     // Validate tiers first
     const validTiers = editingTiers.filter(
@@ -754,22 +747,18 @@ export function ChannelRouteSettingsCard({
     const hasTiers = validTiers.length > 0
 
     // Channel IDs are required only when no tiers are configured
-    const channelIds = normalizeChannelIds(payload.channel_ids_text)
+    const channelIds = normalizeChannelIds(dlgChannelIds)
     if (!hasTiers && (!channelIds || channelIds.length === 0)) {
       toast.error(t('Channel IDs must be positive integers'))
       return
     }
 
-    const modelRegex = normalizeStringList(payload.model_regex_text)
+    const modelRegex = normalizeStringList(dlgModelRegex)
     if (modelRegex.length === 0) {
       toast.error(t('Model regex is required'))
       return
     }
 
-    // Validate tiers
-    const validTiers = editingTiers.filter(
-      (tier) => tier.channel_ids.length > 0
-    )
     // Check that at least one tier has a non-empty pool if tiers are configured
     if (editingTiers.length > 0 && validTiers.length === 0) {
       toast.error(t('At least one tier must have channel IDs'))
@@ -794,12 +783,12 @@ export function ChannelRouteSettingsCard({
 
     const nextRule: ChannelRouteRule = {
       id: editingRule?.id ?? rules.length,
-      name: payload.name.trim(),
-      group_regex: normalizeStringList(payload.group_regex_text),
+      name: dlgName.trim(),
+      group_regex: normalizeStringList(dlgGroupRegex),
       model_regex: modelRegex,
-      path_regex: normalizeStringList(payload.path_regex_text),
+      path_regex: normalizeStringList(dlgPathRegex),
       channel_ids: channelIds || [],
-      strict: payload.strict,
+      strict: dlgStrict,
     }
 
     // Only include tiers if there are valid ones
@@ -967,7 +956,7 @@ export function ChannelRouteSettingsCard({
                                   {t('Fallback Pool')}:
                                 </span>{' '}
                                 {(rule.channel_ids || [])
-                                  .map((id) => `#${id}`)
+                                  .map((id) => getChannelName(id))
                                   .join(', ') || '-'}
                               </div>
                             </div>
@@ -1005,7 +994,7 @@ export function ChannelRouteSettingsCard({
                                     </span>
                                     <span>
                                       {tier.channel_ids
-                                        .map((id) => `#${id}`)
+                                        .map((id) => getChannelName(id))
                                         .join(', ')}
                                     </span>
                                   </div>
@@ -1090,149 +1079,67 @@ export function ChannelRouteSettingsCard({
             </DialogDescription>
           </DialogHeader>
 
-          <Form {...editorForm}>
-            <div className='space-y-4'>
-              <FormField
-                control={editorForm.control}
-                name='name'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Rule Name')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder={t('e.g. qwen messages native')}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className='grid gap-4 md:grid-cols-3'>
-                <FormField
-                  control={editorForm.control}
-                  name='group_regex_text'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Group Regex')}</FormLabel>
-                      <FormControl>
-                        <Textarea rows={5} placeholder='^default$' {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Optional. Leave empty to ignore user group.')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editorForm.control}
-                  name='model_regex_text'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Model Regex')}</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          rows={5}
-                          placeholder='^Qwen3\\.5-35B-A3B$'
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Required. One regex per line.')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editorForm.control}
-                  name='path_regex_text'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Path Regex')}</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          rows={5}
-                          placeholder='^/v1/messages$'
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Optional. Leave empty to ignore request path.')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={editorForm.control}
-                name='channel_ids_text'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Fallback Channel Pool')}</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        rows={3}
-                        placeholder={'12\n34\n56'}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Default pool used when no tier matches. Required when route tiers are not configured, optional otherwise.'
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Visual tier editor */}
-              <div className='space-y-2'>
-                <Label className='text-sm font-medium'>
-                  {t('Route Tiers (Optional)')}
-                </Label>
-                <p className='text-muted-foreground text-xs'>
-                  {t(
-                    'Each tier supports 0~2 conditions on len/p/c (AND logic). The last tier is the catch-all without conditions.'
-                  )}
-                </p>
-                <RouteTierEditor
-                  tiers={editingTiers}
-                  onChange={setEditingTiers}
-                />
-              </div>
-
-              <FormField
-                control={editorForm.control}
-                name='strict'
-                render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
-                    <div className='space-y-0.5'>
-                      <FormLabel className='text-base'>
-                        {t('Strict Mode')}
-                      </FormLabel>
-                      <FormDescription>
-                        {t(
-                          'When enabled, if a rule matches but all channels in the pool are unavailable, the request fails directly instead of falling back.'
-                        )}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
+          <div className='space-y-4'>
+            <div className='space-y-2'>
+              <Label className='text-sm font-medium'>{t('Rule Name')}</Label>
+              <Input
+                value={dlgName}
+                onChange={(e) => setDlgName(e.target.value)}
+                placeholder={t('e.g. qwen messages native')}
               />
             </div>
-          </Form>
+
+            <div className='grid gap-4 md:grid-cols-3'>
+              <GroupSelector
+                value={dlgGroupRegex}
+                onChange={setDlgGroupRegex}
+              />
+              <ModelNameMatcher
+                value={dlgModelRegex}
+                onChange={setDlgModelRegex}
+              />
+              <PathSelector
+                value={dlgPathRegex}
+                onChange={setDlgPathRegex}
+              />
+            </div>
+
+            <ChannelSelector
+              value={dlgChannelIds}
+              onChange={setDlgChannelIds}
+            />
+
+            {/* Visual tier editor */}
+            <div className='space-y-2'>
+              <Label className='text-sm font-medium'>
+                {t('Route Tiers (Optional)')}
+              </Label>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Each tier supports 0~2 conditions on len/p/c (AND logic). The last tier is the catch-all without conditions.'
+                )}
+              </p>
+              <RouteTierEditor
+                tiers={editingTiers}
+                onChange={setEditingTiers}
+              />
+            </div>
+
+            <div className='flex flex-row items-center justify-between rounded-lg border p-4'>
+              <div className='space-y-0.5'>
+                <Label className='text-base'>{t('Strict Mode')}</Label>
+                <p className='text-muted-foreground text-sm'>
+                  {t(
+                    'When enabled, if a rule matches but all channels in the pool are unavailable, the request fails directly instead of falling back.'
+                  )}
+                </p>
+              </div>
+              <Switch
+                checked={dlgStrict}
+                onCheckedChange={setDlgStrict}
+              />
+            </div>
+          </div>
 
           <DialogFooter>
             <Button

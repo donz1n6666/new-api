@@ -20,6 +20,13 @@ type BoundChannel struct {
 	Type int    `json:"type"`
 }
 
+type BoundChannelWithID struct {
+	Id     int    `json:"id"`
+	Name   string `json:"name"`
+	Type   int    `json:"type"`
+	Models string `json:"models"`
+}
+
 type Model struct {
 	Id           int            `json:"id"`
 	ModelName    string         `json:"model_name" gorm:"size:128;not null;uniqueIndex:uk_model_name_delete_at,priority:1"`
@@ -131,6 +138,46 @@ func GetBoundChannelsByModelsMap(modelNames []string) (map[string][]BoundChannel
 	}
 	for _, r := range rows {
 		result[r.Model] = append(result[r.Model], BoundChannel{Name: r.Name, Type: r.Type})
+	}
+	return result, nil
+}
+
+// GetBoundChannelsByModels returns channels (with ID) that serve the given model names.
+// Unlike GetBoundChannelsByModelsMap, this returns a flat list with channel IDs.
+func GetBoundChannelsByModels(modelNames []string) ([]BoundChannelWithID, error) {
+	if len(modelNames) == 0 {
+		return nil, nil
+	}
+	type row struct {
+		ChannelId int
+		Name      string
+		Type      int
+		Models    string
+	}
+	var rows []row
+	err := DB.Table("channels").
+		Select("channels.id as channel_id, channels.name as name, channels.type as type, channels.models as models").
+		Joins("JOIN abilities ON abilities.channel_id = channels.id").
+		Where("abilities.model IN ? AND abilities.enabled = ? AND channels.status = ?", modelNames, true, 1).
+		Distinct().
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	// Deduplicate by channel ID
+	seen := make(map[int]bool)
+	var result []BoundChannelWithID
+	for _, r := range rows {
+		if seen[r.ChannelId] {
+			continue
+		}
+		seen[r.ChannelId] = true
+		result = append(result, BoundChannelWithID{
+			Id:     r.ChannelId,
+			Name:   r.Name,
+			Type:   r.Type,
+			Models: r.Models,
+		})
 	}
 	return result, nil
 }

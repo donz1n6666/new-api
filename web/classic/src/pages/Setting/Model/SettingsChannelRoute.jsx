@@ -46,6 +46,13 @@ import {
   verifyJSON,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import {
+  GroupSelector,
+  ModelNameMatcher,
+  PathSelector,
+  ChannelSelector,
+  useChannelNameMap,
+} from '../../../components/common/ui/channel-route-selectors';
 
 const { Text, Title } = Typography;
 
@@ -389,15 +396,11 @@ function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition 
       )}
 
       <div>
-        <Text size='small' strong>{t('渠道池')}</Text>
-        <Form.TextArea
-          rows={2}
+        <ChannelSelector
           value={channelIdsToText(tier.channel_ids)}
-          onChange={(value) => handleChannelIdsChange(value)}
-          placeholder={'12\n34'}
-          style={{ marginTop: 4 }}
+          onChange={(text) => handleChannelIdsChange(text)}
+          compact
         />
-        <Text type='tertiary' size='small'>{t('填写渠道 ID，支持换行或逗号分隔。')}</Text>
       </div>
     </Card>
   );
@@ -485,8 +488,15 @@ export default function SettingsChannelRoute(props) {
   const [editingRule, setEditingRule] = useState(null);
   const [isEdit, setIsEdit] = useState(false);
   const [editingTiers, setEditingTiers] = useState([emptyTier()]);
+  // Selector values (managed outside the form)
+  const [selectorGroupRegex, setSelectorGroupRegex] = useState('');
+  const [selectorModelRegex, setSelectorModelRegex] = useState('');
+  const [selectorPathRegex, setSelectorPathRegex] = useState('');
+  const [selectorChannelIds, setSelectorChannelIds] = useState('');
   const refForm = useRef();
   const modalFormRef = useRef();
+
+  const getChannelName = useChannelNameMap();
 
   const ruleColumns = useMemo(
     () => [
@@ -538,7 +548,7 @@ export default function SettingsChannelRoute(props) {
           (list || []).length > 0
             ? (list || []).map((item) => (
                 <Tag key={item} color='orange' style={{ marginRight: 4 }}>
-                  #{item}
+                  {getChannelName(item)}
                 </Tag>
               ))
             : <Text type='tertiary'>-</Text>,
@@ -572,7 +582,7 @@ export default function SettingsChannelRoute(props) {
                   )}
                   <Text size='small'>→</Text>
                   <Text size='small'>
-                    {(tier.channel_ids || []).map((id) => `#${id}`).join(', ')}
+                    {(tier.channel_ids || []).map((id) => getChannelName(id)).join(', ')}
                   </Text>
                 </Space>
               ))}
@@ -600,7 +610,7 @@ export default function SettingsChannelRoute(props) {
         ),
       },
     ],
-    [t],
+    [t, getChannelName],
   );
 
   const updateRulesState = (nextRules) => {
@@ -624,6 +634,10 @@ export default function SettingsChannelRoute(props) {
     setEditingRule(nextRule);
     setIsEdit(false);
     setEditingTiers([emptyTier()]);
+    setSelectorGroupRegex('');
+    setSelectorModelRegex('');
+    setSelectorPathRegex('');
+    setSelectorChannelIds('');
     setModalVisible(true);
   };
 
@@ -631,6 +645,10 @@ export default function SettingsChannelRoute(props) {
     const nextRule = { ...(rule || {}) };
     setEditingRule(nextRule);
     setIsEdit(true);
+    setSelectorGroupRegex((nextRule.group_regex || []).join('\n'));
+    setSelectorModelRegex((nextRule.model_regex || []).join('\n'));
+    setSelectorPathRegex((nextRule.path_regex || []).join('\n'));
+    setSelectorChannelIds((nextRule.channel_ids || []).join('\n'));
     setEditingTiers(
       nextRule.route_tiers?.length
         ? nextRule.route_tiers.map((t) => ({
@@ -653,7 +671,7 @@ export default function SettingsChannelRoute(props) {
   const handleModalSave = async () => {
     try {
       const values = await modalFormRef.current.validate();
-      const modelRegex = normalizeStringList(values.model_regex_text);
+      const modelRegex = normalizeStringList(selectorModelRegex);
       if (modelRegex.length === 0) {
         return showError(t('模型正则不能为空'));
       }
@@ -666,7 +684,7 @@ export default function SettingsChannelRoute(props) {
       }
 
       // Channel IDs are required only when no tiers are configured
-      const channelIds = normalizeChannelIds(values.channel_ids_text);
+      const channelIds = normalizeChannelIds(selectorChannelIds);
       if (!hasTiers && (!channelIds || channelIds.length === 0)) {
         return showError(t('渠道 ID 必须是正整数，支持换行或逗号分隔'));
       }
@@ -689,9 +707,9 @@ export default function SettingsChannelRoute(props) {
       const rulePayload = {
         id: isEdit ? editingRule?.id : rules.length,
         name: (values.name || '').trim(),
-        group_regex: normalizeStringList(values.group_regex_text),
+        group_regex: normalizeStringList(selectorGroupRegex),
         model_regex: modelRegex,
-        path_regex: normalizeStringList(values.path_regex_text),
+        path_regex: normalizeStringList(selectorPathRegex),
         channel_ids: channelIds || [],
         strict: !!values.strict,
       };
@@ -907,24 +925,34 @@ export default function SettingsChannelRoute(props) {
             placeholder={t('例如：qwen messages native')}
             rules={[{ required: true, message: t('名称不能为空') }]}
           />
-          <Row gutter={12}>
-            <Col span={8}>
-              <Form.TextArea field='group_regex_text' label={t('分组正则')} rows={5} placeholder={'^default$\n^vip$'} extraText={t('可空。为空时表示不区分分组。')} />
-            </Col>
-            <Col span={8}>
-              <Form.TextArea field='model_regex_text' label={t('模型正则')} rows={5} placeholder={'^Qwen3\\.5-35B-A3B$'} rules={[{ required: true, message: t('模型正则不能为空') }]} />
-            </Col>
-            <Col span={8}>
-              <Form.TextArea field='path_regex_text' label={t('路径正则')} rows={5} placeholder={'^/v1/messages$\n^/v1/chat/completions$'} extraText={t('可空。为空时表示不区分路径。')} />
-            </Col>
-          </Row>
-          <Form.TextArea
-            field='channel_ids_text'
-            label={t('兜底渠道池')}
-            rows={3}
-            placeholder={'12\n34\n56'}
-            extraText={t('无档位匹配时使用的默认渠道池。未配置档位时必填，配置档位后可选。')}
-          />
+          <div style={{ marginBottom: 12 }}>
+            <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{t('分组匹配')}</Text>
+            <GroupSelector
+              value={selectorGroupRegex}
+              onChange={setSelectorGroupRegex}
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{t('模型匹配')} *</Text>
+            <ModelNameMatcher
+              value={selectorModelRegex}
+              onChange={setSelectorModelRegex}
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{t('路径匹配')}</Text>
+            <PathSelector
+              value={selectorPathRegex}
+              onChange={setSelectorPathRegex}
+            />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{t('兜底渠道池')}</Text>
+            <ChannelSelector
+              value={selectorChannelIds}
+              onChange={setSelectorChannelIds}
+            />
+          </div>
 
           {/* Visual Tier Editor */}
           <div style={{ marginBottom: 12 }}>

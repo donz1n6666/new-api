@@ -359,6 +359,32 @@ func SearchChannels(c *gin.Context) {
 	return
 }
 
+// GetBoundChannels returns channels that serve the given model names.
+// Query param: model (comma-separated model names)
+func GetBoundChannels(c *gin.Context) {
+	modelParam := c.Query("model")
+	if modelParam == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "model parameter is required",
+		})
+		return
+	}
+	modelNames := strings.Split(modelParam, ",")
+	for i := range modelNames {
+		modelNames[i] = strings.TrimSpace(modelNames[i])
+	}
+	channels, err := model.GetBoundChannelsByModels(modelNames)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    channels,
+	})
+}
+
 func GetChannel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
