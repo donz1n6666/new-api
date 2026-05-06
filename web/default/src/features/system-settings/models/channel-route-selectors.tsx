@@ -201,8 +201,7 @@ export function PathSelector({ value, onChange }: { value: string; onChange: (v:
     return (value || '').split('\n').filter(Boolean).map((regex) => {
       try {
         // Gemini 风格正则：还原为可读的模板路径
-        const geminiMatch = regex.match(/^\^\\\/(v1(\|v1beta\|v1alpha)?)\\\/(.+?)\\\/\[^\\\/:\]\+:(\\(stream\))?generateContent/)
-        if (geminiMatch) {
+        if (regex.includes('generateContent')) {
           return { path: `/v1beta/models/{model}:generateContent`, gemini: true }
         }
         const m = regex.match(/^\^(.+?)\$$/)
@@ -215,7 +214,7 @@ export function PathSelector({ value, onChange }: { value: string; onChange: (v:
     let regex: string
     if (path.includes('{model}')) {
       // Gemini 风格路径：归一化版本前缀和流式动作
-      // /v1beta/models/{model}:generateContent → ^(\/v1(eta)?\/models\/[^\/:]+:(stream)?generateContent(\?.*)?)$
+      // /v1beta/models/{model}:generateContent → ^\/(v1|v1beta|v1alpha)\/models\/[^\/:]+:(stream)?generateContent(\?.*)?$
       const afterVersion = path.replace(/^\/v1(alpha|beta)?\//, '')
       const versionGroup = '(v1|v1beta|v1alpha)'
       let body = afterVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

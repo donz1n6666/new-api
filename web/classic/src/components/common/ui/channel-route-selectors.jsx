@@ -188,8 +188,7 @@ export function PathSelector({ value, onChange }) {
   const entries = useMemo(() => {
     return (value || '').split('\n').filter(Boolean).map((regex) => {
       try {
-        const geminiMatch = regex.match(/^\^\\\/(v1(\|v1beta\|v1alpha)?)\\\/(.+?)\\\/\[^\\\/:\]\+:(\\(stream\))?generateContent/)
-        if (geminiMatch) {
+        if (regex.includes('generateContent')) {
           return { path: '/v1beta/models/{model}:generateContent', gemini: true };
         }
         const m = regex.match(/^\^(.+?)\$$/);
