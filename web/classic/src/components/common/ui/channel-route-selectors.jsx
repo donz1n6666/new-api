@@ -187,12 +187,29 @@ export function PathSelector({ value, onChange }) {
 
   const entries = useMemo(() => {
     return (value || '').split('\n').filter(Boolean).map((regex) => {
-      try { const m = regex.match(/^\^(.+?)\$$/); return { path: m ? m[1] : regex }; } catch { return { path: regex }; }
+      try {
+        const geminiMatch = regex.match(/^\^\\\/(v1(\|v1beta\|v1alpha)?)\\\/(.+?)\\\/\[^\\\/:\]\+:(\\(stream\))?generateContent/)
+        if (geminiMatch) {
+          return { path: '/v1beta/models/{model}:generateContent', gemini: true };
+        }
+        const m = regex.match(/^\^(.+?)\$$/);
+        return { path: m ? m[1].replace(/\\\./g, '.') : regex, gemini: false };
+      } catch { return { path: regex, gemini: false }; }
     });
   }, [value]);
 
   const addPath = (path) => {
-    const regex = `^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    let regex;
+    if (path.includes('{model}')) {
+      const afterVersion = path.replace(/^\/v1(alpha|beta)?\//, '');
+      const versionGroup = '(v1|v1beta|v1alpha)';
+      let body = afterVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      body = body.replace(/\\\{model\\\}/, '[^/:]+');
+      body = body.replace(/generateContent/, '(stream)?generateContent');
+      regex = `^\\/${versionGroup}\\/${body}(\\?.*)?$`;
+    } else {
+      regex = `^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+    }
     const current = (value || '').split('\n').filter(Boolean);
     if (current.includes(regex)) return;
     onChange([...current, regex].join('\n'));

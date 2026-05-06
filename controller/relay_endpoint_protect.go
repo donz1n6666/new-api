@@ -175,7 +175,95 @@ func isEndpointAllowed(requestPath string, allowedEndpoints []string) bool {
 		if strings.HasPrefix(requestPath, endpoint+"/") {
 			return true
 		}
+
+		// Gemini 路径归一化匹配：
+		// /v1/models/{model}:streamGenerateContent ↔ /v1beta/models/{model}:generateContent
+		if geminiPathMatch(requestPath, endpoint) {
+			return true
+		}
 	}
 
 	return false
+}
+
+// geminiPathMatch 对 Gemini 风格路径做归一化比较
+// 处理 /v1/ vs /v1beta/ 版本差异和 streamGenerateContent vs generateContent 流式差异
+func geminiPathMatch(requestPath, endpoint string) bool {
+	// 两个路径都必须包含 :generateContent（或 :streamGenerateContent）
+	reqAction := extractGeminiAction(requestPath)
+	epAction := extractGeminiAction(endpoint)
+	if reqAction == "" || epAction == "" {
+		return false
+	}
+
+	// 归一化 action：streamGenerateContent → generateContent
+	reqAction = normalizeGeminiAction(reqAction)
+	epAction = normalizeGeminiAction(epAction)
+
+	// action 不匹配
+	if reqAction != epAction {
+		return false
+	}
+
+	// 提取版本之后的路径部分（models/xxx:action）
+	reqBase := stripVersionPrefix(requestPath)
+	epBase := stripVersionPrefix(endpoint)
+
+	// 归一化模型名：将实际模型名替换为 {model} 占位符后再比较
+	reqBase = normalizeGeminiModelPath(reqBase)
+	epBase = normalizeGeminiModelPath(epBase)
+
+	return reqBase == epBase
+}
+
+// extractGeminiAction 提取 Gemini 路径中 : 后面的 action（不含查询参数）
+func extractGeminiAction(path string) string {
+	idx := strings.LastIndex(path, ":")
+	if idx == -1 {
+		return ""
+	}
+	action := path[idx+1:]
+	// 去掉查询参数
+	if qi := strings.Index(action, "?"); qi != -1 {
+		action = action[:qi]
+	}
+	// 必须是合法的 Gemini action
+	if action == "generateContent" || action == "streamGenerateContent" ||
+		action == "countTokens" || action == "embedContent" || action == "batchEmbedContents" {
+		return action
+	}
+	return ""
+}
+
+// normalizeGeminiAction 将 streamGenerateContent 归一化为 generateContent
+func normalizeGeminiAction(action string) string {
+	if action == "streamGenerateContent" {
+		return "generateContent"
+	}
+	return action
+}
+
+// stripVersionPrefix 去掉 /v1/、/v1beta/、/v1alpha/ 版本前缀
+func stripVersionPrefix(path string) string {
+	for _, prefix := range []string{"/v1beta/", "/v1alpha/", "/v1/"} {
+		if strings.HasPrefix(path, prefix) {
+			return path[len(prefix):]
+		}
+	}
+	return path
+}
+
+// normalizeGeminiModelPath 将 models/xxx:action 归一化为 models/{model}:action
+func normalizeGeminiModelPath(path string) string {
+	const modelsPrefix = "models/"
+	idx := strings.Index(path, modelsPrefix)
+	if idx == -1 {
+		return path
+	}
+	afterModels := path[idx+len(modelsPrefix):]
+	colonIdx := strings.Index(afterModels, ":")
+	if colonIdx == -1 {
+		return path
+	}
+	return path[:idx] + modelsPrefix + "{model}:" + afterModels[colonIdx+1:]
 }

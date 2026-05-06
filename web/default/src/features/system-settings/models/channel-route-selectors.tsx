@@ -199,12 +199,34 @@ export function PathSelector({ value, onChange }: { value: string; onChange: (v:
 
   const entries = useMemo(() => {
     return (value || '').split('\n').filter(Boolean).map((regex) => {
-      try { const m = regex.match(/^\^(.+?)\$$/); return { path: m ? m[1] : regex } } catch { return { path: regex } }
+      try {
+        // Gemini 风格正则：还原为可读的模板路径
+        const geminiMatch = regex.match(/^\^\\\/(v1(\|v1beta\|v1alpha)?)\\\/(.+?)\\\/\[^\\\/:\]\+:(\\(stream\))?generateContent/)
+        if (geminiMatch) {
+          return { path: `/v1beta/models/{model}:generateContent`, gemini: true }
+        }
+        const m = regex.match(/^\^(.+?)\$$/)
+        return { path: m ? m[1].replace(/\\\./g, '.') : regex, gemini: false }
+      } catch { return { path: regex, gemini: false } }
     })
   }, [value])
 
   const addPath = (path: string) => {
-    const regex = `^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`
+    let regex: string
+    if (path.includes('{model}')) {
+      // Gemini 风格路径：归一化版本前缀和流式动作
+      // /v1beta/models/{model}:generateContent → ^(\/v1(eta)?\/models\/[^\/:]+:(stream)?generateContent(\?.*)?)$
+      const afterVersion = path.replace(/^\/v1(alpha|beta)?\//, '')
+      const versionGroup = '(v1|v1beta|v1alpha)'
+      let body = afterVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      // {model} → 匹配任意模型名
+      body = body.replace(/\\\{model\\\}/, '[^/:]+')
+      // generateContent → 同时匹配 streamGenerateContent
+      body = body.replace(/generateContent/, '(stream)?generateContent')
+      regex = `^\\/${versionGroup}\\/${body}(\\?.*)?$`
+    } else {
+      regex = `^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`
+    }
     const current = (value || '').split('\n').filter(Boolean)
     if (current.includes(regex)) { toast.warning(t('Already added')); return }
     onChange([...current, regex].join('\n'))
