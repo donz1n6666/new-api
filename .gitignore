@@ -36,3 +36,6 @@ data/
 .test
 token_estimator_test.go
 skills-lock.json
+
+# i18n sync extras (auto-generated)
+web/default/src/i18n/locales/_extras/
