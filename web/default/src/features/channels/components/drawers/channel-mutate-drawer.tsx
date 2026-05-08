@@ -378,6 +378,8 @@ export function ChannelMutateDrawer({
   const currentModels = form.watch('models')
   const currentModelMapping = form.watch('model_mapping')
   const awsKeyType = form.watch('aws_key_type')
+  const oa2OpenAIEnabled = form.watch('oa2_openai_enabled')
+  const oa2ClaudeEnabled = form.watch('oa2_claude_enabled')
   const upstreamModelUpdateCheckEnabled = form.watch(
     'upstream_model_update_check_enabled'
   )
@@ -768,6 +770,20 @@ export function ChannelMutateDrawer({
         type,
         key,
         base_url: form.getValues('base_url') || '',
+        ...(type === 58
+          ? {
+              oa2_base_url_openai:
+                form.getValues('oa2_openai_enabled') &&
+                form.getValues('oa2_base_url_openai')?.trim()
+                  ? form.getValues('oa2_base_url_openai')?.trim()
+                  : '',
+              oa2_base_url_claude:
+                form.getValues('oa2_claude_enabled') &&
+                form.getValues('oa2_base_url_claude')?.trim()
+                  ? form.getValues('oa2_base_url_claude')?.trim()
+                  : '',
+            }
+          : {}),
       })
 
       if (response.success && response.data) {
@@ -1320,6 +1336,130 @@ export function ChannelMutateDrawer({
                   />
                 )}
 
+                {/* OA2 二合一渠道 (type 58) */}
+                {currentType === 58 && (
+                  <div className='space-y-4 rounded-lg border p-4'>
+                    <div className='space-y-0.5'>
+                      <p className='text-sm font-medium'>
+                        {t('OA2 Combined Channel')}
+                      </p>
+                      <p className='text-muted-foreground text-sm'>
+                        {t(
+                          'OA2 channels support both OpenAI-native and Claude-native upstream formats. You can enable each side independently and configure separate base URLs.'
+                        )}
+                      </p>
+                    </div>
+
+                    <div className='grid gap-4 md:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='oa2_openai_enabled'
+                        render={({ field }) => (
+                          <FormItem className='rounded-lg border p-4'>
+                            <div className='flex items-center justify-between gap-3'>
+                              <div className='space-y-0.5'>
+                                <FormLabel className='text-base'>
+                                  {t('Enable OpenAI Side')}
+                                </FormLabel>
+                                <FormDescription>
+                                  {t(
+                                    'Enable OpenAI-compatible upstream routing for this OA2 channel.'
+                                  )}
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='oa2_claude_enabled'
+                        render={({ field }) => (
+                          <FormItem className='rounded-lg border p-4'>
+                            <div className='flex items-center justify-between gap-3'>
+                              <div className='space-y-0.5'>
+                                <FormLabel className='text-base'>
+                                  {t('Enable Claude Side')}
+                                </FormLabel>
+                                <FormDescription>
+                                  {t(
+                                    'Enable Claude-compatible upstream routing for this OA2 channel.'
+                                  )}
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className='grid gap-4 md:grid-cols-2'>
+                      <FormField
+                        control={form.control}
+                        name='oa2_base_url_openai'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('OpenAI Base URL')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t(
+                                  'e.g., https://api.openai.com'
+                                )}
+                                disabled={!oa2OpenAIEnabled}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Base URL for the OpenAI-compatible upstream.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='oa2_base_url_claude'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Claude Base URL')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder={t(
+                                  'e.g., https://api.anthropic.com'
+                                )}
+                                disabled={!oa2ClaudeEnabled}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Base URL for the Claude-compatible upstream.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Xunfei/Spark (type 18) */}
                 {currentType === 18 && (
                   <FormField
@@ -1788,7 +1928,7 @@ export function ChannelMutateDrawer({
                 )}
 
                 {/* General base_url for other types */}
-                {![3, 8, 22, 36, 45].includes(currentType) && (
+                {![3, 8, 22, 36, 45, 58].includes(currentType) && (
                   <FormField
                     control={form.control}
                     name='base_url'

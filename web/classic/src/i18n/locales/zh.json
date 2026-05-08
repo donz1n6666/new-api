@@ -1,4 +1,13 @@
 {
+  "关": "关",
+  "开": "开",
+  "例如：https://api.anthropic.com": "例如：https://api.anthropic.com",
+  "例如：https://api.openai.com": "例如：https://api.openai.com",
+  "用于 /v1/chat/completions 等 OpenAI 原生接口": "用于 /v1/chat/completions 等 OpenAI 原生接口",
+  "用于 /v1/messages 等 Claude 原生接口": "用于 /v1/messages 等 Claude 原生接口",
+  "Claude 格式 Base URL": "Claude 格式 Base URL",
+  "OA2 二合一渠道支持 OpenAI 和 Claude 两种原生格式，可分别启用并配置独立的 Base URL": "OA2 二合一渠道支持 OpenAI 和 Claude 两种原生格式，可分别启用并配置独立的 Base URL",
+  "OpenAI 格式 Base URL": "OpenAI 格式 Base URL",
   "translation": {
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}",
@@ -2561,7 +2570,6 @@
     "默认补全倍率": "默认补全倍率",
     "每日签到": "每日签到",
     "今日已签到，累计签到": "今日已签到，累计签到",
-    "天": "天",
     "每日签到可获得随机额度奖励": "每日签到可获得随机额度奖励",
     "今日已签到": "今日已签到",
     "立即签到": "立即签到",

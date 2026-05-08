@@ -1,4 +1,13 @@
 {
+  "关": "關",
+  "开": "開",
+  "例如：https://api.anthropic.com": "例如：https://api.anthropic.com",
+  "例如：https://api.openai.com": "例如：https://api.openai.com",
+  "用于 /v1/chat/completions 等 OpenAI 原生接口": "用於 /v1/chat/completions 等 OpenAI 原生介面",
+  "用于 /v1/messages 等 Claude 原生接口": "用於 /v1/messages 等 Claude 原生介面",
+  "Claude 格式 Base URL": "Claude 格式 Base URL",
+  "OA2 二合一渠道支持 OpenAI 和 Claude 两种原生格式，可分别启用并配置独立的 Base URL": "OA2 二合一渠道支援 OpenAI 和 Claude 兩種原生格式，可分別啟用並配置獨立的 Base URL",
+  "OpenAI 格式 Base URL": "OpenAI 格式 Base URL",
   "translation": {
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web搜尋 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 圖片生成調用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}",

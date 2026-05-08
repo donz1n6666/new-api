@@ -215,6 +215,11 @@ const EditChannelModal = (props) => {
     upstream_model_update_last_check_time: 0,
     upstream_model_update_last_detected_models: [],
     upstream_model_update_ignored_models: '',
+    // OA2 二合一渠道配置
+    oa2_openai_enabled: false,
+    oa2_claude_enabled: false,
+    oa2_base_url_openai: '',
+    oa2_base_url_claude: '',
   };
   const [batch, setBatch] = useState(false);
   const [multiToSingle, setMultiToSingle] = useState(false);
@@ -927,6 +932,11 @@ const EditChannelModal = (props) => {
           )
             ? parsedSettings.upstream_model_update_ignored_models.join(',')
             : '';
+          // 读取 OA2 二合一渠道配置
+          data.oa2_openai_enabled = parsedSettings.oa2_openai_enabled === true;
+          data.oa2_claude_enabled = parsedSettings.oa2_claude_enabled === true;
+          data.oa2_base_url_openai = parsedSettings.oa2_base_url_openai || '';
+          data.oa2_base_url_claude = parsedSettings.oa2_base_url_claude || '';
         } catch (error) {
           console.error('解析其他设置失败:', error);
           data.azure_responses_version = '';
@@ -946,6 +956,11 @@ const EditChannelModal = (props) => {
           data.upstream_model_update_last_check_time = 0;
           data.upstream_model_update_last_detected_models = [];
           data.upstream_model_update_ignored_models = '';
+          // OA2 默认值
+          data.oa2_openai_enabled = false;
+          data.oa2_claude_enabled = false;
+          data.oa2_base_url_openai = '';
+          data.oa2_base_url_claude = '';
         }
       } else {
         // 兼容历史数据：老渠道没有 settings 时，默认按 json 展示
@@ -964,6 +979,11 @@ const EditChannelModal = (props) => {
         data.upstream_model_update_last_check_time = 0;
         data.upstream_model_update_last_detected_models = [];
         data.upstream_model_update_ignored_models = '';
+        // OA2 默认值
+        data.oa2_openai_enabled = false;
+        data.oa2_claude_enabled = false;
+        data.oa2_base_url_openai = '';
+        data.oa2_base_url_claude = '';
       }
 
       if (
@@ -1074,13 +1094,21 @@ const EditChannelModal = (props) => {
         err = true;
       } else {
         try {
+          const payload = {
+            base_url: inputs['base_url'],
+            type: inputs['type'],
+            key: inputs['key'],
+          };
+
+          // OA2 渠道：发送两个 URL
+          if (inputs.type === 58) {
+            payload.oa2_base_url_openai = inputs['oa2_base_url_openai'];
+            payload.oa2_base_url_claude = inputs['oa2_base_url_claude'];
+          }
+
           const res = await API.post(
             '/api/channel/fetch_models',
-            {
-              base_url: inputs['base_url'],
-              type: inputs['type'],
-              key: inputs['key'],
-            },
+            payload,
             { skipErrorHandler: true },
           );
 
@@ -1824,6 +1852,22 @@ const EditChannelModal = (props) => {
     }
     if (typeof settings.upstream_model_update_last_check_time !== 'number') {
       settings.upstream_model_update_last_check_time = 0;
+    }
+
+    // type === 58 (OA2): 保存 OA2 二合一渠道配置
+    if (localInputs.type === 58) {
+      settings.oa2_openai_enabled = localInputs.oa2_openai_enabled === true;
+      settings.oa2_claude_enabled = localInputs.oa2_claude_enabled === true;
+      settings.oa2_base_url_openai =
+        (localInputs.oa2_base_url_openai || '').trim();
+      settings.oa2_base_url_claude =
+        (localInputs.oa2_base_url_claude || '').trim();
+    } else {
+      // 非 OA2 渠道，清理相关设置
+      delete settings.oa2_openai_enabled;
+      delete settings.oa2_claude_enabled;
+      delete settings.oa2_base_url_openai;
+      delete settings.oa2_base_url_claude;
     }
 
     localInputs.settings = JSON.stringify(settings);
@@ -3359,6 +3403,7 @@ const EditChannelModal = (props) => {
                         inputs.type !== 8 &&
                         inputs.type !== 22 &&
                         inputs.type !== 36 &&
+                        inputs.type !== 58 &&
                         (inputs.type !== 45 || doubaoApiEditUnlocked) && (
                           <div>
                             <Form.Input
@@ -3378,6 +3423,93 @@ const EditChannelModal = (props) => {
                             />
                           </div>
                         )}
+
+                      {/* OA2 二合一渠道：双 Base URL 带复选框 */}
+                      {inputs.type === 58 && (
+                        <div className='space-y-4'>
+                          <div className='p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-2'>
+                            <Text className='text-sm font-medium text-blue-700 dark:text-blue-400'>
+                              OA2 二合一渠道支持 OpenAI 和 Claude 两种原生格式，可分别启用并配置独立的 Base URL
+                            </Text>
+                          </div>
+
+                          {/* OpenAI 格式 URL */}
+                          <div className='flex items-start gap-3'>
+                            <Form.Switch
+                              field='oa2_openai_enabled'
+                              label=''
+                              checkedText={t('开')}
+                              uncheckedText={t('关')}
+                              initValue={false}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'oa2_openai_enabled',
+                                  value,
+                                )
+                              }
+                              className='mt-1'
+                            />
+                            <div className='flex-1'>
+                              <Form.Input
+                                field='oa2_base_url_openai'
+                                label={t('OpenAI 格式 Base URL')}
+                                placeholder={t(
+                                  '例如：https://api.openai.com',
+                                )}
+                                disabled={!inputs.oa2_openai_enabled}
+                                onChange={(value) =>
+                                  handleChannelOtherSettingsChange(
+                                    'oa2_base_url_openai',
+                                    value,
+                                  )
+                                }
+                                showClear
+                                extraText={t(
+                                  '用于 /v1/chat/completions 等 OpenAI 原生接口',
+                                )}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Claude 格式 URL */}
+                          <div className='flex items-start gap-3'>
+                            <Form.Switch
+                              field='oa2_claude_enabled'
+                              label=''
+                              checkedText={t('开')}
+                              uncheckedText={t('关')}
+                              initValue={false}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'oa2_claude_enabled',
+                                  value,
+                                )
+                              }
+                              className='mt-1'
+                            />
+                            <div className='flex-1'>
+                              <Form.Input
+                                field='oa2_base_url_claude'
+                                label={t('Claude 格式 Base URL')}
+                                placeholder={t(
+                                  '例如：https://api.anthropic.com',
+                                )}
+                                disabled={!inputs.oa2_claude_enabled}
+                                onChange={(value) =>
+                                  handleChannelOtherSettingsChange(
+                                    'oa2_base_url_claude',
+                                    value,
+                                  )
+                                }
+                                showClear
+                                extraText={t(
+                                  '用于 /v1/messages 等 Claude 原生接口',
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {inputs.type === 22 && (
                         <div>

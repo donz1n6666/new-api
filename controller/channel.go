@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -967,17 +968,114 @@ func UpdateChannel(c *gin.Context) {
 	return
 }
 
+// fetchOpenAIStyleModels 获取 OpenAI 格式的模型列表
+func fetchOpenAIStyleModels(baseURL, key string) ([]string, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	url := fmt.Sprintf("%s/v1/models", baseURL)
+
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header.Set("Authorization", "Bearer "+key)
+
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", response.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	models := make([]string, 0, len(result.Data))
+	for _, model := range result.Data {
+		models = append(models, model.ID)
+	}
+	return models, nil
+}
+
 func FetchModels(c *gin.Context) {
 	var req struct {
-		BaseURL string `json:"base_url"`
-		Type    int    `json:"type"`
-		Key     string `json:"key"`
+		BaseURL      string `json:"base_url"`
+		Type         int    `json:"type"`
+		Key          string `json:"key"`
+		OA2OpenAIURL string `json:"oa2_base_url_openai,omitempty"`
+		OA2ClaudeURL string `json:"oa2_base_url_claude,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Invalid request",
+		})
+		return
+	}
+
+	// OA2 渠道：分别获取 OpenAI 和 Claude 的模型，然后合并去重
+	if req.Type == constant.ChannelTypeOA2 {
+		allModels := make([]string, 0)
+		modelSet := make(map[string]bool)
+		errorMessages := make([]string, 0)
+
+		// 获取 OpenAI 格式的模型
+		if req.OA2OpenAIURL != "" {
+			openAIModels, err := fetchOpenAIStyleModels(req.OA2OpenAIURL, req.Key)
+			if err != nil {
+				errorMessages = append(errorMessages, fmt.Sprintf("OpenAI格式: %s", err.Error()))
+			} else {
+				for _, m := range openAIModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+
+		// 获取 Claude 格式的模型（大部分中转也用 OpenAI 兼容接口）
+		if req.OA2ClaudeURL != "" {
+			claudeModels, err := fetchOpenAIStyleModels(req.OA2ClaudeURL, req.Key)
+			if err != nil {
+				errorMessages = append(errorMessages, fmt.Sprintf("Claude格式: %s", err.Error()))
+			} else {
+				for _, m := range claudeModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+
+		// 如果至少获取到一种模型，返回成功（部分失败只记录警告）
+		if len(allModels) > 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"data":    allModels,
+			})
+			return
+		}
+
+		// 如果都失败了，返回错误
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "获取模型失败: " + strings.Join(errorMessages, "; "),
 		})
 		return
 	}

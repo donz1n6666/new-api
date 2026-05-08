@@ -27,6 +27,7 @@ import SettingClaudeModel from '../../pages/Setting/Model/SettingClaudeModel';
 import SettingGlobalModel from '../../pages/Setting/Model/SettingGlobalModel';
 import SettingGrokModel from '../../pages/Setting/Model/SettingGrokModel';
 import SettingsChannelAffinity from '../../pages/Setting/Operation/SettingsChannelAffinity';
+import SettingsChannelRoute from '../../pages/Setting/Model/SettingsChannelRoute';
 
 const ModelSetting = () => {
   const { t } = useTranslation();
@@ -48,6 +49,8 @@ const ModelSetting = () => {
     'gemini.thinking_adapter_budget_tokens_percentage': 0.6,
     'grok.violation_deduction_enabled': true,
     'grok.violation_deduction_amount': 0.05,
+    'channel_route_setting.enabled': false,
+    'channel_route_setting.rules': '[]',
   });
 
   let [loading, setLoading] = useState(false);
@@ -124,6 +127,10 @@ const ModelSetting = () => {
         {/* Claude */}
         <Card style={{ marginTop: '10px' }}>
           <SettingClaudeModel options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* Channel route */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsChannelRoute options={inputs} refresh={onRefresh} />
         </Card>
         {/* Grok */}
         <Card style={{ marginTop: '10px' }}>

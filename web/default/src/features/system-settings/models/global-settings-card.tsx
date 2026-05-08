@@ -66,6 +66,7 @@ const schema = z.object({
     pass_through_request_enabled: z.boolean(),
     thinking_model_blacklist: jsonString,
     chat_completions_to_responses_policy: jsonString,
+    model_endpoint_protect_enabled: z.boolean(),
   }),
   general_setting: z.object({
     ping_interval_enabled: z.boolean(),
@@ -80,6 +81,7 @@ type FlatGlobalModelSettings = {
   'global.pass_through_request_enabled': boolean
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
+  'global.model_endpoint_protect_enabled': boolean
   'general_setting.ping_interval_enabled': boolean
   'general_setting.ping_interval_seconds': number
 }
@@ -97,6 +99,8 @@ const flattenGlobalValues = (
     values.global.chat_completions_to_responses_policy,
     '{}'
   ),
+  'global.model_endpoint_protect_enabled':
+    values.global.model_endpoint_protect_enabled,
   'general_setting.ping_interval_enabled':
     values.general_setting.ping_interval_enabled,
   'general_setting.ping_interval_seconds':
@@ -233,6 +237,33 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                   </Button>
                 </div>
                 <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Separator />
+
+          <FormField
+            control={form.control}
+            name='global.model_endpoint_protect_enabled'
+            render={({ field }) => (
+              <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                <div className='space-y-0.5'>
+                  <FormLabel className='text-base'>
+                    {t('Enable Model Endpoint Protection')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, models can only be accessed through their configured allowed endpoints.'
+                    )}
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
               </FormItem>
             )}
           />

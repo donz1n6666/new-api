@@ -185,12 +185,13 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
 	apiType, _ := common.ChannelType2APIType(channelType)
+	baseURL := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)
 	channelMeta := &ChannelMeta{
 		ChannelType:          channelType,
 		ChannelId:            common.GetContextKeyInt(c, constant.ContextKeyChannelId),
 		ChannelIsMultiKey:    common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey),
 		ChannelMultiKeyIndex: common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex),
-		ChannelBaseUrl:       common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl),
+		ChannelBaseUrl:       baseURL,
 		ApiType:              apiType,
 		ApiVersion:           c.GetString("api_version"),
 		ApiKey:               common.GetContextKeyString(c, constant.ContextKeyChannelKey),
@@ -218,6 +219,37 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	channelOtherSettings, ok := common.GetContextKeyType[dto.ChannelOtherSettings](c, constant.ContextKeyChannelOtherSetting)
 	if ok {
 		channelMeta.ChannelOtherSettings = channelOtherSettings
+	}
+
+	// OA2 二合一渠道：根据请求格式动态选择适配器和 BaseURL
+	if channelType == constant.ChannelTypeOA2 {
+		if info.RelayFormat == types.RelayFormatClaude {
+			// Claude 原生格式 -> 使用 Claude 适配器
+			channelMeta.ApiType = constant.APITypeAnthropic
+			if channelOtherSettings.OA2ClaudeEnabled && channelOtherSettings.OA2BaseURLClaude != "" {
+				channelMeta.ChannelBaseUrl = channelOtherSettings.OA2BaseURLClaude
+			} else {
+				urls := strings.Split(baseURL, "|")
+				if len(urls) >= 2 && strings.TrimSpace(urls[1]) != "" {
+					channelMeta.ChannelBaseUrl = strings.TrimSpace(urls[1])
+				} else {
+					channelMeta.ChannelBaseUrl = "https://api.anthropic.com"
+				}
+			}
+		} else {
+			// OpenAI 格式 -> 使用 OpenAI 适配器
+			channelMeta.ApiType = constant.APITypeOpenAI
+			if channelOtherSettings.OA2OpenAIEnabled && channelOtherSettings.OA2BaseURLOpenAI != "" {
+				channelMeta.ChannelBaseUrl = channelOtherSettings.OA2BaseURLOpenAI
+			} else {
+				urls := strings.Split(baseURL, "|")
+				if len(urls) >= 1 && strings.TrimSpace(urls[0]) != "" {
+					channelMeta.ChannelBaseUrl = strings.TrimSpace(urls[0])
+				} else {
+					channelMeta.ChannelBaseUrl = "https://api.openai.com"
+				}
+			}
+		}
 	}
 
 	if streamSupportedChannels[channelMeta.ChannelType] {
@@ -312,6 +344,7 @@ func (info *RelayInfo) ToString() string {
 var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeOpenAI:      true,
 	constant.ChannelTypeAnthropic:   true,
+	constant.ChannelTypeOA2:         true, // OA二合一渠道
 	constant.ChannelTypeAws:         true,
 	constant.ChannelTypeGemini:      true,
 	constant.ChannelCloudflare:      true,

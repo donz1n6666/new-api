@@ -66,7 +66,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return
 	}
-	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
+	notifyUrl, err := url.Parse(getUnifiedEpayNotifyURL())
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return

@@ -117,6 +117,34 @@ func mergeModelNames(base []string, appended []string) []string {
 	return merged
 }
 
+// fetchOA2OpenAIModels 获取 OA2 渠道模型列表
+func fetchOA2OpenAIModels(channel *model.Channel, url string) ([]string, error) {
+	key, _, apiErr := channel.GetNextEnabledKey()
+	if apiErr != nil {
+		return nil, fmt.Errorf("获取渠道密钥失败: %w", apiErr)
+	}
+	key = strings.TrimSpace(key)
+
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := GetResponseBody(http.MethodGet, url, channel, headers)
+	if err != nil {
+		return nil, err
+	}
+
+	var result OpenAIModelsResponse
+	if err := common.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return lo.Map(result.Data, func(item OpenAIModel, _ int) string {
+		return item.ID
+	}), nil
+}
+
 func subtractModelNames(base []string, removed []string) []string {
 	removeSet := make(map[string]struct{}, len(removed))
 	for _, model := range normalizeModelNames(removed) {
@@ -287,6 +315,75 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 			return nil, err
 		}
 		return normalizeModelNames(models), nil
+	}
+
+	// OA2 二合一渠道：分别获取 OpenAI 和 Claude 的模型，然后合并去重
+	if channel.Type == constant.ChannelTypeOA2 {
+		otherSettings := channel.GetOtherSettings()
+		allModels := make([]string, 0)
+		modelSet := make(map[string]bool)
+
+		// 获取 OpenAI 格式的模型
+		if otherSettings.OA2OpenAIEnabled && otherSettings.OA2BaseURLOpenAI != "" {
+			openAIURL := fmt.Sprintf("%s/v1/models", otherSettings.OA2BaseURLOpenAI)
+			openAIModels, err := fetchOA2OpenAIModels(channel, openAIURL)
+			if err == nil {
+				for _, m := range openAIModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+
+		// 获取 Claude 格式的模型（大部分中转也用 OpenAI 兼容接口）
+		if otherSettings.OA2ClaudeEnabled && otherSettings.OA2BaseURLClaude != "" {
+			claudeURL := fmt.Sprintf("%s/v1/models", otherSettings.OA2BaseURLClaude)
+			claudeModels, err := fetchOA2OpenAIModels(channel, claudeURL)
+			if err == nil {
+				for _, m := range claudeModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+
+		// 如果获取到模型，返回；否则尝试使用 BaseURL 中 | 分隔符兼容模式
+		if len(allModels) > 0 {
+			return normalizeModelNames(allModels), nil
+		}
+
+		// 兼容模式：尝试解析 BaseURL 中的 | 分隔符
+		urls := strings.Split(baseURL, "|")
+		if len(urls) >= 1 && strings.TrimSpace(urls[0]) != "" {
+			openAIURL := fmt.Sprintf("%s/v1/models", strings.TrimSpace(urls[0]))
+			openAIModels, err := fetchOA2OpenAIModels(channel, openAIURL)
+			if err == nil {
+				for _, m := range openAIModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+		if len(urls) >= 2 && strings.TrimSpace(urls[1]) != "" {
+			claudeURL := fmt.Sprintf("%s/v1/models", strings.TrimSpace(urls[1]))
+			claudeModels, err := fetchOA2OpenAIModels(channel, claudeURL)
+			if err == nil {
+				for _, m := range claudeModels {
+					if !modelSet[m] {
+						modelSet[m] = true
+						allModels = append(allModels, m)
+					}
+				}
+			}
+		}
+
+		return normalizeModelNames(allModels), nil
 	}
 
 	var url string

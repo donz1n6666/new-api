@@ -2,6 +2,7 @@ import { ChannelAffinitySection } from '../general/channel-affinity'
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ChannelRouteSettingsCard } from './channel-route-settings-card'
 import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
@@ -36,6 +37,8 @@ const MODELS_SECTIONS = [
               settings['global.chat_completions_to_responses_policy'],
               '{}'
             ),
+            model_endpoint_protect_enabled:
+              settings['global.model_endpoint_protect_enabled'],
           },
           general_setting: {
             ping_interval_enabled:
@@ -123,6 +126,19 @@ const MODELS_SECTIONS = [
             settings['channel_affinity_setting.default_ttl_seconds'],
           'channel_affinity_setting.rules':
             settings['channel_affinity_setting.rules'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'channel-route',
+    titleKey: 'Static Channel Route',
+    descriptionKey: 'Restrict channel selection by model, group, and request path',
+    build: (settings: ModelSettings) => (
+      <ChannelRouteSettingsCard
+        defaultValues={{
+          enabled: settings['channel_route_setting.enabled'] ?? false,
+          rules: settings['channel_route_setting.rules'] ?? '[]',
         }}
       />
     ),
