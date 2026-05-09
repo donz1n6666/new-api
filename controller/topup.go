@@ -89,12 +89,16 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// ── Ethereum top-up info ──────────────────────────────────────────────
+	enableEthereumTopUp, ethereumInfo := getEthereumTopUpInfo()
+
 	data := gin.H{
 		"enable_online_topup":        isEpayTopUpEnabled(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
 		"enable_creem_topup":         isCreemTopUpEnabled(),
 		"enable_waffo_topup":         enableWaffo,
 		"enable_waffo_pancake_topup": enableWaffoPancake,
+		"enable_ethereum_topup":     enableEthereumTopUp,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -110,6 +114,10 @@ func GetTopUpInfo(c *gin.Context) {
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
+	}
+	if enableEthereumTopUp {
+		data["ethereum_info"] = ethereumInfo
+		data["ethereum_min_topup"] = setting.EthereumMinTopUp
 	}
 	common.ApiSuccess(c, data)
 }

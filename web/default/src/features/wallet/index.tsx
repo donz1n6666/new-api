@@ -39,17 +39,20 @@ import {
   useCreemPayment,
   useWaffoPayment,
   useWaffoPancakePayment,
+  useEthereumPayment,
 } from './hooks'
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
   isWaffoPancakePayment,
+  isEthereumPayment,
 } from './lib'
 import type {
   UserWalletData,
   PaymentMethod,
   PresetAmount,
   CreemProduct,
+  EthereumTokenConfig,
 } from './types'
 
 interface WalletProps {
@@ -102,6 +105,7 @@ export function Wallet(props: WalletProps) {
   const { processWaffoPayment } = useWaffoPayment()
   const { processing: pancakeProcessing, processWaffoPancakePayment } =
     useWaffoPancakePayment()
+  const { processing: ethProcessing, processEthereumPayment } = useEthereumPayment()
 
   // Fetch and refresh user data
   const fetchUser = useCallback(async () => {
@@ -164,7 +168,22 @@ export function Wallet(props: WalletProps) {
   // Handle payment method selection
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
-    setPaymentLoading(method.type)
+
+    // For Ethereum payments, handle directly without confirmation dialog
+    if (isEthereumPayment(method.type)) {
+      const loadingKey = `ethereum-${method.address || method.type}`
+      setPaymentLoading(loadingKey)
+      try {
+        const tokenAddress = method.address || '0x0000000000000000000000000000000000000000'
+        const success = await processEthereumPayment(topupAmount, tokenAddress)
+        if (success) {
+          await fetchUser()
+        }
+      } finally {
+        setPaymentLoading(null)
+      }
+      return
+    }
 
     try {
       // Validate minimum topup
@@ -245,6 +264,21 @@ export function Wallet(props: WalletProps) {
     }
   }
 
+  // Handle Ethereum token selection
+  const handleEthereumTokenSelect = async (token: EthereumTokenConfig) => {
+    const loadingKey = `ethereum-${token.address}`
+    setPaymentLoading(loadingKey)
+
+    try {
+      const success = await processEthereumPayment(topupAmount, token.address)
+      if (success) {
+        await fetchUser()
+      }
+    } finally {
+      setPaymentLoading(null)
+    }
+  }
+
   // Get discount rate for current topup amount
   const getDiscountRate = useCallback(() => {
     return topupInfo?.discount?.[topupAmount] || DEFAULT_DISCOUNT_RATE
@@ -306,6 +340,9 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  enableEthereumTopup={topupInfo?.enable_ethereum_topup}
+                  ethereumInfo={topupInfo?.ethereum_info}
+                  onEthereumTokenSelect={handleEthereumTokenSelect}
                 />
               </div>
 

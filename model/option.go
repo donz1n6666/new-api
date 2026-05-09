@@ -118,6 +118,12 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
+	common.OptionMap["EthereumEnabled"] = strconv.FormatBool(setting.EthereumEnabled)
+	common.OptionMap["EthereumChainId"] = strconv.FormatInt(setting.EthereumChainId, 10)
+	common.OptionMap["EthereumContractAddress"] = setting.EthereumContractAddress
+	common.OptionMap["EthereumAlchemyWebhookSigningKey"] = setting.EthereumAlchemyWebhookSigningKey
+	common.OptionMap["EthereumMinTopUp"] = strconv.Itoa(setting.EthereumMinTopUp)
+	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -443,6 +449,18 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumEnabled":
+		setting.EthereumEnabled = value == "true"
+	case "EthereumChainId":
+		setting.EthereumChainId, _ = strconv.ParseInt(value, 10, 64)
+	case "EthereumContractAddress":
+		setting.EthereumContractAddress = value
+	case "EthereumAlchemyWebhookSigningKey":
+		setting.EthereumAlchemyWebhookSigningKey = value
+	case "EthereumMinTopUp":
+		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumSupportedTokens":
+		// validated lazily via GetEthereumTokens(), just store in OptionMap
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

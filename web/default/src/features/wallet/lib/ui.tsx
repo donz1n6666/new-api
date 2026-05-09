@@ -127,6 +127,18 @@ export function getPaymentIcon(
           style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.WAFFO_PANCAKE] }}
         />
       )
+    case PAYMENT_TYPES.ETHEREUM:
+      return (
+        <svg
+          className={className}
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.ETHEREUM] }}
+        >
+          <path d="M12 1.75l-6.25 10.5L12 16l6.25-3.75L12 1.75z" opacity="0.6" />
+          <path d="M12 16l-6.25-3.75L12 22.25l6.25-10L12 16z" />
+        </svg>
+      )
     default:
       return <CreditCard className={className} />
   }

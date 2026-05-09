@@ -87,6 +87,13 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
 }
 
 /**
+ * Check if payment method is Ethereum
+ */
+export function isEthereumPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ETHEREUM
+}
+
+/**
  * Get default payment type from topup info
  */
 export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {

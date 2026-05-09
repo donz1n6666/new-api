@@ -25,6 +25,7 @@ import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPa
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWaffoPancake from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffoPancake';
+import SettingsPaymentGatewayEthereum from '../../pages/Setting/Payment/SettingsPaymentGatewayEthereum';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -205,6 +206,12 @@ const PaymentSetting = () => {
             {/*    hideSectionTitle*/}
             {/*  />*/}
             {/*</Tabs.TabPane>*/}
+            <Tabs.TabPane tab={t('Ethereum 设置')} itemKey='ethereum'>
+              <SettingsPaymentGatewayEthereum
+                options={inputs}
+                refresh={onRefresh}
+              />
+            </Tabs.TabPane>
           </Tabs>
         </Card>
       </Spin>

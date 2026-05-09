@@ -4462,5 +4462,21 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム"
-  }
+  },
+  "Ethereum Gateway": "Ethereum ゲートウェイ",
+  "Configure Ethereum and ERC-20 wallet payments": "Ethereum および ERC-20 ウォレット支払いを設定",
+  "Enable Ethereum payments": "Ethereum 支払いを有効にする",
+  "Contract Address": "コントラクトアドレス",
+  "Alchemy Webhook Signing Key": "Alchemy Webhook 署名キー",
+  "Leave blank unless updating": "更新しない場合は空白のまま",
+  "Supported Tokens (JSON)": "対応トークン (JSON)",
+  "Save Ethereum settings": "Ethereum 設定を保存",
+  "Please install MetaMask or another EVM wallet": "MetaMask または他の EVMウォレットをインストールしてください",
+  "Please switch your wallet to chain {{chainId}}": "ウォレットをチェーン {{chainId}} に切り替えてください",
+  "Ethereum transaction failed": "Ethereum トランザクション失敗",
+  "Failed to create order": "注文の作成に失敗しました",
+  "Please confirm the transaction in your wallet": "ウォレットでトランザクションを確認してください",
+  "Transaction confirmed. Balance will be credited after webhook confirmation.": "トランザクション確認済み。Webhook確認後に残高が反映されます。",
+  "You rejected the wallet request": "ウォレットリクエストを拒否しました",
+  "Payment failed": "支払い失敗"
 }

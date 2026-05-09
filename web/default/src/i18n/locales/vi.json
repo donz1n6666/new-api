@@ -4462,5 +4462,21 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Ethereum Gateway": "Cổng Ethereum",
+  "Configure Ethereum and ERC-20 wallet payments": "Cấu hình thanh toán ví Ethereum và ERC-20",
+  "Enable Ethereum payments": "Bật thanh toán Ethereum",
+  "Contract Address": "Địa chỉ hợp đồng",
+  "Alchemy Webhook Signing Key": "Khóa ký Webhook Alchemy",
+  "Leave blank unless updating": "Để trống trừ khi cập nhật",
+  "Supported Tokens (JSON)": "Token được hỗ trợ (JSON)",
+  "Save Ethereum settings": "Lưu cài đặt Ethereum",
+  "Please install MetaMask or another EVM wallet": "Vui lòng cài đặt MetaMask hoặc ví EVM khác",
+  "Please switch your wallet to chain {{chainId}}": "Vui lòng chuyển ví sang chain {{chainId}}",
+  "Ethereum transaction failed": "Giao dịch Ethereum thất bại",
+  "Failed to create order": "Tạo đơn hàng thất bại",
+  "Please confirm the transaction in your wallet": "Vui lòng xác nhận giao dịch trong ví của bạn",
+  "Transaction confirmed. Balance will be credited after webhook confirmation.": "Giao dịch đã xác nhận. Số dư sẽ được ghi có sau khi webhook xác nhận.",
+  "You rejected the wallet request": "Bạn đã từ chối yêu cầu ví",
+  "Payment failed": "Thanh toán thất bại"
 }

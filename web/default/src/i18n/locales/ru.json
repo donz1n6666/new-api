@@ -4462,5 +4462,21 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Ethereum Gateway": "Шлюз Ethereum",
+  "Configure Ethereum and ERC-20 wallet payments": "Настройка платежей через Ethereum и ERC-20 кошелек",
+  "Enable Ethereum payments": "Включить платежи Ethereum",
+  "Contract Address": "Адрес контракта",
+  "Alchemy Webhook Signing Key": "Ключ подписи Alchemy Webhook",
+  "Leave blank unless updating": "Оставьте пустым, если не обновляете",
+  "Supported Tokens (JSON)": "Поддерживаемые токены (JSON)",
+  "Save Ethereum settings": "Сохранить настройки Ethereum",
+  "Please install MetaMask or another EVM wallet": "Пожалуйста, установите MetaMask или другой EVM-кошелек",
+  "Please switch your wallet to chain {{chainId}}": "Пожалуйста, переключите кошелек на цепочку {{chainId}}",
+  "Ethereum transaction failed": "Транзакция Ethereum не удалась",
+  "Failed to create order": "Не удалось создать заказ",
+  "Please confirm the transaction in your wallet": "Пожалуйста, подтвердите транзакцию в кошельке",
+  "Transaction confirmed. Balance will be credited after webhook confirmation.": "Транзакция подтверждена. Баланс будет зачислен после подтверждения webhook.",
+  "You rejected the wallet request": "Вы отклонили запрос кошелька",
+  "Payment failed": "Платеж не удался"
 }

@@ -40,6 +40,7 @@ import {
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  isEthereumPayment,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -47,8 +48,42 @@ import type {
   TopupInfo,
   CreemProduct,
   WaffoPayMethod,
+  EthereumTokenConfig,
+  EthereumTopupInfo,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+
+function resolveEthereumToken(
+  method: PaymentMethod,
+  ethereumInfo?: EthereumTopupInfo
+): EthereumTokenConfig | null {
+  const tokens = ethereumInfo?.tokens || []
+  if (tokens.length === 0 || !isEthereumPayment(method.type)) {
+    return null
+  }
+
+  const normalizedAddress = method.address?.toLowerCase()
+  if (normalizedAddress) {
+    const matchedByAddress = tokens.find(
+      (token) => token.address.toLowerCase() === normalizedAddress
+    )
+    if (matchedByAddress) {
+      return matchedByAddress
+    }
+  }
+
+  const normalizedName = method.name?.trim().toLowerCase()
+  if (normalizedName) {
+    const matchedBySymbol = tokens.find(
+      (token) => token.symbol.trim().toLowerCase() === normalizedName
+    )
+    if (matchedBySymbol) {
+      return matchedBySymbol
+    }
+  }
+
+  return tokens.length === 1 ? tokens[0] : null
+}
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -78,6 +113,9 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  enableEthereumTopup?: boolean
+  ethereumInfo?: EthereumTopupInfo
+  onEthereumTokenSelect?: (token: EthereumTokenConfig) => void
 }
 
 export function RechargeFormCard({
@@ -108,6 +146,9 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  enableEthereumTopup,
+  ethereumInfo,
+  onEthereumTokenSelect,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -128,13 +169,25 @@ export function RechargeFormCard({
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
     enableWaffoTopup ||
-    enableWaffoPancakeTopup
+    enableWaffoPancakeTopup ||
+    enableEthereumTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
   const hasStandardPaymentMethods =
     Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
+  const configuredEthereumAddresses = new Set(
+    (topupInfo?.pay_methods || [])
+      .filter((method) => isEthereumPayment(method.type))
+      .map((method) => resolveEthereumToken(method, ethereumInfo)?.address)
+      .filter((address): address is string => !!address)
+      .map((address) => address.toLowerCase())
+  )
+  const automaticEthereumTokens =
+    ethereumInfo?.tokens?.filter(
+      (token) => !configuredEthereumAddresses.has(token.address.toLowerCase())
+    ) || []
 
   if (loading) {
     return (
@@ -415,6 +468,54 @@ export function RechargeFormCard({
                     </div>
                   </div>
                 )}
+
+              {/* Ethereum Token Selection */}
+              {enableEthereumTopup && onEthereumTokenSelect && ethereumInfo && (
+                <div className='space-y-2.5 sm:space-y-3'>
+                  <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    {t('Ethereum Payment')}
+                  </Label>
+                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
+                    {automaticEthereumTokens.map((token) => {
+                      const ethMin = ethereumInfo.min_topup || 0
+                      const belowMin = ethMin > topupAmount
+                      const loadingKey = `ethereum-${token.address}`
+
+                      const button = (
+                        <Button
+                          key={token.address}
+                          variant='outline'
+                          onClick={() => onEthereumTokenSelect(token)}
+                          disabled={belowMin || !!paymentLoading}
+                          className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
+                        >
+                          {paymentLoading === loadingKey ? (
+                            <Loader2 className='h-4 w-4 animate-spin' />
+                          ) : (
+                            getPaymentIcon('ethereum', 'h-4 w-4')
+                          )}
+                          <span className='truncate'>{token.symbol}</span>
+                        </Button>
+                      )
+
+                      return belowMin ? (
+                        <TooltipProvider key={token.address}>
+                          <Tooltip>
+                            <TooltipTrigger render={button}></TooltipTrigger>
+                            <TooltipContent>
+                              {t('Minimum topup amount: {{amount}}', {
+                                amount: ethMin,
+                              })}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        button
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

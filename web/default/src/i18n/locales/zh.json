@@ -4462,5 +4462,21 @@
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
-  }
+  },
+  "Ethereum Gateway": "Ethereum 网关",
+  "Configure Ethereum and ERC-20 wallet payments": "配置以太坊和 ERC-20 钱包支付",
+  "Enable Ethereum payments": "启用 Ethereum 支付",
+  "Contract Address": "合约地址",
+  "Alchemy Webhook Signing Key": "Alchemy Webhook 签名密钥",
+  "Leave blank unless updating": "留空则不更新",
+  "Supported Tokens (JSON)": "支持的代币 (JSON)",
+  "Save Ethereum settings": "保存 Ethereum 设置",
+  "Please install MetaMask or another EVM wallet": "请安装 MetaMask 或其他 EVM 钱包",
+  "Please switch your wallet to chain {{chainId}}": "请将钱包切换到链 {{chainId}}",
+  "Ethereum transaction failed": "以太坊交易失败",
+  "Failed to create order": "创建订单失败",
+  "Please confirm the transaction in your wallet": "请在钱包中确认交易",
+  "Transaction confirmed. Balance will be credited after webhook confirmation.": "交易已确认，余额将在 Webhook 确认后到账。",
+  "You rejected the wallet request": "您拒绝了钱包请求",
+  "Payment failed": "支付失败"
 }
