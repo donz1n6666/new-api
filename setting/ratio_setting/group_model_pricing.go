@@ -2,6 +2,7 @@ package ratio_setting
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -559,6 +560,9 @@ func SyncFromGlobalToGroups(targetGroups []string, modelNames []string) error {
 	globalImageRatio := GetImageRatioCopy()
 	globalAudioRatio := GetAudioRatioCopy()
 	globalAudioCompletionRatio := GetAudioCompletionRatioCopy()
+	// 获取全局计费模式和表达式（包含 tiered_expr）
+	globalBillingMode := billing_setting.GetBillingModeCopy()
+	globalBillingExpr := billing_setting.GetBillingExprCopy()
 
 	// 构建模型名称集合
 	modelSet := make(map[string]struct{})
@@ -639,25 +643,25 @@ func SyncFromGlobalToGroups(targetGroups []string, modelNames []string) error {
 				if val, ok := globalAudioCompletionRatio[modelName]; ok {
 					targetAudioCompletion[modelName] = val
 				}
-				// 全局配置的计费方式：有 ModelPrice 就是 per-request，否则是 per-token
-				if _, ok := globalModelPrice[modelName]; ok {
+				// 同步计费模式和表达式（支持 tiered_expr）
+				if mode, ok := globalBillingMode[modelName]; ok && mode != "" {
+					targetBillingMode[modelName] = mode
+				} else if _, ok := globalModelPrice[modelName]; ok {
 					targetBillingMode[modelName] = "per-request"
 				} else {
 					targetBillingMode[modelName] = "per-token"
+				}
+				if expr, ok := globalBillingExpr[modelName]; ok && expr != "" {
+					targetBillingExpr[modelName] = expr
 				}
 			}
 		} else {
 			// 同步所有全局配置
 			for modelName, val := range globalModelPrice {
 				targetPrice[modelName] = val
-				targetBillingMode[modelName] = "per-request"
 			}
 			for modelName, val := range globalModelRatio {
-				// 如果已经有 ModelPrice，就不覆盖倍率
-				if _, exists := globalModelPrice[modelName]; !exists {
-					targetRatio[modelName] = val
-					targetBillingMode[modelName] = "per-token"
-				}
+				targetRatio[modelName] = val
 			}
 			for modelName, val := range globalCompletionRatio {
 				targetCompletion[modelName] = val
@@ -676,6 +680,28 @@ func SyncFromGlobalToGroups(targetGroups []string, modelNames []string) error {
 			}
 			for modelName, val := range globalAudioCompletionRatio {
 				targetAudioCompletion[modelName] = val
+			}
+			// 同步计费模式和表达式
+			for modelName, mode := range globalBillingMode {
+				if mode != "" {
+					targetBillingMode[modelName] = mode
+				}
+			}
+			for modelName, expr := range globalBillingExpr {
+				if expr != "" {
+					targetBillingExpr[modelName] = expr
+				}
+			}
+			// 对于没有显式计费模式的模型，根据是否有 ModelPrice 推断
+			for modelName := range globalModelPrice {
+				if _, exists := targetBillingMode[modelName]; !exists {
+					targetBillingMode[modelName] = "per-request"
+				}
+			}
+			for modelName := range globalModelRatio {
+				if _, exists := targetBillingMode[modelName]; !exists {
+					targetBillingMode[modelName] = "per-token"
+				}
 			}
 		}
 
