@@ -982,7 +982,7 @@ type SubscriptionPreConsumeRecord struct {
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
 	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
-	TierUsages         string `json:"tier_usages" gorm:"type:text;default:''"`
+	TierUsages         string `json:"tier_usages" gorm:"type:text"`
 	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
 }
