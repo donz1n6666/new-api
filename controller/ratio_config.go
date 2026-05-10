@@ -60,24 +60,26 @@ func SyncGroupPricing(c *gin.Context) {
 		return
 	}
 
-	// 检查源分组是否有配置
-	sourceHasConfig := false
-	if _, ok := ratio_setting.GetGroupModelPriceCopy()[req.SourceGroup]; ok {
-		sourceHasConfig = true
-	}
-	if _, ok := ratio_setting.GetGroupModelRatioCopy()[req.SourceGroup]; ok {
-		sourceHasConfig = true
-	}
-	if _, ok := ratio_setting.GetGroupBillingModeCopy()[req.SourceGroup]; ok {
-		sourceHasConfig = true
-	}
+	// 检查源分组是否有配置（从全局同步时跳过此检查）
+	if !req.FromGlobal && req.SourceGroup != "global" {
+		sourceHasConfig := false
+		if _, ok := ratio_setting.GetGroupModelPriceCopy()[req.SourceGroup]; ok {
+			sourceHasConfig = true
+		}
+		if _, ok := ratio_setting.GetGroupModelRatioCopy()[req.SourceGroup]; ok {
+			sourceHasConfig = true
+		}
+		if _, ok := ratio_setting.GetGroupBillingModeCopy()[req.SourceGroup]; ok {
+			sourceHasConfig = true
+		}
 
-	if !sourceHasConfig {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "源分组没有定价配置",
-		})
-		return
+		if !sourceHasConfig {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "源分组没有定价配置",
+			})
+			return
+		}
 	}
 
 	// 执行同步
