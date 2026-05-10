@@ -1,6 +1,35 @@
 import { z } from 'zod'
 import type { TFunction } from 'i18next'
-import type { SubscriptionPlan, PlanPayload } from '../types'
+import type { SubscriptionPlan, PlanPayload, QuotaTier, TierPeriod } from '../types'
+
+const TIER_PERIOD_ORDER: Record<TierPeriod, number> = {
+  hourly: 1,
+  daily: 2,
+  weekly: 3,
+  monthly: 4,
+  none: 5,
+  custom: 1,
+}
+
+function getCustomOrder(seconds: number): number {
+  if (seconds <= 0) return 1
+  if (seconds < 86400) return 1
+  if (seconds < 604800) return 2
+  if (seconds < 2592000) return 3
+  return 4
+}
+
+function getTierOrder(tier: { period: TierPeriod; custom_seconds: number }): number {
+  if (tier.period === 'custom') return getCustomOrder(tier.custom_seconds)
+  return TIER_PERIOD_ORDER[tier.period] ?? 1
+}
+
+const quotaTierSchema = z.object({
+  period: z.enum(['monthly', 'weekly', 'daily', 'hourly', 'custom', 'none']),
+  limit: z.coerce.number().min(0),
+  custom_seconds: z.coerce.number().min(0),
+  sort_priority: z.coerce.number(),
+})
 
 export function getPlanFormSchema(t: TFunction) {
   return z.object({
@@ -25,6 +54,35 @@ export function getPlanFormSchema(t: TFunction) {
     upgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
     creem_product_id: z.string().optional(),
+    // Multi-tier quota
+    use_multi_tier: z.boolean(),
+    quota_tiers: z.array(quotaTierSchema).optional(),
+    disable_balance_deduction: z.boolean(),
+  }).superRefine((data, ctx) => {
+    if (data.use_multi_tier && data.quota_tiers && data.quota_tiers.length > 1) {
+      // Sort by period order for validation
+      const sorted = [...data.quota_tiers].sort((a, b) => getTierOrder(a) - getTierOrder(b))
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = sorted[i - 1]
+        const curr = sorted[i]
+        const prevOrder = getTierOrder(prev)
+        const currOrder = getTierOrder(curr)
+        if (currOrder < prevOrder) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('Tier period must be longer than or equal to the previous tier'),
+            path: ['quota_tiers', i, 'period'],
+          })
+        }
+        if (curr.limit > 0 && prev.limit > 0 && curr.limit < prev.limit) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: t('Tier limit must be greater than or equal to the previous tier'),
+            path: ['quota_tiers', i, 'limit'],
+          })
+        }
+      }
+    }
   })
 }
 
@@ -46,9 +104,22 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   upgrade_group: '',
   stripe_price_id: '',
   creem_product_id: '',
+  use_multi_tier: false,
+  quota_tiers: [],
+  disable_balance_deduction: false,
+}
+
+function parseQuotaTiers(jsonStr?: string): QuotaTier[] {
+  if (!jsonStr || jsonStr === '[]') return []
+  try {
+    const parsed = JSON.parse(jsonStr)
+    if (Array.isArray(parsed)) return parsed
+  } catch {}
+  return []
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
+  const tiers = parseQuotaTiers(plan.quota_tiers)
   return {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
@@ -65,10 +136,14 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     upgrade_group: plan.upgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
+    use_multi_tier: tiers.length > 0,
+    quota_tiers: tiers,
+    disable_balance_deduction: plan.disable_balance_deduction || false,
   }
 }
 
 export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
+  const useMultiTier = values.use_multi_tier && values.quota_tiers && values.quota_tiers.length > 0
   return {
     plan: {
       ...values,
@@ -76,15 +151,17 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
       custom_seconds: Number(values.custom_seconds || 0),
-      quota_reset_period: values.quota_reset_period || 'never',
+      quota_reset_period: useMultiTier ? 'never' : (values.quota_reset_period || 'never'),
       quota_reset_custom_seconds:
-        values.quota_reset_period === 'custom'
+        !useMultiTier && values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-      total_amount: Number(values.total_amount || 0),
+      total_amount: useMultiTier ? 0 : Number(values.total_amount || 0),
       upgrade_group: values.upgrade_group || '',
+      quota_tiers: useMultiTier ? JSON.stringify(values.quota_tiers) : '[]',
+      disable_balance_deduction: values.disable_balance_deduction || false,
     },
   }
 }

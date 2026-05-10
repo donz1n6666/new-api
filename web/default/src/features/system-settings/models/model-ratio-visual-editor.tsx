@@ -4,6 +4,7 @@ import {
   type PaginationState,
   type VisibilityState,
   type SortingState,
+  type RowSelectionState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
@@ -34,6 +35,7 @@ import {
 } from '@/features/pricing/lib/billing-expr'
 import { safeJsonParse } from '../utils/json-parser'
 import { ModelRatioDialog, type ModelRatioData } from './model-ratio-dialog'
+import { GroupPricingSelector } from './group-pricing-selector'
 
 type ModelRatioVisualEditorProps = {
   modelPrice: string
@@ -47,6 +49,12 @@ type ModelRatioVisualEditorProps = {
   billingMode: string
   billingExpr: string
   onChange: (field: string, value: string) => void
+  // 分组定价相关 props
+  selectedGroup?: string
+  onGroupChange?: (group: string) => void
+  availableGroups?: string[]
+  groupPricingData?: Record<string, Record<string, Record<string, unknown>>>
+  onSyncComplete?: () => void
 }
 
 type ModelRow = {
@@ -85,11 +93,17 @@ export const ModelRatioVisualEditor = memo(
     billingMode,
     billingExpr,
     onChange,
+    selectedGroup = 'global',
+    onGroupChange,
+    availableGroups = [],
+    groupPricingData,
+    onSyncComplete,
   }: ModelRatioVisualEditorProps) {
     const { t } = useTranslation()
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editData, setEditData] = useState<ModelRatioData | null>(null)
     const [sorting, setSorting] = useState<SortingState>([])
+    const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
     const [pagination, setPagination] = useState<PaginationState>({
       pageIndex: 0,
       pageSize: 10,
@@ -393,6 +407,29 @@ export const ModelRatioVisualEditor = memo(
 
       return [
         {
+          id: 'select',
+          header: ({ table }) => (
+            <input
+              type='checkbox'
+              checked={table.getIsAllPageRowsSelected()}
+              onChange={(e) =>
+                table.toggleAllPageRowsSelected(e.target.checked)
+              }
+              className='h-4 w-4'
+            />
+          ),
+          cell: ({ row }) => (
+            <input
+              type='checkbox'
+              checked={row.getIsSelected()}
+              onChange={(e) => row.toggleSelected(e.target.checked)}
+              className='h-4 w-4'
+            />
+          ),
+          enableSorting: false,
+          enableHiding: false,
+        },
+        {
           accessorKey: 'name',
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title={t('Model name')} />
@@ -552,10 +589,13 @@ export const ModelRatioVisualEditor = memo(
         sorting,
         columnVisibility,
         pagination,
+        rowSelection,
       },
       onSortingChange: setSorting,
       onColumnVisibilityChange: setColumnVisibility,
       onPaginationChange: setPagination,
+      onRowSelectionChange: setRowSelection,
+      enableRowSelection: true,
       autoResetPageIndex: false,
       getCoreRowModel: getCoreRowModel(),
       getFilteredRowModel: getFilteredRowModel(),
@@ -698,8 +738,30 @@ export const ModelRatioVisualEditor = memo(
       ]
     )
 
+    // 获取选中的模型名称
+    const selectedModelNames = useMemo(() => {
+      return Object.keys(rowSelection)
+        .filter((key) => rowSelection[key])
+        .map((key) => models[parseInt(key)]?.name)
+        .filter(Boolean)
+    }, [rowSelection, models])
+
     return (
       <div className='space-y-4'>
+        {/* 分组选择器 */}
+        {onGroupChange && availableGroups.length > 0 && (
+          <GroupPricingSelector
+            selectedGroup={selectedGroup}
+            onGroupChange={onGroupChange}
+            availableGroups={availableGroups}
+            selectedModels={selectedModelNames}
+            onSyncComplete={() => {
+              setRowSelection({})
+              onSyncComplete?.()
+            }}
+          />
+        )}
+
         <div className='flex items-center justify-between gap-4'>
           <DataTableToolbar
             table={table}
@@ -780,7 +842,8 @@ export const ModelRatioVisualEditor = memo(
       prevProps.audioCompletionRatio === nextProps.audioCompletionRatio &&
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
-      prevProps.onChange === nextProps.onChange
+      prevProps.onChange === nextProps.onChange &&
+      prevProps.selectedGroup === nextProps.selectedGroup
     )
   }
 )

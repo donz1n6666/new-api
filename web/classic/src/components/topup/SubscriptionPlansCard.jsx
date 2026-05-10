@@ -37,6 +37,7 @@ import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
+  formatTiersSummary,
 } from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
@@ -613,23 +614,29 @@ const SubscriptionPlansCard = ({
                 const upgradeLabel = plan?.upgrade_group
                   ? `${t('升级分组')}: ${plan.upgrade_group}`
                   : null;
-                const resetLabel =
-                  formatSubscriptionResetPeriod(plan, t) === t('不重置')
-                    ? null
-                    : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`;
+                const tierSummary = formatTiersSummary(plan?.quota_tiers, t);
+                const resetLabel = tierSummary
+                  ? `${t('额度限制')}: ${tierSummary}`
+                  : (formatSubscriptionResetPeriod(plan, t) === t('不重置')
+                      ? null
+                      : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`);
+                const disableBalanceLabel = plan?.disable_balance_deduction
+                  ? t('已禁用余额扣费')
+                  : null;
                 const planBenefits = [
                   {
                     label: `${t('有效期')}: ${formatSubscriptionDuration(plan, t)}`,
                   },
                   resetLabel ? { label: resetLabel } : null,
-                  totalAmount > 0
+                  !tierSummary && totalAmount > 0
                     ? {
                         label: totalLabel,
                         tooltip: `${t('原生额度')}：${totalAmount}`,
                       }
-                    : { label: totalLabel },
+                    : (!tierSummary ? { label: totalLabel } : null),
                   limitLabel ? { label: limitLabel } : null,
                   upgradeLabel ? { label: upgradeLabel } : null,
+                  disableBalanceLabel ? { label: disableBalanceLabel } : null,
                 ].filter(Boolean);
 
                 return (

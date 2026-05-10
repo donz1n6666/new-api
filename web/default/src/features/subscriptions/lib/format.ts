@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next'
 import dayjs from '@/lib/dayjs'
-import type { SubscriptionPlan } from '../types'
+import type { SubscriptionPlan, QuotaTier } from '../types'
 
 export function formatDuration(
   plan: Partial<SubscriptionPlan>,
@@ -45,4 +45,52 @@ export function formatResetPeriod(
 export function formatTimestamp(ts: number): string {
   if (!ts) return '-'
   return dayjs(ts * 1000).format('YYYY-MM-DD HH:mm:ss')
+}
+
+export function formatTierPeriod(tier: QuotaTier, t: TFunction): string {
+  switch (tier.period) {
+    case 'monthly':
+      return t('Monthly')
+    case 'weekly':
+      return t('Weekly')
+    case 'daily':
+      return t('Daily')
+    case 'hourly':
+      return t('Hourly')
+    case 'custom': {
+      const seconds = tier.custom_seconds || 0
+      if (seconds >= 86400) return `${Math.floor(seconds / 86400)}${t('d')}`
+      if (seconds >= 3600) return `${Math.floor(seconds / 3600)}${t('h')}`
+      if (seconds >= 60) return `${Math.floor(seconds / 60)}${t('m')}`
+      return `${seconds}${t('s')}`
+    }
+    case 'none':
+      return t('No Reset')
+    default:
+      return tier.period
+  }
+}
+
+export function formatTierLimit(limit: number): string {
+  if (limit <= 0) return '∞'
+  if (limit >= 1000000) return `${(limit / 1000000).toFixed(1)}M`
+  if (limit >= 1000) return `${(limit / 1000).toFixed(0)}k`
+  return String(limit)
+}
+
+export function formatTiersSummary(
+  quotaTiers: string | undefined,
+  t: TFunction
+): string {
+  if (!quotaTiers || quotaTiers === '[]') return ''
+  try {
+    const tiers: QuotaTier[] = JSON.parse(quotaTiers)
+    if (!Array.isArray(tiers) || tiers.length === 0) return ''
+    return tiers
+      .filter((tier) => tier.limit > 0)
+      .map((tier) => `${formatTierPeriod(tier, t)}: ${formatTierLimit(tier.limit)}`)
+      .join(' | ')
+  } catch {
+    return ''
+  }
 }

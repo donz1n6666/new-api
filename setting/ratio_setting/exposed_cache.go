@@ -47,6 +47,17 @@ func GetExposedData() gin.H {
 		"cache_ratio":        GetCacheRatioCopy(),
 		"create_cache_ratio": GetCreateCacheRatioCopy(),
 		"model_price":        GetModelPriceCopy(),
+		// 分组级别定价配置
+		"group_model_price":            GetGroupModelPriceCopy(),
+		"group_model_ratio":            GetGroupModelRatioCopy(),
+		"group_completion_ratio":       GetGroupCompletionRatioCopy(),
+		"group_cache_ratio":            GetGroupCacheRatioCopy(),
+		"group_create_cache_ratio":     GetGroupCreateCacheRatioCopy(),
+		"group_image_ratio":            GetGroupImageRatioCopy(),
+		"group_audio_ratio":            GetGroupAudioRatioCopy(),
+		"group_audio_completion_ratio": GetGroupAudioCompletionRatioCopy(),
+		"group_billing_mode":           GetGroupBillingModeCopy(),
+		"group_billing_expr":           GetGroupBillingExprCopy(),
 	}
 	exposedData.Store(&exposedCache{
 		data:      newData,

@@ -36,6 +36,12 @@ type ModelRatioFormProps = {
   onReset: () => void
   isSaving: boolean
   isResetting: boolean
+  // 分组定价相关 props
+  selectedGroup?: string
+  onGroupChange?: (group: string) => void
+  availableGroups?: string[]
+  groupPricingData?: Record<string, Record<string, Record<string, unknown>>>
+  onSyncComplete?: () => void
 }
 
 export const ModelRatioForm = memo(function ModelRatioForm({
@@ -44,6 +50,11 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   onReset,
   isSaving,
   isResetting,
+  selectedGroup = 'global',
+  onGroupChange,
+  availableGroups = [],
+  groupPricingData,
+  onSyncComplete,
 }: ModelRatioFormProps) {
   const { t } = useTranslation()
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
@@ -103,6 +114,11 @@ export const ModelRatioForm = memo(function ModelRatioForm({
                   fieldMap[field] || (field as keyof ModelFormValues)
                 handleFieldChange(formField, value)
               }}
+              selectedGroup={selectedGroup}
+              onGroupChange={onGroupChange}
+              availableGroups={availableGroups}
+              groupPricingData={groupPricingData}
+              onSyncComplete={onSyncComplete}
             />
 
             <FormField

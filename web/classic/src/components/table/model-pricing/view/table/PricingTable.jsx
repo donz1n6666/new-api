@@ -45,6 +45,7 @@ const PricingTable = ({
   compactMode = false,
   openModelDetail,
   t,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   const columns = useMemo(() => {
     return getPricingTableColumns({
@@ -59,6 +60,7 @@ const PricingTable = ({
       tokenUnit,
       displayPrice,
       showRatio,
+      groupPricing,
     });
   }, [
     t,
@@ -72,6 +74,7 @@ const PricingTable = ({
     tokenUnit,
     displayPrice,
     showRatio,
+    groupPricing,
   ]);
 
   // 更新列定义中的 searchValue

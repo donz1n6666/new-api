@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, type Resolver, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import { CalendarClock, CreditCard, Plus, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { createPlan, updatePlan, getGroups } from '../api'
-import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
+import { getDurationUnitOptions, getResetPeriodOptions, getTierPeriodOptions } from '../constants'
 import {
   getPlanFormSchema,
   PLAN_FORM_DEFAULTS,
@@ -67,6 +67,11 @@ export function SubscriptionsMutateDrawer({
     defaultValues: PLAN_FORM_DEFAULTS,
   })
 
+  const { fields: tierFields, append: appendTier, remove: removeTier } = useFieldArray({
+    control: form.control,
+    name: 'quota_tiers',
+  })
+
   useEffect(() => {
     if (open) {
       if (currentRow?.plan) {
@@ -84,6 +89,7 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const useMultiTier = form.watch('use_multi_tier')
 
   const onSubmit = async (values: PlanFormValues) => {
     setIsSubmitting(true)
@@ -113,6 +119,17 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
+  const tierPeriodOpts = getTierPeriodOptions(t)
+
+  const handleAddTier = () => {
+    const currentTiers = form.getValues('quota_tiers') || []
+    appendTier({
+      period: 'monthly',
+      limit: 0,
+      custom_seconds: 0,
+      sort_priority: (currentTiers.length + 1) * 10,
+    })
+  }
 
   return (
     <Sheet
@@ -204,29 +221,31 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='total_amount'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Total Quota')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('0 means unlimited')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!useMultiTier && (
+                  <FormField
+                    control={form.control}
+                    name='total_amount'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Total Quota')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min={0}
+                            onChange={(e) =>
+                              field.onChange(parseFloat(e.target.value) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t('0 means unlimited')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
@@ -411,64 +430,220 @@ export function SubscriptionsMutateDrawer({
               </div>
             </div>
 
-            {/* Quota Reset */}
+            {/* Quota Reset / Multi-Tier */}
             <div className='space-y-4'>
               <h3 className='flex items-center gap-2 text-sm font-medium'>
                 <RefreshCw className='h-4 w-4' />
                 {t('Quota Reset')}
               </h3>
 
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='quota_reset_period'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Reset Cycle')}</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {resetPeriodOpts.map((o) => (
-                            <SelectItem key={o.value} value={o.value}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <FormField
+                control={form.control}
+                name='use_multi_tier'
+                render={({ field }) => (
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                    <div className='space-y-0.5'>
+                      <FormLabel>{t('Multi-Tier Quota')}</FormLabel>
+                      <FormDescription>
+                        {t('Configure multiple quota limits with different periods')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
 
-                <FormField
-                  control={form.control}
-                  name='quota_reset_custom_seconds'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Custom Seconds')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          disabled={resetPeriod !== 'custom'}
-                          onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
-                          }
+              {useMultiTier ? (
+                <div className='space-y-3'>
+                  {tierFields.map((field, index) => (
+                    <div key={field.id} className='rounded-lg border p-3 space-y-3'>
+                      <div className='flex items-center justify-between'>
+                        <span className='text-sm font-medium'>
+                          {t('Tier')} #{index + 1}
+                        </span>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => removeTier(index)}
+                        >
+                          <Trash2 className='h-4 w-4' />
+                        </Button>
+                      </div>
+                      <div className='grid grid-cols-2 gap-3'>
+                        <FormField
+                          control={form.control}
+                          name={`quota_tiers.${index}.period`}
+                          render={({ field: f }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>{t('Period')}</FormLabel>
+                              <Select onValueChange={f.onChange} value={f.value}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {tierPeriodOpts.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                      {o.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                        <FormField
+                          control={form.control}
+                          name={`quota_tiers.${index}.limit`}
+                          render={({ field: f }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>{t('Limit')}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...f}
+                                  type='number'
+                                  min={0}
+                                  onChange={(e) =>
+                                    f.onChange(parseInt(e.target.value, 10) || 0)
+                                  }
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      {form.watch(`quota_tiers.${index}.period`) === 'custom' && (
+                        <FormField
+                          control={form.control}
+                          name={`quota_tiers.${index}.custom_seconds`}
+                          render={({ field: f }) => (
+                            <FormItem>
+                              <FormLabel className='text-xs'>{t('Custom Seconds')}</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...f}
+                                  type='number'
+                                  min={1}
+                                  onChange={(e) =>
+                                    f.onChange(parseInt(e.target.value, 10) || 0)
+                                  }
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                      <FormField
+                        control={form.control}
+                        name={`quota_tiers.${index}.sort_priority`}
+                        render={({ field: f }) => (
+                          <FormItem className='hidden'>
+                            <FormControl>
+                              <Input {...f} type='number' />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={handleAddTier}
+                    className='w-full'
+                  >
+                    <Plus className='mr-2 h-4 w-4' />
+                    {t('Add Tier')}
+                  </Button>
+                </div>
+              ) : (
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  <FormField
+                    control={form.control}
+                    name='quota_reset_period'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Reset Cycle')}</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {resetPeriodOpts.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='quota_reset_custom_seconds'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Custom Seconds')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min={0}
+                            disabled={resetPeriod !== 'custom'}
+                            onChange={(e) =>
+                              field.onChange(parseInt(e.target.value, 10) || 0)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Disable Balance Deduction */}
+            <div className='space-y-4'>
+              <FormField
+                control={form.control}
+                name='disable_balance_deduction'
+                render={({ field }) => (
+                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                    <div className='space-y-0.5'>
+                      <FormLabel>{t('Disable Balance Deduction')}</FormLabel>
+                      <FormDescription>
+                        {t('When enabled, users on this plan can only use subscription quota')}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* Payment Config */}

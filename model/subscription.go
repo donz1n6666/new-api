@@ -32,6 +32,30 @@ const (
 	SubscriptionResetCustom  = "custom"
 )
 
+// Quota tier period types
+const (
+	TierPeriodMonthly = "monthly" // Calendar-aligned: 1st of month
+	TierPeriodWeekly  = "weekly"  // Calendar-aligned: Monday
+	TierPeriodDaily   = "daily"   // Calendar-aligned: midnight
+	TierPeriodHourly  = "hourly"  // Sliding window: N hours from first use
+	TierPeriodCustom  = "custom"  // Sliding window: custom seconds from first use
+	TierPeriodNone    = "none"    // Never resets, total cap only
+)
+
+// QuotaTier defines a single tier in a multi-tier quota configuration
+type QuotaTier struct {
+	Period        string `json:"period"`        // monthly|weekly|daily|hourly|custom|none
+	Limit         int64  `json:"limit"`          // Max usage in this period (0 = no limit)
+	CustomSeconds int64  `json:"custom_seconds"` // Only for period="custom"
+	SortPriority  int    `json:"sort_priority"`  // Lower = shorter period, checked first
+}
+
+// TierUsageSnapshot stores the per-tier usage delta for a single pre-consume operation
+type TierUsageSnapshot struct {
+	TierIndex int   `json:"tier_index"`
+	Delta     int64 `json:"delta"`
+}
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
@@ -174,6 +198,12 @@ type SubscriptionPlan struct {
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
+
+	// Multi-tier quota configuration (JSON array). When non-empty, overrides single-tier TotalAmount/QuotaResetPeriod.
+	QuotaTiers string `json:"quota_tiers" gorm:"type:text;default:'[]'"`
+
+	// When true, users on this plan cannot use wallet balance for deduction
+	DisableBalanceDeduction bool `json:"disable_balance_deduction" gorm:"default:false"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -501,6 +531,12 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
+	}
+	// Initialize tier usage rows if multi-tier
+	if tiers := plan.GetQuotaTiers(); len(tiers) > 0 {
+		if err := initTierUsage(tx, sub.Id, tiers, nowUnix); err != nil {
+			return nil, err
+		}
 	}
 	return sub, nil
 }
@@ -906,6 +942,38 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 	return expiredCount, nil
 }
 
+// UserSubscriptionTierUsage tracks per-tier usage for a user subscription.
+type UserSubscriptionTierUsage struct {
+	Id                 int `json:"id"`
+	UserSubscriptionId int `json:"user_subscription_id" gorm:"index;uniqueIndex:idx_sub_tier"`
+	TierIndex          int `json:"tier_index" gorm:"uniqueIndex:idx_sub_tier"`
+
+	// Calendar-aligned tiers (monthly, weekly, daily)
+	PeriodStart     int64 `json:"period_start" gorm:"type:bigint;default:0"`
+	NextPeriodStart int64 `json:"next_period_start" gorm:"type:bigint;default:0;index"`
+	UsageInPeriod   int64 `json:"usage_in_period" gorm:"type:bigint;default:0"`
+
+	// Sliding window tiers (hourly, custom)
+	WindowStart   int64 `json:"window_start" gorm:"type:bigint;default:0"`
+	WindowSeconds int64 `json:"window_seconds" gorm:"type:bigint;default:0"`
+	UsageInWindow int64 `json:"usage_in_window" gorm:"type:bigint;default:0"`
+
+	CreatedAt int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+}
+
+func (t *UserSubscriptionTierUsage) BeforeCreate(tx *gorm.DB) error {
+	now := common.GetTimestamp()
+	t.CreatedAt = now
+	t.UpdatedAt = now
+	return nil
+}
+
+func (t *UserSubscriptionTierUsage) BeforeUpdate(tx *gorm.DB) error {
+	t.UpdatedAt = common.GetTimestamp()
+	return nil
+}
+
 // SubscriptionPreConsumeRecord stores idempotent pre-consume operations per request.
 type SubscriptionPreConsumeRecord struct {
 	Id                 int    `json:"id"`
@@ -914,6 +982,7 @@ type SubscriptionPreConsumeRecord struct {
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
 	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
+	TierUsages         string `json:"tier_usages" gorm:"type:text;default:''"`
 	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
 }
@@ -1022,6 +1091,62 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+
+			tiers := plan.GetQuotaTiers()
+			if len(tiers) > 0 {
+				// Multi-tier path: check all tier limits
+				if err := checkTierLimits(tx, sub.Id, tiers, amount, now); err != nil {
+					continue // tier limits exceeded, try next subscription
+				}
+				// Increment all tier usages and get snapshot
+				tierSnapshot, err := incrementTierUsage(tx, sub.Id, tiers, amount, now)
+				if err != nil {
+					continue
+				}
+				usedBefore := sub.AmountUsed
+				// Also check legacy total amount if configured
+				if sub.AmountTotal > 0 {
+					remain := sub.AmountTotal - usedBefore
+					if remain < amount {
+						continue
+					}
+				}
+				record := &SubscriptionPreConsumeRecord{
+					RequestId:          requestId,
+					UserId:             userId,
+					UserSubscriptionId: sub.Id,
+					PreConsumed:        amount,
+					Status:             "consumed",
+					TierUsages:         tierSnapshot,
+				}
+				if err := tx.Create(record).Error; err != nil {
+					var dup SubscriptionPreConsumeRecord
+					if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+						if dup.Status == "refunded" {
+							return errors.New("subscription pre-consume already refunded")
+						}
+						returnValue.UserSubscriptionId = sub.Id
+						returnValue.PreConsumed = dup.PreConsumed
+						returnValue.AmountTotal = sub.AmountTotal
+						returnValue.AmountUsedBefore = sub.AmountUsed
+						returnValue.AmountUsedAfter = sub.AmountUsed
+						return nil
+					}
+					return err
+				}
+				sub.AmountUsed += amount
+				if err := tx.Save(&sub).Error; err != nil {
+					return err
+				}
+				returnValue.UserSubscriptionId = sub.Id
+				returnValue.PreConsumed = amount
+				returnValue.AmountTotal = sub.AmountTotal
+				returnValue.AmountUsedBefore = usedBefore
+				returnValue.AmountUsedAfter = sub.AmountUsed
+				return nil
+			}
+
+			// Legacy single-tier path
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
@@ -1090,6 +1215,15 @@ func RefundSubscriptionPreConsume(requestId string) error {
 		}
 		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
+		}
+		// Refund tier usages if multi-tier was used
+		if record.TierUsages != "" {
+			var sub UserSubscription
+			if err := tx.Where("id = ?", record.UserSubscriptionId).First(&sub).Error; err == nil {
+				if plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId); err == nil && plan.HasMultiTier() {
+					_ = refundTierUsage(tx, record.UserSubscriptionId, record.TierUsages)
+				}
+			}
 		}
 		record.Status = "refunded"
 		return tx.Save(&record).Error
@@ -1203,4 +1337,432 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		sub.AmountUsed = newUsed
 		return tx.Save(&sub).Error
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Tier Quota Logic
+// ---------------------------------------------------------------------------
+
+// GetQuotaTiers parses the QuotaTiers JSON and returns sorted tiers
+func (p *SubscriptionPlan) GetQuotaTiers() []QuotaTier {
+	if p == nil || strings.TrimSpace(p.QuotaTiers) == "" || p.QuotaTiers == "[]" {
+		return nil
+	}
+	var tiers []QuotaTier
+	if err := common.Unmarshal([]byte(p.QuotaTiers), &tiers); err != nil {
+		return nil
+	}
+	if len(tiers) == 0 {
+		return nil
+	}
+	// Sort by SortPriority ascending (shortest period first)
+	for i := 0; i < len(tiers)-1; i++ {
+		for j := i + 1; j < len(tiers); j++ {
+			if tiers[i].SortPriority > tiers[j].SortPriority {
+				tiers[i], tiers[j] = tiers[j], tiers[i]
+			}
+		}
+	}
+	return tiers
+}
+
+// HasMultiTier returns true if the plan has multi-tier quota configured
+func (p *SubscriptionPlan) HasMultiTier() bool {
+	return len(p.GetQuotaTiers()) > 0
+}
+
+// NormalizeTierPeriod normalizes a tier period string
+func NormalizeTierPeriod(period string) string {
+	switch strings.TrimSpace(period) {
+	case TierPeriodMonthly, TierPeriodWeekly, TierPeriodDaily,
+		TierPeriodHourly, TierPeriodCustom, TierPeriodNone:
+		return strings.TrimSpace(period)
+	default:
+		return TierPeriodNone
+	}
+}
+
+// calcTierPeriodBoundaries calculates the calendar-aligned period boundaries
+func calcTierPeriodBoundaries(now time.Time, period string) (start, end time.Time) {
+	switch period {
+	case TierPeriodMonthly:
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		end = start.AddDate(0, 1, 0)
+	case TierPeriodWeekly:
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		start = time.Date(now.Year(), now.Month(), now.Day()-weekday+1, 0, 0, 0, 0, now.Location())
+		end = start.AddDate(0, 0, 7)
+	case TierPeriodDaily:
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		end = start.AddDate(0, 0, 1)
+	default:
+		start = now
+		end = now
+	}
+	return start, end
+}
+
+// getSlidingWindowSeconds returns the window duration in seconds for a sliding tier
+func getSlidingWindowSeconds(tier QuotaTier) int64 {
+	switch tier.Period {
+	case TierPeriodHourly:
+		return 3600
+	case TierPeriodCustom:
+		if tier.CustomSeconds > 0 {
+			return tier.CustomSeconds
+		}
+		return 3600 // fallback
+	default:
+		return 0
+	}
+}
+
+// isSlidingWindow returns true if the tier uses a sliding window
+func isSlidingWindow(tier QuotaTier) bool {
+	return tier.Period == TierPeriodHourly || tier.Period == TierPeriodCustom
+}
+
+// isCalendarAligned returns true if the tier uses calendar-aligned periods
+func isCalendarAligned(tier QuotaTier) bool {
+	return tier.Period == TierPeriodMonthly || tier.Period == TierPeriodWeekly || tier.Period == TierPeriodDaily
+}
+
+// initTierUsage creates UserSubscriptionTierUsage rows for a new subscription
+func initTierUsage(tx *gorm.DB, subId int, tiers []QuotaTier, now int64) error {
+	if tx == nil || len(tiers) == 0 {
+		return nil
+	}
+	nowTime := time.Unix(now, 0)
+	for i, tier := range tiers {
+		usage := UserSubscriptionTierUsage{
+			UserSubscriptionId: subId,
+			TierIndex:          i,
+		}
+		if isCalendarAligned(tier) {
+			start, end := calcTierPeriodBoundaries(nowTime, tier.Period)
+			usage.PeriodStart = start.Unix()
+			usage.NextPeriodStart = end.Unix()
+		} else if isSlidingWindow(tier) {
+			usage.WindowSeconds = getSlidingWindowSeconds(tier)
+			// WindowStart = 0 until first API call
+		}
+		// TierPeriodNone: no period fields needed
+		if err := tx.Create(&usage).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkTierLimits checks all tier limits for a subscription. Returns error if any tier is exceeded.
+func checkTierLimits(tx *gorm.DB, subId int, tiers []QuotaTier, amount int64, now int64) error {
+	if tx == nil || len(tiers) == 0 {
+		return nil
+	}
+	nowTime := time.Unix(now, 0)
+	for i, tier := range tiers {
+		if tier.Limit <= 0 {
+			continue // no limit at this tier
+		}
+		var usage UserSubscriptionTierUsage
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_subscription_id = ? AND tier_index = ?", subId, i).
+			First(&usage).Error; err != nil {
+			return fmt.Errorf("tier usage not found for sub %d tier %d: %w", subId, i, err)
+		}
+
+		var currentUsage int64
+		if isCalendarAligned(tier) {
+			// Check if period rolled over
+			if now >= usage.NextPeriodStart && usage.NextPeriodStart > 0 {
+				// Period expired, reset
+				start, end := calcTierPeriodBoundaries(nowTime, tier.Period)
+				usage.PeriodStart = start.Unix()
+				usage.NextPeriodStart = end.Unix()
+				usage.UsageInPeriod = 0
+				if err := tx.Save(&usage).Error; err != nil {
+					return err
+				}
+			}
+			currentUsage = usage.UsageInPeriod
+		} else if isSlidingWindow(tier) {
+			windowSec := getSlidingWindowSeconds(tier)
+			if usage.WindowStart == 0 {
+				// First use in this window — start the window
+				usage.WindowStart = now
+				usage.UsageInWindow = 0
+				if err := tx.Save(&usage).Error; err != nil {
+					return err
+				}
+			} else if now >= usage.WindowStart+windowSec {
+				// Window expired, reset
+				usage.WindowStart = now
+				usage.UsageInWindow = 0
+				if err := tx.Save(&usage).Error; err != nil {
+					return err
+				}
+			}
+			currentUsage = usage.UsageInWindow
+		} else {
+			// TierPeriodNone — no periodic reset
+			currentUsage = usage.UsageInWindow + usage.UsageInPeriod
+		}
+
+		if currentUsage+amount > tier.Limit {
+			return fmt.Errorf("tier %d limit exceeded: current=%d, need=%d, limit=%d", i, currentUsage, amount, tier.Limit)
+		}
+	}
+	return nil
+}
+
+// incrementTierUsage atomically increments all tier usage counters and returns a JSON snapshot
+func incrementTierUsage(tx *gorm.DB, subId int, tiers []QuotaTier, amount int64, now int64) (string, error) {
+	if tx == nil || len(tiers) == 0 {
+		return "", nil
+	}
+	snapshots := make([]TierUsageSnapshot, 0, len(tiers))
+	for i, tier := range tiers {
+		if tier.Limit <= 0 {
+			continue
+		}
+		var usage UserSubscriptionTierUsage
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_subscription_id = ? AND tier_index = ?", subId, i).
+			First(&usage).Error; err != nil {
+			return "", err
+		}
+		if isCalendarAligned(tier) {
+			usage.UsageInPeriod += amount
+		} else if isSlidingWindow(tier) || tier.Period == TierPeriodNone {
+			usage.UsageInWindow += amount
+		}
+		if err := tx.Save(&usage).Error; err != nil {
+			return "", err
+		}
+		snapshots = append(snapshots, TierUsageSnapshot{TierIndex: i, Delta: amount})
+	}
+	if len(snapshots) == 0 {
+		return "", nil
+	}
+	data, err := common.Marshal(snapshots)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// refundTierUsage decrements tier usage based on the snapshot from pre-consume
+func refundTierUsage(tx *gorm.DB, subId int, tierUsagesJSON string) error {
+	if tx == nil || tierUsagesJSON == "" {
+		return nil
+	}
+	var snapshots []TierUsageSnapshot
+	if err := common.Unmarshal([]byte(tierUsagesJSON), &snapshots); err != nil {
+		return err
+	}
+	for _, snap := range snapshots {
+		if snap.Delta <= 0 {
+			continue
+		}
+		var usage UserSubscriptionTierUsage
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("user_subscription_id = ? AND tier_index = ?", subId, snap.TierIndex).
+			First(&usage).Error; err != nil {
+			continue // tier usage row not found, skip
+		}
+		// Decrement both fields (one will be zero for the non-applicable type)
+		usage.UsageInPeriod -= snap.Delta
+		if usage.UsageInPeriod < 0 {
+			usage.UsageInPeriod = 0
+		}
+		usage.UsageInWindow -= snap.Delta
+		if usage.UsageInWindow < 0 {
+			usage.UsageInWindow = 0
+		}
+		if err := tx.Save(&usage).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ResetExpiredCalendarTiers resets calendar-aligned tier usages whose periods have rolled over
+func ResetExpiredCalendarTiers(limit int) (int, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	now := GetDBTimestamp()
+	var usages []UserSubscriptionTierUsage
+	if err := DB.Where("next_period_start > 0 AND next_period_start <= ?", now).
+		Order("next_period_start asc").
+		Limit(limit).
+		Find(&usages).Error; err != nil {
+		return 0, err
+	}
+	if len(usages) == 0 {
+		return 0, nil
+	}
+	resetCount := 0
+	for _, u := range usages {
+		uCopy := u
+		// Verify parent subscription is still active
+		var sub UserSubscription
+		if err := DB.Where("id = ? AND status = ? AND end_time > ?", uCopy.UserSubscriptionId, "active", now).First(&sub).Error; err != nil {
+			continue
+		}
+		// Get the plan to know the tier period type
+		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		if err != nil || plan == nil {
+			continue
+		}
+		tiers := plan.GetQuotaTiers()
+		if uCopy.TierIndex >= len(tiers) {
+			continue
+		}
+		tier := tiers[uCopy.TierIndex]
+		if !isCalendarAligned(tier) {
+			continue
+		}
+		err = DB.Transaction(func(tx *gorm.DB) error {
+			var locked UserSubscriptionTierUsage
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ? AND next_period_start > 0 AND next_period_start <= ?", uCopy.Id, now).
+				First(&locked).Error; err != nil {
+				return nil
+			}
+			nowTime := time.Unix(now, 0)
+			start, end := calcTierPeriodBoundaries(nowTime, tier.Period)
+			locked.PeriodStart = start.Unix()
+			locked.NextPeriodStart = end.Unix()
+			locked.UsageInPeriod = 0
+			return tx.Save(&locked).Error
+		})
+		if err == nil {
+			resetCount++
+		}
+	}
+	return resetCount, nil
+}
+
+// ResetExpiredTierWindows resets sliding window tier usages whose windows have expired
+func ResetExpiredTierWindows(limit int) (int, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	now := GetDBTimestamp()
+	// Find tier usages with active windows that have expired
+	// window_start > 0 AND window_start + window_seconds <= now
+	var usages []UserSubscriptionTierUsage
+	if err := DB.Where("window_start > 0 AND window_seconds > 0 AND window_start + window_seconds <= ?", now).
+		Order("window_start asc").
+		Limit(limit).
+		Find(&usages).Error; err != nil {
+		return 0, err
+	}
+	if len(usages) == 0 {
+		return 0, nil
+	}
+	resetCount := 0
+	for _, u := range usages {
+		uCopy := u
+		// Verify parent subscription is still active
+		var sub UserSubscription
+		if err := DB.Where("id = ? AND status = ? AND end_time > ?", uCopy.UserSubscriptionId, "active", now).First(&sub).Error; err != nil {
+			continue
+		}
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var locked UserSubscriptionTierUsage
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				Where("id = ?", uCopy.Id).
+				First(&locked).Error; err != nil {
+				return nil
+			}
+			// Re-check window expiry under lock
+			if locked.WindowStart <= 0 || locked.WindowSeconds <= 0 {
+				return nil
+			}
+			if now < locked.WindowStart+locked.WindowSeconds {
+				return nil
+			}
+			locked.WindowStart = 0
+			locked.UsageInWindow = 0
+			return tx.Save(&locked).Error
+		})
+		if err == nil {
+			resetCount++
+		}
+	}
+	return resetCount, nil
+}
+
+// HasDisableBalanceDeductionSubscription checks if a user has any active subscription
+// with DisableBalanceDeduction enabled
+func HasDisableBalanceDeductionSubscription(userId int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	now := GetDBTimestamp()
+	var count int64
+	err := DB.Model(&UserSubscription{}).
+		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ? AND subscription_plans.disable_balance_deduction = ?",
+			userId, "active", now, true).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// GetUserSubscriptionTierUsages returns tier usage info for a subscription
+func GetUserSubscriptionTierUsages(subId int) ([]UserSubscriptionTierUsage, error) {
+	if subId <= 0 {
+		return nil, nil
+	}
+	var usages []UserSubscriptionTierUsage
+	if err := DB.Where("user_subscription_id = ?", subId).Order("tier_index asc").Find(&usages).Error; err != nil {
+		return nil, err
+	}
+	return usages, nil
+}
+
+// MigrateExistingPlansToTiers converts old single-tier plans to QuotaTiers format (one-time migration)
+func MigrateExistingPlansToTiers() {
+	var plans []SubscriptionPlan
+	if err := DB.Where("quota_tiers IS NULL OR quota_tiers = '' OR quota_tiers = '[]'").Find(&plans).Error; err != nil {
+		return
+	}
+	for _, plan := range plans {
+		if plan.TotalAmount <= 0 {
+			continue
+		}
+		period := NormalizeResetPeriod(plan.QuotaResetPeriod)
+		tierPeriod := TierPeriodNone
+		switch period {
+		case SubscriptionResetMonthly:
+			tierPeriod = TierPeriodMonthly
+		case SubscriptionResetWeekly:
+			tierPeriod = TierPeriodWeekly
+		case SubscriptionResetDaily:
+			tierPeriod = TierPeriodDaily
+		case SubscriptionResetCustom:
+			tierPeriod = TierPeriodCustom
+		}
+		tier := QuotaTier{
+			Period:       tierPeriod,
+			Limit:        plan.TotalAmount,
+			SortPriority: 100,
+		}
+		if tierPeriod == TierPeriodCustom && plan.QuotaResetCustomSeconds > 0 {
+			tier.CustomSeconds = plan.QuotaResetCustomSeconds
+		}
+		data, err := common.Marshal([]QuotaTier{tier})
+		if err != nil {
+			continue
+		}
+		DB.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("quota_tiers", string(data))
+	}
 }

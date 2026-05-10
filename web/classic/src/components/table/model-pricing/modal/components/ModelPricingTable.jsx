@@ -35,6 +35,7 @@ const ModelPricingTable = ({
   usableGroup,
   autoGroups = [],
   t,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   const modelEnableGroups = Array.isArray(modelData?.enable_groups)
     ? modelData.enable_groups
@@ -59,6 +60,7 @@ const ModelPricingTable = ({
             displayPrice,
             currency,
             quotaDisplayType: siteDisplayType,
+            groupPricing,
           })
         : { inputPrice: '-', outputPrice: '-', price: '-' };
 

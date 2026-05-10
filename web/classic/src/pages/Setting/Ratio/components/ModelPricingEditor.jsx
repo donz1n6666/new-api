@@ -28,6 +28,7 @@ import {
   Modal,
   Radio,
   RadioGroup,
+  Select,
   Space,
   Switch,
   Table,
@@ -46,6 +47,7 @@ import {
   PRICE_SUFFIX,
   buildSummaryText,
   hasValue,
+  parseOptionJSON,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -101,7 +103,17 @@ export default function ModelPricingEditor({
   const isMobile = useIsMobile();
   const [addVisible, setAddVisible] = useState(false);
   const [batchVisible, setBatchVisible] = useState(false);
+  const [syncVisible, setSyncVisible] = useState(false);
   const [newModelName, setNewModelName] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('global');
+  const [syncTargetGroups, setSyncTargetGroups] = useState([]);
+  const [syncMode, setSyncMode] = useState('selected'); // 'selected' | 'all'
+
+  // 从 options 中获取可用的分组列表
+  const availableGroups = useMemo(() => {
+    const groupRatio = parseOptionJSON(options.GroupRatio);
+    return ['global', ...Object.keys(groupRatio)];
+  }, [options.GroupRatio]);
 
   const {
     selectedModel,
@@ -130,12 +142,14 @@ export default function ModelPricingEditor({
     addModel,
     deleteModel,
     applySelectedModelPricing,
+    syncGroupPricing,
   } = useModelPricingEditorState({
     options,
     refresh,
     t,
     candidateModelNames,
     filterMode,
+    selectedGroup,
   });
 
   const getExprModeLabel = useCallback((model) => {
@@ -253,6 +267,60 @@ export default function ModelPricingEditor({
   return (
     <>
       <Space vertical align='start' style={{ width: '100%' }}>
+        {/* 分组选择器 */}
+        <Space wrap className='mt-2'>
+          <Select
+            value={selectedGroup}
+            onChange={setSelectedGroup}
+            style={{ width: 200 }}
+            placeholder={t('选择分组')}
+          >
+            <Select.Option value='global'>{t('全局配置')}</Select.Option>
+            {availableGroups.filter(g => g !== 'global').map(group => (
+              <Select.Option key={group} value={group}>
+                {group} {t('分组')}
+              </Select.Option>
+            ))}
+          </Select>
+          {/* 同步按钮 */}
+          {selectedGroup === 'global' ? (
+            <Button
+              disabled={selectedModelNames.length === 0}
+              onClick={() => {
+                setSyncMode('to_groups');
+                setSyncVisible(true);
+              }}
+              style={isMobile ? { width: '100%' } : undefined}
+            >
+              {t('同步所选模型到分组')}
+              {selectedModelNames.length > 0 ? ` (${selectedModelNames.length})` : ''}
+            </Button>
+          ) : (
+            <>
+              <Button
+                onClick={() => {
+                  setSyncMode('from_global');
+                  setSyncVisible(true);
+                }}
+                style={isMobile ? { width: '100%' } : undefined}
+              >
+                {t('从全局同步到当前分组')}
+              </Button>
+              <Button
+                disabled={selectedModelNames.length === 0}
+                onClick={() => {
+                  setSyncMode('to_groups');
+                  setSyncVisible(true);
+                }}
+                style={isMobile ? { width: '100%' } : undefined}
+              >
+                {t('同步所选模型到分组')}
+                {selectedModelNames.length > 0 ? ` (${selectedModelNames.length})` : ''}
+              </Button>
+            </>
+          )}
+        </Space>
+
         <Space wrap className='mt-2'>
           {allowAddModel ? (
             <Button
@@ -270,7 +338,7 @@ export default function ModelPricingEditor({
             onClick={handleSubmit}
             style={isMobile ? { width: '100%' } : undefined}
           >
-            {t('应用更改')}
+            {selectedGroup === 'global' ? t('应用更改') : t('保存分组配置')}
           </Button>
           <Button
             disabled={!selectedModel || selectedModelNames.length === 0}
@@ -775,6 +843,82 @@ export default function ModelPricingEditor({
             )}
           </div>
         ) : null}
+      </Modal>
+
+      {/* 同步分组配置 Modal */}
+      <Modal
+        title={
+          syncMode === 'from_global' ? t('从全局同步到当前分组') :
+          t('同步所选模型到分组')
+        }
+        visible={syncVisible}
+        onCancel={() => {
+          setSyncVisible(false);
+          setSyncTargetGroups([]);
+        }}
+        onOk={async () => {
+          let success;
+          if (syncMode === 'from_global') {
+            // 从全局同步到当前分组
+            success = await syncGroupPricing([selectedGroup], null, true);
+          } else {
+            // 从当前分组同步到其他分组
+            success = await syncGroupPricing(syncTargetGroups, selectedModelNames, false);
+          }
+          if (success) {
+            setSyncVisible(false);
+            setSyncTargetGroups([]);
+          }
+        }}
+        okButtonProps={{
+          disabled: syncMode !== 'from_global' && syncTargetGroups.length === 0
+        }}
+      >
+        {syncMode === 'from_global' ? (
+          <>
+            <div className='text-sm text-gray-600 mb-3'>
+              {t('将全局配置同步到当前分组 {{group}}', { group: selectedGroup })}
+            </div>
+            <div className='text-xs text-gray-500 mb-3'>
+              {t('同步后，当前分组将继承全局的所有配置，之后可以修改特定模型的价格')}
+            </div>
+            <div className='text-xs text-orange-500 mb-3'>
+              {t('注意：这将覆盖当前分组的现有配置')}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className='text-sm text-gray-600 mb-3'>
+              {selectedGroup === 'global'
+                ? t('将全局配置中已勾选的 {{count}} 个模型同步到分组', {
+                    count: selectedModelNames.length,
+                  })
+                : t('将 {{group}} 中已勾选的 {{count}} 个模型同步到其他分组', {
+                    group: selectedGroup,
+                    count: selectedModelNames.length,
+                  })
+              }
+            </div>
+            <div className='text-xs text-gray-500 mb-3'>
+              {t('已选模型')}: {selectedModelNames.join(', ')}
+            </div>
+            <Select
+              multiple
+              placeholder={t('选择目标分组')}
+              value={syncTargetGroups}
+              onChange={setSyncTargetGroups}
+              style={{ width: '100%' }}
+            >
+              {availableGroups
+                .filter(g => g !== 'global' && g !== selectedGroup)
+                .map(group => (
+                  <Select.Option key={group} value={group}>
+                    {group} {t('分组')}
+                  </Select.Option>
+                ))}
+            </Select>
+          </>
+        )}
       </Modal>
     </>
   );

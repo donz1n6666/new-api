@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Avatar,
   Button,
@@ -29,6 +29,7 @@ import {
   SideSheet,
   Space,
   Spin,
+  Switch,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
@@ -36,6 +37,8 @@ import {
   IconCalendarClock,
   IconClose,
   IconCreditCard,
+  IconDelete,
+  IconPlus,
   IconSave,
 } from '@douyinfe/semi-icons';
 import { Clock, RefreshCw } from 'lucide-react';
@@ -64,6 +67,15 @@ const resetPeriodOptions = [
   { value: 'custom', label: '自定义(秒)' },
 ];
 
+const tierPeriodOptions = [
+  { value: 'monthly', label: '每月' },
+  { value: 'weekly', label: '每周' },
+  { value: 'daily', label: '每天' },
+  { value: 'hourly', label: '每小时' },
+  { value: 'custom', label: '自定义(秒)' },
+  { value: 'none', label: '不重置(总量)' },
+];
+
 const AddEditSubscriptionModal = ({
   visible,
   handleClose,
@@ -75,10 +87,32 @@ const AddEditSubscriptionModal = ({
   const [loading, setLoading] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [groupLoading, setGroupLoading] = useState(false);
+  const [useMultiTier, setUseMultiTier] = useState(false);
+  const [quotaTiers, setQuotaTiers] = useState([]);
+  const [disableBalanceDeduction, setDisableBalanceDeduction] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const isEdit = editingPlan?.plan?.id !== undefined;
   const formKey = isEdit ? `edit-${editingPlan?.plan?.id}` : 'create';
+
+  const addTier = useCallback(() => {
+    setQuotaTiers(prev => [...prev, {
+      period: 'monthly',
+      limit: 0,
+      custom_seconds: 0,
+      sort_priority: (prev.length + 1) * 10,
+    }]);
+  }, []);
+
+  const removeTier = useCallback((index) => {
+    setQuotaTiers(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const updateTier = useCallback((index, field, value) => {
+    setQuotaTiers(prev => prev.map((tier, i) =>
+      i === index ? { ...tier, [field]: value } : tier
+    ));
+  }, []);
 
   const getInitValues = () => ({
     title: '',
@@ -139,15 +173,79 @@ const AddEditSubscriptionModal = ({
       })
       .catch(() => setGroupOptions([]))
       .finally(() => setGroupLoading(false));
-  }, [visible]);
+    // Initialize multi-tier state from plan
+    const plan = editingPlan?.plan;
+    if (plan?.quota_tiers && plan.quota_tiers !== '[]') {
+      try {
+        const tiers = JSON.parse(plan.quota_tiers);
+        if (Array.isArray(tiers) && tiers.length > 0) {
+          setUseMultiTier(true);
+          setQuotaTiers(tiers);
+        } else {
+          setUseMultiTier(false);
+          setQuotaTiers([]);
+        }
+      } catch {
+        setUseMultiTier(false);
+        setQuotaTiers([]);
+      }
+    } else {
+      setUseMultiTier(false);
+      setQuotaTiers([]);
+    }
+    setDisableBalanceDeduction(plan?.disable_balance_deduction || false);
+  }, [visible, editingPlan]);
+
+  const TIER_PERIOD_ORDER = { hourly: 1, daily: 2, weekly: 3, monthly: 4, none: 5, custom: 1 };
+
+  const getCustomOrder = (seconds) => {
+    if (seconds <= 0) return 1;
+    if (seconds < 86400) return 1;
+    if (seconds < 604800) return 2;
+    if (seconds < 2592000) return 3;
+    return 4;
+  };
+
+  const getTierOrder = (tier) => {
+    if (tier.period === 'custom') return getCustomOrder(tier.custom_seconds);
+    return TIER_PERIOD_ORDER[tier.period] || 1;
+  };
+
+  const validateTiers = (tiers) => {
+    if (tiers.length <= 1) return null;
+    const sorted = [...tiers].sort((a, b) => getTierOrder(a) - getTierOrder(b));
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      const prevOrder = getTierOrder(prev);
+      const currOrder = getTierOrder(curr);
+      if (currOrder < prevOrder) {
+        return t('层级周期必须长于或等于上一层级');
+      }
+      if (curr.limit > 0 && prev.limit > 0 && curr.limit < prev.limit) {
+        return t('层级限额必须大于或等于上一层级');
+      }
+    }
+    return null;
+  };
 
   const submit = async (values) => {
     if (!values.title || values.title.trim() === '') {
       showError(t('套餐标题不能为空'));
       return;
     }
+    // Validate tier ordering
+    if (useMultiTier) {
+      const activeTiers = quotaTiers.filter(t => t.limit > 0);
+      const error = validateTiers(activeTiers);
+      if (error) {
+        showError(error);
+        return;
+      }
+    }
     setLoading(true);
     try {
+      const effectiveTiers = useMultiTier ? quotaTiers.filter(t => t.limit > 0) : [];
       const payload = {
         plan: {
           ...values,
@@ -155,15 +253,17 @@ const AddEditSubscriptionModal = ({
           currency: 'USD',
           duration_value: Number(values.duration_value || 0),
           custom_seconds: Number(values.custom_seconds || 0),
-          quota_reset_period: values.quota_reset_period || 'never',
+          quota_reset_period: useMultiTier ? 'never' : (values.quota_reset_period || 'never'),
           quota_reset_custom_seconds:
-            values.quota_reset_period === 'custom'
+            !useMultiTier && values.quota_reset_period === 'custom'
               ? Number(values.quota_reset_custom_seconds || 0)
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-          total_amount: displayAmountToQuota(values.total_amount),
+          total_amount: useMultiTier ? 0 : displayAmountToQuota(values.total_amount),
           upgrade_group: values.upgrade_group || '',
+          quota_tiers: effectiveTiers.length > 0 ? JSON.stringify(effectiveTiers) : '[]',
+          disable_balance_deduction: disableBalanceDeduction,
         },
       };
       if (editingPlan?.plan?.id) {
@@ -463,42 +563,127 @@ const AddEditSubscriptionModal = ({
                     </div>
                   </div>
 
-                  <Row gutter={12}>
-                    <Col span={12}>
-                      <Form.Select
-                        field='quota_reset_period'
-                        label={t('重置周期')}
+                  <div className='mb-3 flex items-center justify-between'>
+                    <Text>{t('多周期限额')}</Text>
+                    <Switch
+                      checked={useMultiTier}
+                      onChange={setUseMultiTier}
+                    />
+                  </div>
+
+                  {useMultiTier ? (
+                    <div className='space-y-3'>
+                      {quotaTiers.map((tier, index) => (
+                        <div key={index} className='rounded-lg border p-3'>
+                          <div className='flex items-center justify-between mb-2'>
+                            <Text strong>{t('层级')} #{index + 1}</Text>
+                            <Button
+                              type='danger'
+                              theme='borderless'
+                              size='small'
+                              icon={<IconDelete />}
+                              onClick={() => removeTier(index)}
+                            />
+                          </div>
+                          <Row gutter={8}>
+                            <Col span={8}>
+                              <div className='mb-1 text-xs text-gray-500'>{t('周期')}</div>
+                              <Select
+                                value={tier.period}
+                                onChange={(v) => updateTier(index, 'period', v)}
+                                style={{ width: '100%' }}
+                              >
+                                {tierPeriodOptions.map(o => (
+                                  <Select.Option key={o.value} value={o.value}>{o.label}</Select.Option>
+                                ))}
+                              </Select>
+                            </Col>
+                            <Col span={8}>
+                              <div className='mb-1 text-xs text-gray-500'>{t('限额')}</div>
+                              <input
+                                type='number'
+                                className='semi-input'
+                                value={tier.limit}
+                                min={0}
+                                onChange={(e) => updateTier(index, 'limit', parseInt(e.target.value, 10) || 0)}
+                                style={{ width: '100%' }}
+                              />
+                            </Col>
+                            {tier.period === 'custom' && (
+                              <Col span={8}>
+                                <div className='mb-1 text-xs text-gray-500'>{t('秒数')}</div>
+                                <input
+                                  type='number'
+                                  className='semi-input'
+                                  value={tier.custom_seconds}
+                                  min={1}
+                                  onChange={(e) => updateTier(index, 'custom_seconds', parseInt(e.target.value, 10) || 0)}
+                                  style={{ width: '100%' }}
+                                />
+                              </Col>
+                            )}
+                          </Row>
+                        </div>
+                      ))}
+                      <Button
+                        type='primary'
+                        theme='light'
+                        icon={<IconPlus />}
+                        onClick={addTier}
+                        block
                       >
-                        {resetPeriodOptions.map((o) => (
-                          <Select.Option key={o.value} value={o.value}>
-                            {o.label}
-                          </Select.Option>
-                        ))}
-                      </Form.Select>
-                    </Col>
-                    <Col span={12}>
-                      {values.quota_reset_period === 'custom' ? (
-                        <Form.InputNumber
-                          field='quota_reset_custom_seconds'
-                          label={t('自定义秒数')}
-                          required
-                          min={60}
-                          precision={0}
-                          rules={[{ required: true, message: t('请输入秒数') }]}
-                          style={{ width: '100%' }}
-                        />
-                      ) : (
-                        <Form.InputNumber
-                          field='quota_reset_custom_seconds'
-                          label={t('自定义秒数')}
-                          min={0}
-                          precision={0}
-                          style={{ width: '100%' }}
-                          disabled
-                        />
-                      )}
-                    </Col>
-                  </Row>
+                        {t('添加层级')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Select
+                          field='quota_reset_period'
+                          label={t('重置周期')}
+                        >
+                          {resetPeriodOptions.map((o) => (
+                            <Select.Option key={o.value} value={o.value}>
+                              {o.label}
+                            </Select.Option>
+                          ))}
+                        </Form.Select>
+                      </Col>
+                      <Col span={12}>
+                        {values.quota_reset_period === 'custom' ? (
+                          <Form.InputNumber
+                            field='quota_reset_custom_seconds'
+                            label={t('自定义秒数')}
+                            required
+                            min={60}
+                            precision={0}
+                            rules={[{ required: true, message: t('请输入秒数') }]}
+                            style={{ width: '100%' }}
+                          />
+                        ) : (
+                          <Form.InputNumber
+                            field='quota_reset_custom_seconds'
+                            label={t('自定义秒数')}
+                            min={0}
+                            precision={0}
+                            style={{ width: '100%' }}
+                            disabled
+                          />
+                        )}
+                      </Col>
+                    </Row>
+                  )}
+
+                  <div className='mt-3 flex items-center justify-between'>
+                    <div>
+                      <Text>{t('禁用余额扣费')}</Text>
+                      <div className='text-xs text-gray-500'>{t('开启后只能使用订阅额度')}</div>
+                    </div>
+                    <Switch
+                      checked={disableBalanceDeduction}
+                      onChange={setDisableBalanceDeduction}
+                    />
+                  </div>
                 </Card>
 
                 {/* 第三方支付配置 */}

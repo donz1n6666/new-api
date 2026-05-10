@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,106 @@ type SubscriptionPlanDTO struct {
 
 type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
+}
+
+// tierPeriodOrder maps tier period types to numeric order (shorter = smaller)
+var tierPeriodOrder = map[string]int{
+	model.TierPeriodHourly:  1,
+	model.TierPeriodDaily:   2,
+	model.TierPeriodWeekly:  3,
+	model.TierPeriodMonthly: 4,
+	model.TierPeriodNone:    5,
+	model.TierPeriodCustom:  1, // custom sliding window = same as hourly base
+}
+
+// getCustomPeriodOrder returns the order for custom period based on its seconds
+func getCustomPeriodOrder(seconds int64) int {
+	switch {
+	case seconds <= 0:
+		return 1
+	case seconds < 86400: // < 1 day
+		return 1
+	case seconds < 604800: // < 1 week
+		return 2
+	case seconds < 2592000: // < 1 month
+		return 3
+	default:
+		return 4
+	}
+}
+
+// getTierOrder returns the sort order for a tier based on its period and custom seconds
+func getTierOrder(tier model.QuotaTier) int {
+	if tier.Period == model.TierPeriodCustom {
+		return getCustomPeriodOrder(tier.CustomSeconds)
+	}
+	return tierPeriodOrder[tier.Period]
+}
+
+// validateQuotaTiers validates the QuotaTiers JSON string
+func validateQuotaTiers(quotaTiers string) (string, string) {
+	trimmed := strings.TrimSpace(quotaTiers)
+	if trimmed == "" || trimmed == "[]" {
+		return "[]", ""
+	}
+	var tiers []model.QuotaTier
+	if err := common.Unmarshal([]byte(trimmed), &tiers); err != nil {
+		return "", "配额层级JSON格式错误"
+	}
+	validPeriods := map[string]bool{
+		model.TierPeriodMonthly: true,
+		model.TierPeriodWeekly:  true,
+		model.TierPeriodDaily:   true,
+		model.TierPeriodHourly:  true,
+		model.TierPeriodCustom:  true,
+		model.TierPeriodNone:    true,
+	}
+	for i, tier := range tiers {
+		if !validPeriods[tier.Period] {
+			return "", "配额层级 #" + strconv.Itoa(i+1) + " 周期类型无效: " + tier.Period
+		}
+		if tier.Limit < 0 {
+			return "", "配额层级 #" + strconv.Itoa(i+1) + " 限制不能为负数"
+		}
+		if tier.Period == model.TierPeriodCustom && tier.CustomSeconds <= 0 {
+			return "", "配额层级 #" + strconv.Itoa(i+1) + " 自定义周期秒数需大于0"
+		}
+	}
+
+	// Sort tiers by period order (shortest first)
+	for i := 0; i < len(tiers)-1; i++ {
+		for j := i + 1; j < len(tiers); j++ {
+			if getTierOrder(tiers[i]) > getTierOrder(tiers[j]) {
+				tiers[i], tiers[j] = tiers[j], tiers[i]
+			}
+		}
+	}
+
+	// Update sort_priority to match sorted order
+	for i := range tiers {
+		tiers[i].SortPriority = (i + 1) * 10
+	}
+
+	// Validate: each tier must have period >= previous AND limit >= previous
+	for i := 1; i < len(tiers); i++ {
+		prevOrder := getTierOrder(tiers[i-1])
+		currOrder := getTierOrder(tiers[i])
+		if currOrder < prevOrder {
+			return "", "配额层级顺序错误: " + tiers[i].Period + " 的周期不能短于 " + tiers[i-1].Period
+		}
+		if currOrder == prevOrder && tiers[i].Period != tiers[i-1].Period {
+			return "", "配额层级顺序错误: " + tiers[i].Period + " 与 " + tiers[i-1].Period + " 周期相同但类型不同"
+		}
+		if tiers[i].Limit > 0 && tiers[i-1].Limit > 0 && tiers[i].Limit < tiers[i-1].Limit {
+			return "", fmt.Sprintf("配额层级 #%d 的限额(%d)不能小于层级 #%d 的限额(%d)", i+1, tiers[i].Limit, i, tiers[i-1].Limit)
+		}
+	}
+
+	data, err := common.Marshal(tiers)
+	if err != nil {
+		return "", "配额层级序列化失败"
+	}
+	return string(data), ""
 }
 
 // ---- User APIs ----
@@ -156,6 +257,13 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	// Validate and normalize QuotaTiers
+	normalizedTiers, errMsg := validateQuotaTiers(req.Plan.QuotaTiers)
+	if errMsg != "" {
+		common.ApiErrorMsg(c, errMsg)
+		return
+	}
+	req.Plan.QuotaTiers = normalizedTiers
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
@@ -219,6 +327,13 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	// Validate and normalize QuotaTiers
+	normalizedTiers, errMsg := validateQuotaTiers(req.Plan.QuotaTiers)
+	if errMsg != "" {
+		common.ApiErrorMsg(c, errMsg)
+		return
+	}
+	req.Plan.QuotaTiers = normalizedTiers
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
@@ -239,6 +354,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
+			"quota_tiers":                req.Plan.QuotaTiers,
+			"disable_balance_deduction":  req.Plan.DisableBalanceDeduction,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {

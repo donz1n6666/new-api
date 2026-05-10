@@ -45,6 +45,7 @@ const ModelDetailSideSheet = ({
   endpointMap,
   autoGroups,
   t,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   const isMobile = useIsMobile();
 
@@ -119,6 +120,7 @@ const ModelDetailSideSheet = ({
                 usableGroup={usableGroup}
                 autoGroups={autoGroups}
                 t={t}
+                groupPricing={groupPricing}
               />
             </div>
             <Divider margin={16} />

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import {
   combineBillingExpr,
@@ -88,7 +88,7 @@ const toNormalizedNumber = (value) => {
   return formatted === '' ? null : Number(formatted);
 };
 
-const parseOptionJSON = (rawValue) => {
+export const parseOptionJSON = (rawValue) => {
   if (!rawValue || rawValue.trim() === '') {
     return {};
   }
@@ -624,6 +624,7 @@ export function useModelPricingEditorState({
   t,
   candidateModelNames = EMPTY_CANDIDATE_MODEL_NAMES,
   filterMode = 'all',
+  selectedGroup = 'global', // 新增：当前选中的分组
 }) {
   const [models, setModels] = useState([]);
   const [initialVisibleModelNames, setInitialVisibleModelNames] = useState([]);
@@ -635,20 +636,54 @@ export function useModelPricingEditorState({
   const [conflictOnly, setConflictOnly] = useState(false);
   const [optionalFieldToggles, setOptionalFieldToggles] = useState({});
 
+  // 根据选中的分组确定数据源
+  const getSourceMaps = useCallback(() => {
+    if (selectedGroup === 'global') {
+      // 全局配置
+      return {
+        ModelPrice: parseOptionJSON(options.ModelPrice),
+        ModelRatio: parseOptionJSON(options.ModelRatio),
+        CompletionRatio: parseOptionJSON(options.CompletionRatio),
+        CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
+        CacheRatio: parseOptionJSON(options.CacheRatio),
+        CreateCacheRatio: parseOptionJSON(options.CreateCacheRatio),
+        ImageRatio: parseOptionJSON(options.ImageRatio),
+        AudioRatio: parseOptionJSON(options.AudioRatio),
+        AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
+        ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
+        ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
+      };
+    } else {
+      // 分组级别配置
+      const groupModelPrice = parseOptionJSON(options.GroupModelPrice);
+      const groupModelRatio = parseOptionJSON(options.GroupModelRatio);
+      const groupCompletionRatio = parseOptionJSON(options.GroupCompletionRatio);
+      const groupCacheRatio = parseOptionJSON(options.GroupCacheRatio);
+      const groupCreateCacheRatio = parseOptionJSON(options.GroupCreateCacheRatio);
+      const groupImageRatio = parseOptionJSON(options.GroupImageRatio);
+      const groupAudioRatio = parseOptionJSON(options.GroupAudioRatio);
+      const groupAudioCompletionRatio = parseOptionJSON(options.GroupAudioCompletionRatio);
+      const groupBillingMode = parseOptionJSON(options.GroupBillingMode);
+      const groupBillingExpr = parseOptionJSON(options.GroupBillingExpr);
+
+      return {
+        ModelPrice: groupModelPrice[selectedGroup] || {},
+        ModelRatio: groupModelRatio[selectedGroup] || {},
+        CompletionRatio: groupCompletionRatio[selectedGroup] || {},
+        CompletionRatioMeta: {}, // 分组级别没有 meta
+        CacheRatio: groupCacheRatio[selectedGroup] || {},
+        CreateCacheRatio: groupCreateCacheRatio[selectedGroup] || {},
+        ImageRatio: groupImageRatio[selectedGroup] || {},
+        AudioRatio: groupAudioRatio[selectedGroup] || {},
+        AudioCompletionRatio: groupAudioCompletionRatio[selectedGroup] || {},
+        ModelBillingMode: groupBillingMode[selectedGroup] || {},
+        ModelBillingExpr: groupBillingExpr[selectedGroup] || {},
+      };
+    }
+  }, [options, selectedGroup]);
+
   useEffect(() => {
-    const sourceMaps = {
-      ModelPrice: parseOptionJSON(options.ModelPrice),
-      ModelRatio: parseOptionJSON(options.ModelRatio),
-      CompletionRatio: parseOptionJSON(options.CompletionRatio),
-      CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
-      CacheRatio: parseOptionJSON(options.CacheRatio),
-      CreateCacheRatio: parseOptionJSON(options.CreateCacheRatio),
-      ImageRatio: parseOptionJSON(options.ImageRatio),
-      AudioRatio: parseOptionJSON(options.AudioRatio),
-      AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
-      ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
-    };
+    const sourceMaps = getSourceMaps();
 
     const names = new Set([
       ...candidateModelNames,
@@ -693,7 +728,7 @@ export function useModelPricingEditorState({
           : nextModels;
       return nextVisibleModels[0]?.name || '';
     });
-  }, [candidateModelNames, filterMode, options]);
+  }, [candidateModelNames, filterMode, options, selectedGroup, getSourceMaps]);
 
   const visibleModels = useMemo(() => {
     return filterMode === 'unset'
@@ -1023,21 +1058,29 @@ export function useModelPricingEditorState({
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      // 根据选中的分组确定输出的 key 前缀
+      const isGroupMode = selectedGroup !== 'global';
+      const groupPrefix = isGroupMode ? 'Group' : '';
+
       const output = {
-        ModelPrice: {},
-        ModelRatio: {},
-        CompletionRatio: {},
-        CacheRatio: {},
-        CreateCacheRatio: {},
-        ImageRatio: {},
-        AudioRatio: {},
-        AudioCompletionRatio: {},
+        [`${groupPrefix}ModelPrice`]: {},
+        [`${groupPrefix}ModelRatio`]: {},
+        [`${groupPrefix}CompletionRatio`]: {},
+        [`${groupPrefix}CacheRatio`]: {},
+        [`${groupPrefix}CreateCacheRatio`]: {},
+        [`${groupPrefix}ImageRatio`]: {},
+        [`${groupPrefix}AudioRatio`]: {},
+        [`${groupPrefix}AudioCompletionRatio`]: {},
       };
 
-      const tieredOutput = {
-        'billing_setting.billing_mode': {},
-        'billing_setting.billing_expr': {},
-      };
+      const tieredOutput = {};
+      if (isGroupMode) {
+        tieredOutput['GroupBillingMode'] = {};
+        tieredOutput['GroupBillingExpr'] = {};
+      } else {
+        tieredOutput['billing_setting.billing_mode'] = {};
+        tieredOutput['billing_setting.billing_expr'] = {};
+      }
 
       for (const model of models) {
         if (model.billingMode === 'tiered_expr') {
@@ -1046,20 +1089,50 @@ export function useModelPricingEditorState({
             model.requestRuleExpr,
           );
           if (finalBillingExpr) {
-            tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
-            tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            if (isGroupMode) {
+              // 分组模式：需要合并到现有的分组配置中
+              const existingModes = parseOptionJSON(options.GroupBillingMode);
+              const existingExprs = parseOptionJSON(options.GroupBillingExpr);
+              tieredOutput['GroupBillingMode'] = {
+                ...existingModes,
+                [selectedGroup]: {
+                  ...(existingModes[selectedGroup] || {}),
+                  [model.name]: 'tiered_expr',
+                },
+              };
+              tieredOutput['GroupBillingExpr'] = {
+                ...existingExprs,
+                [selectedGroup]: {
+                  ...(existingExprs[selectedGroup] || {}),
+                  [model.name]: finalBillingExpr,
+                },
+              };
+            } else {
+              tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
+              tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            }
           }
         }
 
-        // Always serialize ratio/price values for all models (including
-        // tiered_expr) so they serve as fallback during multi-instance sync
-        // delay.  ModelPriceHelper checks billing_mode first, so these values
-        // are only used when billing_setting hasn't propagated yet.
+        // 序列化价格/倍率值
         try {
           const serialized = serializeModel(model, t);
           Object.entries(serialized).forEach(([key, value]) => {
             if (value !== null) {
-              output[key][model.name] = value;
+              const outputKey = `${groupPrefix}${key}`;
+              if (isGroupMode) {
+                // 分组模式：需要合并到现有的分组配置中
+                const existingData = parseOptionJSON(options[outputKey]);
+                output[outputKey] = {
+                  ...existingData,
+                  [selectedGroup]: {
+                    ...(existingData[selectedGroup] || {}),
+                    [model.name]: value,
+                  },
+                };
+              } else {
+                output[outputKey][model.name] = value;
+              }
             }
           });
         } catch (e) {
@@ -1129,5 +1202,49 @@ export function useModelPricingEditorState({
     addModel,
     deleteModel,
     applySelectedModelPricing,
+    syncGroupPricing,
   };
+
+  // 一键同步分组定价
+  async function syncGroupPricing(targetGroups, modelNames = null, fromGlobal = false) {
+    if (!fromGlobal && selectedGroup === 'global') {
+      showError(t('全局配置无法同步，请先选择一个分组'));
+      return false;
+    }
+    if (!targetGroups || targetGroups.length === 0) {
+      showError(t('请选择目标分组'));
+      return false;
+    }
+
+    setLoading(true);
+    try {
+      // 构建同步数据
+      const syncData = {
+        source_group: fromGlobal ? 'global' : selectedGroup,
+        target_groups: targetGroups,
+        from_global: fromGlobal,
+      };
+
+      // 如果指定了模型名称，添加到请求中
+      if (modelNames && modelNames.length > 0) {
+        syncData.model_names = modelNames;
+      }
+
+      const res = await API.post('/api/option/sync_group_pricing', syncData);
+      if (res.data.success) {
+        showSuccess(t('同步成功'));
+        await refresh();
+        return true;
+      } else {
+        showError(res.data.message || t('同步失败'));
+        return false;
+      }
+    } catch (error) {
+      console.error('同步失败:', error);
+      showError(error.message || t('同步失败，请重试'));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
 }

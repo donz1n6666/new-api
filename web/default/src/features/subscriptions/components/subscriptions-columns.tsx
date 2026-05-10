@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
-import { formatDuration, formatResetPeriod } from '../lib'
+import { formatDuration, formatResetPeriod, formatTiersSummary } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -80,12 +80,16 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title={t('Quota Reset')} />
         ),
-        cell: ({ row }) => (
-          <span className='text-muted-foreground'>
-            {formatResetPeriod(row.original.plan, t)}
-          </span>
-        ),
-        size: 80,
+        cell: ({ row }) => {
+          const plan = row.original.plan
+          const tierSummary = formatTiersSummary(plan.quota_tiers, t)
+          return (
+            <span className='text-muted-foreground'>
+              {tierSummary || formatResetPeriod(plan, t)}
+            </span>
+          )
+        },
+        size: 120,
       },
       {
         accessorFn: (row) => row.plan.sort_order,

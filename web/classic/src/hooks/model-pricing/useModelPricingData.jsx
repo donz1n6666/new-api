@@ -51,6 +51,7 @@ export const useModelPricingData = () => {
   const [usableGroup, setUsableGroup] = useState({});
   const [endpointMap, setEndpointMap] = useState({});
   const [autoGroups, setAutoGroups] = useState([]);
+  const [groupPricing, setGroupPricing] = useState(null); // 新增：分组定价数据
 
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
@@ -253,6 +254,18 @@ export const useModelPricingData = () => {
       setVendorsMap(vendorMap);
       setEndpointMap(supported_endpoint || {});
       setAutoGroups(auto_groups || []);
+
+      // 加载分组定价数据
+      try {
+        const ratioRes = await API.get('/api/ratio_config');
+        if (ratioRes.data?.success) {
+          setGroupPricing(ratioRes.data.data);
+        }
+      } catch (e) {
+        // 分组定价数据加载失败不影响主流程
+        console.warn('Failed to load group pricing data:', e);
+      }
+
       setModelsFormat(data, group_ratio, vendorMap);
     } else {
       showError(message);
@@ -374,6 +387,7 @@ export const useModelPricingData = () => {
     usableGroup,
     endpointMap,
     autoGroups,
+    groupPricing, // 新增：分组定价数据
 
     // 计算属性
     priceRate,

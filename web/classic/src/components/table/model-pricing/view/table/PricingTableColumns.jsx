@@ -113,6 +113,7 @@ export const getPricingTableColumns = ({
   tokenUnit,
   displayPrice,
   showRatio,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   const isMobile = useIsMobile();
   const priceDataCache = new WeakMap();
@@ -128,6 +129,7 @@ export const getPricingTableColumns = ({
         displayPrice,
         currency,
         quotaDisplayType: siteDisplayType,
+        groupPricing,
       });
       priceDataCache.set(record, cache);
     }

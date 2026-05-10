@@ -617,6 +617,7 @@ export const calculateModelPrice = ({
   currency,
   quotaDisplayType = 'USD',
   precision = 4,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   // 1. 选择实际使用的分组
   let usedGroup = selectedGroup;
@@ -645,21 +646,78 @@ export const calculateModelPrice = ({
     }
   }
 
-  // 2. 动态计费（tiered_expr）
-  if (record.billing_mode === 'tiered_expr' && record.billing_expr) {
+  // 2. 获取分组级别的定价配置（如果有）
+  const getGroupModelData = () => {
+    if (!groupPricing || usedGroup === 'all') {
+      return null;
+    }
+
+    const groupBillingMode = groupPricing.group_billing_mode?.[usedGroup]?.[record.model] || null;
+    const groupModelPrice = groupPricing.group_model_price?.[usedGroup]?.[record.model] || null;
+    const groupModelRatio = groupPricing.group_model_ratio?.[usedGroup]?.[record.model] || null;
+    const groupCompletionRatio = groupPricing.group_completion_ratio?.[usedGroup]?.[record.model] || null;
+    const groupCacheRatio = groupPricing.group_cache_ratio?.[usedGroup]?.[record.model] || null;
+    const groupCreateCacheRatio = groupPricing.group_create_cache_ratio?.[usedGroup]?.[record.model] || null;
+    const groupImageRatio = groupPricing.group_image_ratio?.[usedGroup]?.[record.model] || null;
+    const groupAudioRatio = groupPricing.group_audio_ratio?.[usedGroup]?.[record.model] || null;
+    const groupAudioCompletionRatio = groupPricing.group_audio_completion_ratio?.[usedGroup]?.[record.model] || null;
+    const groupBillingExpr = groupPricing.group_billing_expr?.[usedGroup]?.[record.model] || null;
+
+    // 如果分组没有任何配置，返回 null
+    if (!groupBillingMode && !groupModelPrice && !groupModelRatio) {
+      return null;
+    }
+
+    return {
+      billingMode: groupBillingMode,
+      modelPrice: groupModelPrice,
+      modelRatio: groupModelRatio,
+      completionRatio: groupCompletionRatio,
+      cacheRatio: groupCacheRatio,
+      createCacheRatio: groupCreateCacheRatio,
+      imageRatio: groupImageRatio,
+      audioRatio: groupAudioRatio,
+      audioCompletionRatio: groupAudioCompletionRatio,
+      billingExpr: groupBillingExpr,
+    };
+  };
+
+  const groupModelData = getGroupModelData();
+
+  // 3. 动态计费（tiered_expr）
+  const effectiveBillingExpr = groupModelData?.billingExpr || record.billing_expr;
+  const effectiveBillingMode = groupModelData?.billingMode || record.billing_mode;
+
+  if (effectiveBillingMode === 'tiered_expr' && effectiveBillingExpr) {
     return {
       isDynamicPricing: true,
-      billingExpr: record.billing_expr,
+      billingExpr: effectiveBillingExpr,
       usedGroup,
       usedGroupRatio,
     };
   }
 
-  // 3. 根据计费类型计算价格
-  if (record.quota_type === 0) {
+  // 4. 确定使用的价格/倍率（分组优先，否则使用全局）
+  const effectiveModelPrice = groupModelData?.modelPrice ?? record.model_price;
+  const effectiveModelRatio = groupModelData?.modelRatio ?? record.model_ratio;
+  const effectiveCompletionRatio = groupModelData?.completionRatio ?? record.completion_ratio;
+  const effectiveCacheRatio = groupModelData?.cacheRatio ?? record.cache_ratio;
+  const effectiveCreateCacheRatio = groupModelData?.createCacheRatio ?? record.create_cache_ratio;
+  const effectiveImageRatio = groupModelData?.imageRatio ?? record.image_ratio;
+  const effectiveAudioRatio = groupModelData?.audioRatio ?? record.audio_ratio;
+  const effectiveAudioCompletionRatio = groupModelData?.audioCompletionRatio ?? record.audio_completion_ratio;
+
+  // 5. 确定计费类型
+  // 如果分组配置了 per-request 模式或者有 model_price，则按次计费
+  const isPerRequest = groupModelData?.billingMode === 'per-request' ||
+    (groupModelData?.billingMode === undefined && record.quota_type === 1) ||
+    (groupModelData?.modelPrice !== undefined && groupModelData?.modelPrice !== null);
+
+  // 6. 根据计费类型计算价格
+  if (!isPerRequest) {
     // 按量计费
     const isTokensDisplay = quotaDisplayType === 'TOKENS';
-    const inputRatioPriceUSD = record.model_ratio * 2 * usedGroupRatio;
+    const inputRatioPriceUSD = (effectiveModelRatio || 0) * 2 * usedGroupRatio;
     const unitDivisor = tokenUnit === 'K' ? 1000 : 1;
     const unitLabel = tokenUnit === 'K' ? 'K' : 'M';
     const hasRatioValue = (value) =>
@@ -673,13 +731,13 @@ export const calculateModelPrice = ({
 
     if (isTokensDisplay) {
       return {
-        inputRatio: formatRatio(record.model_ratio),
-        completionRatio: formatRatio(record.completion_ratio),
-        cacheRatio: formatRatio(record.cache_ratio),
-        createCacheRatio: formatRatio(record.create_cache_ratio),
-        imageRatio: formatRatio(record.image_ratio),
-        audioInputRatio: formatRatio(record.audio_ratio),
-        audioOutputRatio: formatRatio(record.audio_completion_ratio),
+        inputRatio: formatRatio(effectiveModelRatio),
+        completionRatio: formatRatio(effectiveCompletionRatio),
+        cacheRatio: formatRatio(effectiveCacheRatio),
+        createCacheRatio: formatRatio(effectiveCreateCacheRatio),
+        imageRatio: formatRatio(effectiveImageRatio),
+        audioInputRatio: formatRatio(effectiveAudioRatio),
+        audioOutputRatio: formatRatio(effectiveAudioCompletionRatio),
         isPerToken: true,
         isTokensDisplay: true,
         usedGroup,
@@ -712,31 +770,31 @@ export const calculateModelPrice = ({
     };
 
     const inputPrice = formatTokenPrice(inputRatioPriceUSD);
-    const audioInputPrice = hasRatioValue(record.audio_ratio)
-      ? formatTokenPrice(inputRatioPriceUSD * Number(record.audio_ratio))
+    const audioInputPrice = hasRatioValue(effectiveAudioRatio)
+      ? formatTokenPrice(inputRatioPriceUSD * Number(effectiveAudioRatio))
       : null;
 
     return {
       inputPrice,
       completionPrice: formatTokenPrice(
-        inputRatioPriceUSD * Number(record.completion_ratio),
+        inputRatioPriceUSD * Number(effectiveCompletionRatio || 0),
       ),
-      cachePrice: hasRatioValue(record.cache_ratio)
-        ? formatTokenPrice(inputRatioPriceUSD * Number(record.cache_ratio))
+      cachePrice: hasRatioValue(effectiveCacheRatio)
+        ? formatTokenPrice(inputRatioPriceUSD * Number(effectiveCacheRatio))
         : null,
-      createCachePrice: hasRatioValue(record.create_cache_ratio)
-        ? formatTokenPrice(inputRatioPriceUSD * Number(record.create_cache_ratio))
+      createCachePrice: hasRatioValue(effectiveCreateCacheRatio)
+        ? formatTokenPrice(inputRatioPriceUSD * Number(effectiveCreateCacheRatio))
         : null,
-      imagePrice: hasRatioValue(record.image_ratio)
-        ? formatTokenPrice(inputRatioPriceUSD * Number(record.image_ratio))
+      imagePrice: hasRatioValue(effectiveImageRatio)
+        ? formatTokenPrice(inputRatioPriceUSD * Number(effectiveImageRatio))
         : null,
       audioInputPrice,
       audioOutputPrice:
-        audioInputPrice && hasRatioValue(record.audio_completion_ratio)
+        audioInputPrice && hasRatioValue(effectiveAudioCompletionRatio)
           ? formatTokenPrice(
               inputRatioPriceUSD *
-                Number(record.audio_ratio) *
-                Number(record.audio_completion_ratio),
+                Number(effectiveAudioRatio) *
+                Number(effectiveAudioCompletionRatio),
             )
           : null,
       unitLabel,
@@ -747,23 +805,12 @@ export const calculateModelPrice = ({
     };
   }
 
-  if (record.quota_type === 1) {
-    // 按次计费
-    const priceUSD = parseFloat(record.model_price) * usedGroupRatio;
-    const displayVal = displayPrice(priceUSD);
+  // 按次计费
+  const priceUSD = parseFloat(effectiveModelPrice || 0) * usedGroupRatio;
+  const displayVal = displayPrice(priceUSD);
 
-    return {
-      price: displayVal,
-      isPerToken: false,
-      isTokensDisplay: false,
-      usedGroup,
-      usedGroupRatio,
-    };
-  }
-
-  // 未知计费类型，返回占位信息
   return {
-    price: '-',
+    price: displayVal,
     isPerToken: false,
     isTokensDisplay: false,
     usedGroup,

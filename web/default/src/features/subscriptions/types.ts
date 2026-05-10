@@ -1,6 +1,28 @@
 import { z } from 'zod'
 
 // ============================================================================
+// Tier Types
+// ============================================================================
+
+export type TierPeriod = 'monthly' | 'weekly' | 'daily' | 'hourly' | 'custom' | 'none'
+
+export interface QuotaTier {
+  period: TierPeriod
+  limit: number
+  custom_seconds: number
+  sort_priority: number
+}
+
+export interface TierUsageInfo {
+  tier_index: number
+  period: TierPeriod
+  limit: number
+  usage: number
+  window_start?: number
+  next_reset?: number
+}
+
+// ============================================================================
 // Subscription Plan Schema & Types
 // ============================================================================
 
@@ -15,6 +37,8 @@ export const subscriptionPlanSchema = z.object({
   custom_seconds: z.number().optional(),
   quota_reset_period: z.enum(['never', 'daily', 'weekly', 'monthly', 'custom']),
   quota_reset_custom_seconds: z.number().optional(),
+  quota_tiers: z.string().optional(),
+  disable_balance_deduction: z.boolean().optional(),
   enabled: z.boolean(),
   sort_order: z.number(),
   max_purchase_per_user: z.number(),

@@ -39,7 +39,7 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import { formatDuration, formatResetPeriod, formatTiersSummary } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -468,17 +468,23 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                 const count = planPurchaseCountMap.get(plan.id) || 0
                 const reached = limit > 0 && count >= limit
 
+                const tierSummary = formatTiersSummary(plan.quota_tiers, t)
                 const benefits = [
                   `${t('Validity Period')}: ${formatDuration(plan, t)}`,
-                  formatResetPeriod(plan, t) !== t('No Reset')
-                    ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
-                    : null,
-                  totalAmount > 0
+                  tierSummary
+                    ? `${t('Quota Limits')}: ${tierSummary}`
+                    : (formatResetPeriod(plan, t) !== t('No Reset')
+                        ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
+                        : null),
+                  !tierSummary && totalAmount > 0
                     ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                    : `${t('Total Quota')}: ${t('Unlimited')}`,
+                    : (!tierSummary ? `${t('Total Quota')}: ${t('Unlimited')}` : null),
                   limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                   plan.upgrade_group
                     ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
+                    : null,
+                  plan.disable_balance_deduction
+                    ? t('Balance deduction disabled')
                     : null,
                 ].filter(Boolean) as string[]
 

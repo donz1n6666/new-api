@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -195,6 +195,17 @@ export function RatioSettingsCard({
   const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState('global')
+
+  // 从 GroupRatio 中提取可用的分组列表
+  const availableGroups = useMemo(() => {
+    try {
+      const groupRatio = JSON.parse(groupDefaults.GroupRatio || '{}')
+      return ['global', ...Object.keys(groupRatio)]
+    } catch {
+      return ['global']
+    }
+  }, [groupDefaults.GroupRatio])
 
   const resetMutation = useMutation({
     mutationFn: resetModelRatios,
@@ -438,6 +449,12 @@ export function RatioSettingsCard({
             onReset={handleResetRatios}
             isSaving={updateOption.isPending}
             isResetting={resetMutation.isPending}
+            selectedGroup={selectedGroup}
+            onGroupChange={setSelectedGroup}
+            availableGroups={availableGroups}
+            onSyncComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ['system-options'] })
+            }}
           />
         </TabsContent>
 

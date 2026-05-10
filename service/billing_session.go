@@ -404,6 +404,10 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "wallet_only":
 		return tryWallet()
 	case "wallet_first":
+		// If user has a DisableBalanceDeduction subscription, force subscription-only
+		if noFallback, _ := model.HasDisableBalanceDeductionSubscription(relayInfo.UserId); noFallback {
+			return trySubscription()
+		}
 		session, err := tryWallet()
 		if err != nil {
 			if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
@@ -425,6 +429,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				// Check if user has a DisableBalanceDeduction subscription
+				noFallback, _ := model.HasDisableBalanceDeductionSubscription(relayInfo.UserId)
+				if noFallback {
+					return nil, apiErr // Block wallet fallback
+				}
 				return tryWallet()
 			}
 			return nil, apiErr

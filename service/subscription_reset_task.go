@@ -81,6 +81,36 @@ func runSubscriptionQuotaResetOnce() {
 			break
 		}
 	}
+	// Reset expired calendar-aligned tiers
+	for {
+		n, err := model.ResetExpiredCalendarTiers(subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("subscription calendar tier reset failed: %v", err))
+			break
+		}
+		if n == 0 {
+			break
+		}
+		totalReset += n
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+	// Reset expired sliding window tiers
+	for {
+		n, err := model.ResetExpiredTierWindows(subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("subscription sliding window tier reset failed: %v", err))
+			break
+		}
+		if n == 0 {
+			break
+		}
+		totalReset += n
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
 	lastCleanup := time.Unix(subscriptionCleanupLast.Load(), 0)
 	if time.Since(lastCleanup) >= subscriptionCleanupInterval {
 		if _, err := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600); err == nil {

@@ -76,6 +76,7 @@ const PricingCardView = ({
   selectedRowKeys = [],
   setSelectedRowKeys,
   openModelDetail,
+  groupPricing = null, // 新增：分组定价数据
 }) => {
   const showSkeleton = useMinimumLoadingTime(loading);
   const startIndex = (currentPage - 1) * pageSize;
@@ -249,6 +250,7 @@ const PricingCardView = ({
             displayPrice,
             currency,
             quotaDisplayType: siteDisplayType,
+            groupPricing,
           });
 
           return (

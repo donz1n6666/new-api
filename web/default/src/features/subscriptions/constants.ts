@@ -20,10 +20,27 @@ export const RESET_PERIODS = [
   { value: 'custom', labelKey: 'Custom (seconds)' },
 ] as const
 
+// ============================================================================
+// Tier Period Options
+// ============================================================================
+
+export const TIER_PERIODS = [
+  { value: 'monthly', labelKey: 'Monthly' },
+  { value: 'weekly', labelKey: 'Weekly' },
+  { value: 'daily', labelKey: 'Daily' },
+  { value: 'hourly', labelKey: 'Hourly' },
+  { value: 'custom', labelKey: 'Custom (seconds)' },
+  { value: 'none', labelKey: 'No Reset (total cap)' },
+] as const
+
 export function getDurationUnitOptions(t: TFunction) {
   return DURATION_UNITS.map((u) => ({ value: u.value, label: t(u.labelKey) }))
 }
 
 export function getResetPeriodOptions(t: TFunction) {
   return RESET_PERIODS.map((p) => ({ value: p.value, label: t(p.labelKey) }))
+}
+
+export function getTierPeriodOptions(t: TFunction) {
+  return TIER_PERIODS.map((p) => ({ value: p.value, label: t(p.labelKey) }))
 }

@@ -65,12 +65,61 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
-	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	// 获取用户分组，优先使用分组级别配置
+	userGroup := info.UserGroup
+	if autoGroup, exists := c.Get("auto_group"); exists {
+		userGroup = autoGroup.(string)
+	}
+
+	// 先尝试获取分组级别的计费模式和价格
+	groupBillingMode := ratio_setting.GetGroupBillingMode(userGroup, info.OriginModelName)
+	groupModelPrice, hasGroupPrice := ratio_setting.GetGroupModelPrice(userGroup, info.OriginModelName)
+	groupModelRatio, hasGroupRatio := ratio_setting.GetGroupModelRatio(userGroup, info.OriginModelName)
+
+	// 确定使用的价格和计费方式
+	var modelPrice float64
+	var usePrice bool
+	var billingMode string
+
+	if groupBillingMode != "" {
+		// 分组有独立的计费方式配置
+		billingMode = groupBillingMode
+		switch billingMode {
+		case "per-request":
+			if hasGroupPrice {
+				modelPrice = groupModelPrice
+				usePrice = true
+			} else {
+				// 回退到全局
+				modelPrice, usePrice = ratio_setting.GetModelPrice(info.OriginModelName, false)
+			}
+		case "tiered_expr":
+			// 表达式计费，不需要价格
+			usePrice = false
+		default: // per-token
+			if hasGroupRatio {
+				modelPrice = groupModelRatio
+				usePrice = false
+			} else {
+				// 回退到全局
+				modelPrice, usePrice = ratio_setting.GetModelPrice(info.OriginModelName, false)
+			}
+		}
+	} else {
+		// 分组没有独立配置，使用全局配置
+		modelPrice, usePrice = ratio_setting.GetModelPrice(info.OriginModelName, false)
+		billingMode = billing_setting.GetBillingMode(info.OriginModelName)
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	// Check if this model uses tiered_expr billing
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
+	if billingMode == billing_setting.BillingModeTieredExpr || billingMode == "tiered_expr" {
+		// 尝试获取分组级别的表达式
+		groupExpr := ratio_setting.GetGroupBillingExpr(userGroup, info.OriginModelName)
+		if groupExpr != "" {
+			return modelPriceHelperTieredWithExpr(c, info, promptTokens, meta, groupRatioInfo, groupExpr)
+		}
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
 	}
 
@@ -92,7 +141,16 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 		var success bool
 		var matchName string
-		modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+
+		// 优先使用分组级别的倍率
+		if hasGroupRatio {
+			modelRatio = groupModelRatio
+			success = true
+			matchName = info.OriginModelName
+		} else {
+			modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+		}
+
 		if !success {
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
@@ -102,15 +160,47 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 				return types.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
 			}
 		}
-		completionRatio = ratio_setting.GetCompletionRatio(info.OriginModelName)
-		cacheRatio, _ = ratio_setting.GetCacheRatio(info.OriginModelName)
-		cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(info.OriginModelName)
+
+		// 获取分组级别的其他倍率，如果没有则使用全局配置
+		if r, ok := ratio_setting.GetGroupCompletionRatio(userGroup, info.OriginModelName); ok {
+			completionRatio = r
+		} else {
+			completionRatio = ratio_setting.GetCompletionRatio(info.OriginModelName)
+		}
+
+		if r, ok := ratio_setting.GetGroupCacheRatio(userGroup, info.OriginModelName); ok {
+			cacheRatio = r
+		} else {
+			cacheRatio, _ = ratio_setting.GetCacheRatio(info.OriginModelName)
+		}
+
+		if r, ok := ratio_setting.GetGroupCreateCacheRatio(userGroup, info.OriginModelName); ok {
+			cacheCreationRatio = r
+		} else {
+			cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(info.OriginModelName)
+		}
+
 		cacheCreationRatio5m = cacheCreationRatio
-		// 固定1h和5min缓存写入价格的比例
 		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
-		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
-		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
-		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
+
+		if r, ok := ratio_setting.GetGroupImageRatio(userGroup, info.OriginModelName); ok {
+			imageRatio = r
+		} else {
+			imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
+		}
+
+		if r, ok := ratio_setting.GetGroupAudioRatio(userGroup, info.OriginModelName); ok {
+			audioRatio = r
+		} else {
+			audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
+		}
+
+		if r, ok := ratio_setting.GetGroupAudioCompletionRatio(userGroup, info.OriginModelName); ok {
+			audioCompletionRatio = r
+		} else {
+			audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
+		}
+
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		preConsumedQuota = int(float64(preConsumedTokens) * ratio)
 	} else {
@@ -167,25 +257,60 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
-	usePrice := success
+	// 获取用户分组
+	userGroup := info.UserGroup
+	if autoGroup, exists := c.Get("auto_group"); exists {
+		userGroup = autoGroup.(string)
+	}
+
+	// 先尝试获取分组级别的配置
+	groupBillingMode := ratio_setting.GetGroupBillingMode(userGroup, info.OriginModelName)
+	groupModelPrice, hasGroupPrice := ratio_setting.GetGroupModelPrice(userGroup, info.OriginModelName)
+	groupModelRatio, hasGroupRatio := ratio_setting.GetGroupModelRatio(userGroup, info.OriginModelName)
+
+	var modelPrice float64
+	var usePrice bool
 	var modelRatio float64
 
-	if !success {
-		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
-		if ok {
-			modelPrice = defaultPrice
-			usePrice = true
-		} else {
-			var ratioSuccess bool
-			var matchName string
-			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
-			acceptUnsetRatio := false
-			if info.UserSetting.AcceptUnsetRatioModel {
-				acceptUnsetRatio = true
-			}
-			if !ratioSuccess && !acceptUnsetRatio {
-				return types.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
+	// 确定计费方式和价格
+	if groupBillingMode == "per-request" && hasGroupPrice {
+		// 分组配置为按次计费且有价格
+		modelPrice = groupModelPrice
+		usePrice = true
+	} else if groupBillingMode == "per-token" && hasGroupRatio {
+		// 分组配置为按量计费且有倍率
+		modelRatio = groupModelRatio
+		usePrice = false
+	} else {
+		// 回退到全局配置
+		var success bool
+		modelPrice, success = ratio_setting.GetModelPrice(info.OriginModelName, true)
+		usePrice = success
+
+		if !success {
+			defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
+			if ok {
+				modelPrice = defaultPrice
+				usePrice = true
+			} else {
+				var ratioSuccess bool
+				var matchName string
+
+				// 检查分组级别倍率
+				if hasGroupRatio {
+					modelRatio = groupModelRatio
+					ratioSuccess = true
+				} else {
+					modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+				}
+
+				acceptUnsetRatio := false
+				if info.UserSetting.AcceptUnsetRatioModel {
+					acceptUnsetRatio = true
+				}
+				if !ratioSuccess && !acceptUnsetRatio {
+					return types.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
+				}
 			}
 		}
 	}
@@ -301,6 +426,66 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper_tiered result: model=%s preConsume=%d quotaBeforeGroup=%.2f groupRatio=%.2f tier=%s", info.OriginModelName, preConsumedQuota, quotaBeforeGroup, groupRatioInfo.GroupRatio, trace.MatchedTier))
+	}
+
+	info.PriceData = priceData
+	return priceData, nil
+}
+
+// modelPriceHelperTieredWithExpr 使用指定的表达式进行阶梯计费（用于分组级别配置）
+func modelPriceHelperTieredWithExpr(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, exprStr string) (types.PriceData, error) {
+	estimatedCompletionTokens := 0
+	if meta.MaxTokens != 0 {
+		estimatedCompletionTokens = meta.MaxTokens
+	}
+
+	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+
+	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
+		P:   float64(promptTokens),
+		C:   float64(estimatedCompletionTokens),
+		Len: float64(promptTokens),
+	}, requestInput)
+	if err != nil {
+		return types.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
+	}
+
+	quotaBeforeGroup := rawCost / 1_000_000 * common.QuotaPerUnit
+	preConsumedQuota := billingexpr.QuotaRound(quotaBeforeGroup * groupRatioInfo.GroupRatio)
+
+	freeModel := false
+	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		if groupRatioInfo.GroupRatio == 0 {
+			preConsumedQuota = 0
+			freeModel = true
+		}
+	}
+
+	exprHash := billingexpr.ExprHashString(exprStr)
+	snapshot := &billingexpr.BillingSnapshot{
+		BillingMode:               billing_setting.BillingModeTieredExpr,
+		ModelName:                 info.OriginModelName,
+		ExprString:                exprStr,
+		ExprHash:                  exprHash,
+		GroupRatio:                groupRatioInfo.GroupRatio,
+		EstimatedPromptTokens:     promptTokens,
+		EstimatedCompletionTokens: estimatedCompletionTokens,
+		EstimatedQuotaBeforeGroup: quotaBeforeGroup,
+		EstimatedQuotaAfterGroup:  preConsumedQuota,
+		EstimatedTier:             trace.MatchedTier,
+		QuotaPerUnit:              common.QuotaPerUnit,
+		ExprVersion:               billingexpr.ExprVersion(exprStr),
+	}
+	info.TieredBillingSnapshot = snapshot
+	info.BillingRequestInput = &requestInput
+
+	priceData := types.PriceData{
+		FreeModel:         freeModel,
+		GroupRatioInfo:    groupRatioInfo,
+		QuotaToPreConsume: preConsumedQuota,
 	}
 
 	info.PriceData = priceData

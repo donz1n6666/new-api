@@ -155,6 +155,17 @@ func InitOptionMap() {
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
 	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
+	// 分组级别定价配置
+	common.OptionMap["GroupModelPrice"] = ratio_setting.GroupModelPrice2JSONString()
+	common.OptionMap["GroupModelRatio"] = ratio_setting.GroupModelRatio2JSONString()
+	common.OptionMap["GroupCompletionRatio"] = ratio_setting.GroupCompletionRatio2JSONString()
+	common.OptionMap["GroupCacheRatio"] = ratio_setting.GroupCacheRatio2JSONString()
+	common.OptionMap["GroupCreateCacheRatio"] = ratio_setting.GroupCreateCacheRatio2JSONString()
+	common.OptionMap["GroupImageRatio"] = ratio_setting.GroupImageRatio2JSONString()
+	common.OptionMap["GroupAudioRatio"] = ratio_setting.GroupAudioRatio2JSONString()
+	common.OptionMap["GroupAudioCompletionRatio"] = ratio_setting.GroupAudioCompletionRatio2JSONString()
+	common.OptionMap["GroupBillingMode"] = ratio_setting.GroupBillingMode2JSONString()
+	common.OptionMap["GroupBillingExpr"] = ratio_setting.GroupBillingExpr2JSONString()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
@@ -544,6 +555,26 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateAudioRatioByJSONString(value)
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(value)
+	case "GroupModelPrice":
+		err = ratio_setting.UpdateGroupModelPriceByJSONString(value)
+	case "GroupModelRatio":
+		err = ratio_setting.UpdateGroupModelRatioByJSONString(value)
+	case "GroupCompletionRatio":
+		err = ratio_setting.UpdateGroupCompletionRatioByJSONString(value)
+	case "GroupCacheRatio":
+		err = ratio_setting.UpdateGroupCacheRatioByJSONString(value)
+	case "GroupCreateCacheRatio":
+		err = ratio_setting.UpdateGroupCreateCacheRatioByJSONString(value)
+	case "GroupImageRatio":
+		err = ratio_setting.UpdateGroupImageRatioByJSONString(value)
+	case "GroupAudioRatio":
+		err = ratio_setting.UpdateGroupAudioRatioByJSONString(value)
+	case "GroupAudioCompletionRatio":
+		err = ratio_setting.UpdateGroupAudioCompletionRatioByJSONString(value)
+	case "GroupBillingMode":
+		err = ratio_setting.UpdateGroupBillingModeByJSONString(value)
+	case "GroupBillingExpr":
+		err = ratio_setting.UpdateGroupBillingExprByJSONString(value)
 	case "TopUpLink":
 		common.TopUpLink = value
 	//case "ChatLink":
