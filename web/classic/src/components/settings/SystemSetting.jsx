@@ -666,6 +666,15 @@ const SystemSetting = () => {
       value: String(formValues.InvitationCodeRewardRatio || 0),
     });
     await updateOptions(options);
+    // 同步邀请码金额字段
+    const newPriceAmount = Number(quotaToDisplayAmount(price).toFixed(6));
+    setInputs((prev) => ({
+      ...prev,
+      InvitationCodePriceAmount: newPriceAmount,
+    }));
+    if (formApiRef.current) {
+      formApiRef.current.setValue('InvitationCodePriceAmount', newPriceAmount);
+    }
   };
 
   const submitPasskeySettings = async () => {
@@ -1149,6 +1158,17 @@ const SystemSetting = () => {
                         step={0.000001}
                         precision={6}
                         suffix={'USD'}
+                        onChange={(amount) => {
+                          const quota = displayAmountToQuota(amount || 0);
+                          if (formApiRef.current) {
+                            formApiRef.current.setValue('InvitationCodePrice', quota);
+                          }
+                          setInputs((prev) => ({
+                            ...prev,
+                            InvitationCodePriceAmount: amount,
+                            InvitationCodePrice: quota,
+                          }));
+                        }}
                       />
                     </Col>
                     <Col xs={24} sm={24} md={8} lg={8} xl={8}>
@@ -1159,6 +1179,17 @@ const SystemSetting = () => {
                         min={0}
                         step={500000}
                         suffix={'Token'}
+                        onChange={(quota) => {
+                          const amount = Number(quotaToDisplayAmount(quota || 0).toFixed(6));
+                          if (formApiRef.current) {
+                            formApiRef.current.setValue('InvitationCodePriceAmount', amount);
+                          }
+                          setInputs((prev) => ({
+                            ...prev,
+                            InvitationCodePrice: quota,
+                            InvitationCodePriceAmount: amount,
+                          }));
+                        }}
                       />
                     </Col>
                     <Col xs={24} sm={24} md={8} lg={8} xl={8}>
