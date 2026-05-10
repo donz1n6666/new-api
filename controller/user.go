@@ -163,6 +163,26 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
+	// 邀请码验证
+	var invitationCodeRecord *model.InvitationCode
+	if common.InvitationCodeEnabled {
+		invitationCode := user.InvitationCode
+		if invitationCode == "" {
+			common.ApiErrorI18n(c, i18n.MsgInvitationCodeRequired)
+			return
+		}
+		var icErr error
+		invitationCodeRecord, icErr = model.GetInvitationCodeByCode(invitationCode)
+		if icErr != nil || invitationCodeRecord == nil {
+			common.ApiErrorI18n(c, i18n.MsgInvitationCodeInvalid)
+			return
+		}
+		if invitationCodeRecord.Status != common.InvitationCodeStatusEnabled {
+			common.ApiErrorI18n(c, i18n.MsgInvitationCodeUsed)
+			return
+		}
+	}
+
 	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -173,8 +193,16 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserExists)
 		return
 	}
-	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
+
+	// 确定邀请人：优先使用邀请码生成者，否则使用 aff_code
+	inviterId := 0
+	if common.InvitationCodeEnabled && invitationCodeRecord != nil {
+		inviterId = invitationCodeRecord.UserId
+	} else {
+		affCode := user.AffCode // this code is the inviter's code, not the user's own code
+		inviterId, _ = model.GetUserIdByAffCode(affCode)
+	}
+
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
@@ -196,6 +224,12 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
+
+	// 标记邀请码已使用
+	if common.InvitationCodeEnabled && invitationCodeRecord != nil {
+		_ = model.UseInvitationCode(invitationCodeRecord.Code, insertedUser.Id)
+	}
+
 	// 生成默认令牌
 	if constant.GenerateDefaultToken {
 		key, err := common.GenerateKey()

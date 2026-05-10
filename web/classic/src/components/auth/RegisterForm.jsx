@@ -118,6 +118,13 @@ const RegisterForm = () => {
   if (affCode) {
     localStorage.setItem('aff', affCode);
   }
+  let invitationCode = new URLSearchParams(window.location.search).get('invitation_code');
+  if (invitationCode) {
+    localStorage.setItem('invitation_code', invitationCode);
+  }
+  const [invitationCodeInput, setInvitationCodeInput] = useState(
+    invitationCode || localStorage.getItem('invitation_code') || ''
+  );
 
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
@@ -129,6 +136,7 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const invitationCodeEnabled = Boolean(status?.invitation_code_enabled);
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthRegisterOptions = Boolean(
@@ -229,12 +237,19 @@ const RegisterForm = () => {
         showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
         return;
       }
+      if (invitationCodeEnabled && !invitationCodeInput.trim()) {
+        showError(t('请输入邀请码'));
+        return;
+      }
       setRegisterLoading(true);
       try {
         if (!affCode) {
           affCode = localStorage.getItem('aff');
         }
         inputs.aff_code = affCode;
+        if (invitationCodeEnabled && invitationCodeInput.trim()) {
+          inputs.invitation_code = invitationCodeInput.trim();
+        }
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,
@@ -573,6 +588,20 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <Form className='space-y-3'>
+                {invitationCodeEnabled && (
+                  <Form.Input
+                    field='invitation_code'
+                    label={t('邀请码')}
+                    placeholder={t('请输入邀请码')}
+                    value={invitationCodeInput}
+                    onChange={(value) => {
+                      setInvitationCodeInput(value);
+                      localStorage.setItem('invitation_code', value);
+                    }}
+                    prefix={<IconKey />}
+                  />
+                )}
+
                 <Form.Input
                   field='username'
                   label={t('用户名')}

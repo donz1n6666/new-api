@@ -53,7 +53,7 @@ import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
-import { getAffiliateCode } from '@/features/auth/lib/storage'
+import { getAffiliateCode, getInvitationCode, saveInvitationCode } from '@/features/auth/lib/storage'
 
 export function SignUpForm({
   className,
@@ -66,7 +66,19 @@ export function SignUpForm({
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
+  const [invitationCodeInput, setInvitationCodeInput] = useState('')
   const legalConsentErrorMessage = t('Please agree to the legal terms first')
+
+  // Read invitation code from URL or localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const urlCode = new URLSearchParams(window.location.search).get('invitation_code')
+    const resolvedCode = urlCode || getInvitationCode()
+    if (resolvedCode) {
+      setInvitationCodeInput(resolvedCode)
+      saveInvitationCode(resolvedCode)
+    }
+  }, [])
 
   const { status } = useStatus()
   const {
@@ -107,6 +119,7 @@ export function SignUpForm({
     status?.data?.oauth_register_enabled ??
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
+  const invitationCodeEnabled = Boolean(status?.invitation_code_enabled)
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -148,6 +161,11 @@ export function SignUpForm({
       }
     }
 
+    if (invitationCodeEnabled && !invitationCodeInput.trim()) {
+      toast.error(t('Please enter the invitation code'))
+      return
+    }
+
     setIsLoading(true)
     try {
       const res = await register({
@@ -156,6 +174,7 @@ export function SignUpForm({
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff: getAffiliateCode(),
+        invitation_code: invitationCodeInput.trim() || undefined,
         turnstile: turnstileToken,
       })
 
@@ -221,6 +240,23 @@ export function SignUpForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
+        {invitationCodeEnabled && (
+          <FormItem>
+            <FormLabel>{t('Invitation Code')}</FormLabel>
+            <FormControl>
+              <Input
+                placeholder={t('Please enter the invitation code')}
+                value={invitationCodeInput}
+                onChange={(e) => {
+                  const nextValue = e.target.value
+                  setInvitationCodeInput(nextValue)
+                  saveInvitationCode(nextValue)
+                }}
+              />
+            </FormControl>
+          </FormItem>
+        )}
+
         {/* Username Field */}
         <FormField
           control={form.control}

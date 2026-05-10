@@ -276,3 +276,13 @@ custom_oauth.name_empty: "Provider name cannot be empty"
 custom_oauth.has_bindings: "Cannot delete provider with existing user bindings"
 custom_oauth.binding_not_found: "OAuth binding not found"
 custom_oauth.provider_id_field_invalid: "Could not extract user ID from provider response"
+
+# Invitation code messages
+invitation_code.required: "Invitation code is required"
+invitation_code.invalid: "Invalid invitation code"
+invitation_code.used: "This invitation code has already been used"
+invitation_code.disabled: "This invitation code has been disabled"
+invitation_code.create_failed: "Failed to create invitation code"
+invitation_code.count_positive: "Count must be greater than 0"
+invitation_code.count_max: "Cannot generate more than 100 codes at once"
+invitation_code.quota_insufficient: "Insufficient quota to generate invitation code"

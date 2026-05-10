@@ -123,6 +123,9 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+var InvitationCodeEnabled = false  // 是否启用邀请码注册
+var InvitationCodePrice = 0       // 生成邀请码消耗的额度
+var InvitationCodeRewardRatio = 50 // 邀请码使用时，使用者获得生成消耗的百分比（50 = 50%）
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
@@ -224,6 +227,12 @@ const (
 	RedemptionCodeStatusEnabled  = 1 // don't use 0, 0 is the default value!
 	RedemptionCodeStatusDisabled = 2 // also don't use 0
 	RedemptionCodeStatusUsed     = 3 // also don't use 0
+)
+
+const (
+	InvitationCodeStatusEnabled  = 1 // 未使用
+	InvitationCodeStatusUsed     = 2 // 已使用
+	InvitationCodeStatusDisabled = 3 // 已禁用
 )
 
 const (

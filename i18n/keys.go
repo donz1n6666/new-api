@@ -329,3 +329,15 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// Invitation code related messages
+const (
+	MsgInvitationCodeRequired         = "invitation_code.required"
+	MsgInvitationCodeInvalid          = "invitation_code.invalid"
+	MsgInvitationCodeUsed             = "invitation_code.used"
+	MsgInvitationCodeDisabled         = "invitation_code.disabled"
+	MsgInvitationCodeCreateFailed     = "invitation_code.create_failed"
+	MsgInvitationCodeCountPositive    = "invitation_code.count_positive"
+	MsgInvitationCodeCountMax         = "invitation_code.count_max"
+	MsgInvitationCodeQuotaInsufficient = "invitation_code.quota_insufficient"
+)
