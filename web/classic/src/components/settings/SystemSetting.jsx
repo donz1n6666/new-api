@@ -40,6 +40,7 @@ import {
   showSuccess,
   toBoolean,
 } from '../../helpers';
+import { quotaToDisplayAmount, displayAmountToQuota } from '../../helpers/quota';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
@@ -49,6 +50,10 @@ const SystemSetting = () => {
   let [inputs, setInputs] = useState({
     PasswordLoginEnabled: '',
     PasswordRegisterEnabled: '',
+    InvitationCodeEnabled: '',
+    InvitationCodePrice: '',
+    InvitationCodePriceAmount: '',
+    InvitationCodeRewardRatio: '',
     EmailVerificationEnabled: '',
     GitHubOAuthEnabled: '',
     GitHubClientId: '',
@@ -179,6 +184,7 @@ const SystemSetting = () => {
           case 'WeChatAuthEnabled':
           case 'TelegramOAuthEnabled':
           case 'RegisterEnabled':
+          case 'InvitationCodeEnabled':
           case 'TurnstileCheckEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
@@ -210,6 +216,10 @@ const SystemSetting = () => {
           case 'MinTopUp':
             item.value = parseFloat(item.value);
             break;
+          case 'InvitationCodePrice':
+          case 'InvitationCodeRewardRatio':
+            item.value = parseFloat(item.value) || 0;
+            break;
           default:
             break;
         }
@@ -217,6 +227,10 @@ const SystemSetting = () => {
       });
       setInputs(newInputs);
       setOriginInputs(newInputs);
+      // 初始化邀请码金额字段
+      newInputs.InvitationCodePriceAmount = Number(
+        quotaToDisplayAmount(newInputs.InvitationCodePrice || 0).toFixed(6),
+      );
       // 同步模式布尔到本地状态
       if (
         typeof newInputs['fetch_setting.domain_filter_mode'] !== 'undefined'
@@ -639,6 +653,21 @@ const SystemSetting = () => {
     }
   };
 
+  const submitInvitationCode = async () => {
+    const formValues = formApiRef.current?.getValues() || {};
+    const options = [];
+    const price = formValues.InvitationCodePrice || 0;
+    options.push({
+      key: 'InvitationCodePrice',
+      value: String(price),
+    });
+    options.push({
+      key: 'InvitationCodeRewardRatio',
+      value: String(formValues.InvitationCodeRewardRatio || 0),
+    });
+    await updateOptions(options);
+  };
+
   const submitPasskeySettings = async () => {
     // 使用formApi直接获取当前表单值
     const formValues = formApiRef.current?.getValues() || {};
@@ -1026,6 +1055,17 @@ const SystemSetting = () => {
                       >
                         {t('允许新用户注册')}
                       </Form.Checkbox>
+
+                      <Form.Checkbox
+                        field='InvitationCodeEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('InvitationCodeEnabled', e)
+                        }
+                      >
+                        {t('注册需要邀请码')}
+                      </Form.Checkbox>
+
                       <Form.Checkbox
                         field='TurnstileCheckEnabled'
                         noLabel
@@ -1097,12 +1137,55 @@ const SystemSetting = () => {
               </Card>
 
               <Card>
+                <Form.Section text={t('邀请码设置')}>
+                  <Text>{t('配置邀请码生成价格和奖励规则')}</Text>
+                  <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }} style={{ marginTop: 16 }}>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='InvitationCodePriceAmount'
+                        label={t('生成邀请码价格（金额）')}
+                        placeholder={t('0 表示免费生成')}
+                        min={0}
+                        step={0.000001}
+                        precision={6}
+                        suffix={'USD'}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='InvitationCodePrice'
+                        label={t('生成邀请码价格（额度）')}
+                        placeholder={t('0 表示免费生成')}
+                        min={0}
+                        step={500000}
+                        suffix={'Token'}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.InputNumber
+                        field='InvitationCodeRewardRatio'
+                        label={t('邀请码使用者奖励比例')}
+                        placeholder={t('50 表示 50%')}
+                        min={0}
+                        max={100}
+                        step={5}
+                        suffix={'%'}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitInvitationCode} style={{ marginTop: 16 }}>
+                    {t('保存邀请码设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+
+              <Card>
                 <Form.Section text={t('配置 Passkey')}>
                   <Text>{t('用以支持基于 WebAuthn 的无密码登录注册')}</Text>
                   <Banner
                     type='info'
                     description={t(
-                      'Passkey 是基于 WebAuthn 标准的无密码身份验证方法，支持指纹、面容、硬件密钥等认证方式',
+                      'Passkey 是基于 WebAuthn 标准的无密码身份验证方法，支持指纹、面容、硬件密钥等认证方式'
                     )}
                     style={{ marginBottom: 20, marginTop: 16 }}
                   />

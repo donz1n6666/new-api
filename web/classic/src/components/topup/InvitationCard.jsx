@@ -17,211 +17,530 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useMemo,
+  useCallback,
+} from 'react';
 import {
   Avatar,
   Typography,
   Card,
   Button,
-  Input,
-  Badge,
   Space,
+  Table,
+  Tag,
+  Modal,
+  Form,
+  InputNumber,
+  Input,
 } from '@douyinfe/semi-ui';
-import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import { Copy, Plus, RefreshCcw, Ticket, Trash2 } from 'lucide-react';
+import { API, showError, showInfo, showSuccess } from '../../helpers';
+import { StatusContext } from '../../context/Status';
 
 const { Text } = Typography;
 
-const InvitationCard = ({
-  t,
-  userState,
-  renderQuota,
-  setOpenTransfer,
-  affLink,
-  handleAffLinkClick,
-}) => {
+const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_BATCH_COUNT = 10;
+
+const STATUS_MAP = {
+  1: { text: '未使用', color: 'green' },
+  2: { text: '已使用', color: 'grey' },
+  3: { text: '已禁用', color: 'red' },
+};
+
+const InvitationCard = ({ t }) => {
+  const [statusState] = useContext(StatusContext);
+  const status = useMemo(() => {
+    if (statusState?.status) return statusState.status;
+    const saved = localStorage.getItem('status');
+    if (!saved) return {};
+    try {
+      return JSON.parse(saved) || {};
+    } catch {
+      return {};
+    }
+  }, [statusState?.status]);
+
+  const invitationCodeEnabled = !!status?.invitation_code_enabled;
+
+  const [myCodes, setMyCodes] = useState([]);
+  const [myCodesLoading, setMyCodesLoading] = useState(false);
+  const [generateLoading, setGenerateLoading] = useState(false);
+  const [batchGenerateLoading, setBatchGenerateLoading] = useState(false);
+  const [batchActionLoading, setBatchActionLoading] = useState('');
+  const [activePage, setActivePage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [total, setTotal] = useState(0);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchCount, setBatchCount] = useState(DEFAULT_BATCH_COUNT);
+  const [batchRemark, setBatchRemark] = useState('');
+
+  const loadMyCodes = useCallback(
+    async (page = activePage, size = pageSize) => {
+      setMyCodesLoading(true);
+      try {
+        const res = await API.get(
+          `/api/invitation_code/mine?p=${page}&page_size=${size}`,
+        );
+        const { success, message, data } = res.data;
+        if (!success) {
+          showError(message);
+          return;
+        }
+        const items = data.items || [];
+        const nextTotal = data.total || 0;
+        setMyCodes(items);
+        setTotal(nextTotal);
+        setSelectedRowKeys((prev) =>
+          prev.filter((id) => items.some((item) => item.id === id)),
+        );
+        if (items.length === 0 && nextTotal > 0 && page > 1) {
+          setActivePage(page - 1);
+        }
+      } catch (e) {
+        showError(t('加载失败'));
+      } finally {
+        setMyCodesLoading(false);
+      }
+    },
+    [activePage, pageSize, t],
+  );
+
+  useEffect(() => {
+    if (invitationCodeEnabled) {
+      loadMyCodes(activePage, pageSize);
+    }
+  }, [activePage, invitationCodeEnabled, loadMyCodes, pageSize]);
+
+  const selectedCodes = useMemo(
+    () => myCodes.filter((item) => selectedRowKeys.includes(item.id)),
+    [myCodes, selectedRowKeys],
+  );
+
+  const buildInvitationLink = (code) =>
+    `${window.location.origin}/register?invitation_code=${code}`;
+
+  const copyInvitationCodes = async (codes) => {
+    const usableCodes = codes.filter((item) => item.status === 1);
+    if (usableCodes.length === 0) {
+      showInfo(t('暂无可复制的未使用邀请码'));
+      return;
+    }
+
+    const text = usableCodes.map((item) => item.code).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      showSuccess(t('已复制到剪贴板'));
+    } catch (e) {
+      showError(t('复制失败'));
+    }
+  };
+
+  const copyInvitationLinks = async (codes) => {
+    const usableCodes = codes.filter((item) => item.status === 1);
+    if (usableCodes.length === 0) {
+      showInfo(t('暂无可复制的邀请码'));
+      return;
+    }
+
+    const text = usableCodes
+      .map((item) => buildInvitationLink(item.code))
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      showSuccess(
+        usableCodes.length > 1 ? t('复制成功') : t('已复制到剪贴板'),
+      );
+    } catch (e) {
+      showError(t('复制失败'));
+    }
+  };
+
+  const fetchAllMyInvitationCodes = async () => {
+    const size = 100;
+    let page = 1;
+    let totalCount = 0;
+    const items = [];
+
+    while (page === 1 || items.length < totalCount) {
+      const res = await API.get(
+        `/api/invitation_code/mine?p=${page}&page_size=${size}`,
+        { disableDuplicate: true },
+      );
+      const { success, message, data } = res.data;
+      if (!success) {
+        throw new Error(message || t('加载失败'));
+      }
+      const pageItems = data.items || [];
+      totalCount = data.total || 0;
+      items.push(...pageItems);
+      if (pageItems.length === 0) {
+        break;
+      }
+      page += 1;
+    }
+
+    return items;
+  };
+
+  const refreshCurrentPage = useCallback(() => {
+    loadMyCodes(activePage, pageSize);
+  }, [activePage, loadMyCodes, pageSize]);
+
+  const handleGenerate = async () => {
+    setGenerateLoading(true);
+    try {
+      const res = await API.post('/api/invitation_code/generate', {
+        count: 1,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      showSuccess(t('邀请码生成成功'));
+      if (activePage === 1) {
+        refreshCurrentPage();
+      } else {
+        setActivePage(1);
+      }
+    } catch (e) {
+      showError(t('生成失败'));
+    } finally {
+      setGenerateLoading(false);
+    }
+  };
+
+  const handleBatchGenerate = async () => {
+    if (batchCount <= 0 || batchCount > 100) {
+      showError(t('数量必须在 1-100 之间'));
+      return;
+    }
+    setBatchGenerateLoading(true);
+    try {
+      const res = await API.post('/api/invitation_code/generate', {
+        count: batchCount,
+        remark: batchRemark,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      showSuccess(t('创建成功'));
+      setShowBatchModal(false);
+      setBatchCount(DEFAULT_BATCH_COUNT);
+      setBatchRemark('');
+      setSelectedRowKeys([]);
+      if (activePage === 1) {
+        refreshCurrentPage();
+      } else {
+        setActivePage(1);
+      }
+    } catch (e) {
+      showError(t('创建失败'));
+    } finally {
+      setBatchGenerateLoading(false);
+    }
+  };
+
+  const deleteCodes = async (ids) => {
+    setBatchActionLoading('delete');
+    try {
+      const res = await API.post('/api/invitation_code/mine/batch_delete', {
+        ids,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      showSuccess(t('删除成功'));
+      setSelectedRowKeys((prev) => prev.filter((id) => !ids.includes(id)));
+      refreshCurrentPage();
+    } catch (e) {
+      showError(t('删除失败'));
+    } finally {
+      setBatchActionLoading('');
+    }
+  };
+
+  const confirmDeleteCodes = (ids, title) => {
+    Modal.confirm({
+      title,
+      centered: true,
+      onOk: () => deleteCodes(ids),
+    });
+  };
+
+  const handleClearUsed = () => {
+    Modal.confirm({
+      title: t('确定要清理所有已使用的邀请码吗？'),
+      centered: true,
+      onOk: async () => {
+        setBatchActionLoading('clear');
+        try {
+          const res = await API.post('/api/invitation_code/mine/delete_used');
+          const { success, message } = res.data;
+          if (!success) {
+            showError(message);
+            return;
+          }
+          showSuccess(t('清理成功'));
+          setSelectedRowKeys([]);
+          refreshCurrentPage();
+        } catch (e) {
+          showError(t('删除失败'));
+        } finally {
+          setBatchActionLoading('');
+        }
+      },
+    });
+  };
+
+  const handleCopyAllUnusedCodes = async () => {
+    setBatchActionLoading('copy_raw_all');
+    try {
+      const allCodes = await fetchAllMyInvitationCodes();
+      await copyInvitationCodes(allCodes);
+    } catch (e) {
+      showError(e?.message || t('复制失败'));
+    } finally {
+      setBatchActionLoading('');
+    }
+  };
+
+  const handleCopySelectedCodes = async () => {
+    await copyInvitationCodes(selectedCodes);
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys) => setSelectedRowKeys(keys),
+  };
+
+  const columns = [
+    {
+      title: t('邀请码'),
+      dataIndex: 'code',
+      render: (text, record) => (
+        <div className='flex flex-col gap-1'>
+          <Text copyable={{ content: text }}>{text}</Text>
+          {record.remark ? (
+            <Text type='tertiary' size='small'>
+              {record.remark}
+            </Text>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      width: 88,
+      render: (statusValue) => {
+        const info = STATUS_MAP[statusValue] || {
+          text: t('未知'),
+          color: 'grey',
+        };
+        return <Tag color={info.color}>{t(info.text)}</Tag>;
+      },
+    },
+    {
+      title: t('创建时间'),
+      dataIndex: 'created_time',
+      width: 180,
+      render: (value) =>
+        value ? new Date(value * 1000).toLocaleString() : '-',
+    },
+    {
+      title: t('操作'),
+      width: 160,
+      render: (_, record) => (
+        <Space wrap size='small'>
+          <Button
+            size='small'
+            icon={<Copy size={12} />}
+            disabled={record.status !== 1}
+            onClick={() => copyInvitationLinks([record])}
+          >
+            {t('复制链接')}
+          </Button>
+          <Button
+            size='small'
+            type='danger'
+            icon={<Trash2 size={12} />}
+            onClick={() =>
+              confirmDeleteCodes([record.id], t('确定要删除此邀请码吗？'))
+            }
+          />
+        </Space>
+      ),
+    },
+  ];
+
+  if (!invitationCodeEnabled) {
+    return null;
+  }
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
-      {/* 卡片头部 */}
       <div className='flex items-center mb-4'>
         <Avatar size='small' color='green' className='mr-3 shadow-md'>
-          <Gift size={16} />
+          <Ticket size={16} />
         </Avatar>
         <div>
           <Typography.Text className='text-lg font-medium'>
-            {t('邀请奖励')}
+            {t('我的邀请码')}
           </Typography.Text>
-          <div className='text-xs'>{t('邀请好友获得额外奖励')}</div>
+          <div className='text-xs'>{t('生成邀请码，可用于邀请好友注册或作为兑换码兑换额度')}</div>
         </div>
       </div>
 
-      {/* 收益展示区域 */}
-      <Space vertical style={{ width: '100%' }}>
-        {/* 统计数据统一卡片 */}
-        <Card
-          className='!rounded-xl w-full'
-          cover={
-            <div
-              className='relative h-30'
-              style={{
-                '--palette-primary-darkerChannel': '0 75 80',
-                backgroundImage: `linear-gradient(0deg, rgba(var(--palette-primary-darkerChannel) / 80%), rgba(var(--palette-primary-darkerChannel) / 80%)), url('/cover-4.webp')`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-              }}
-            >
-              {/* 标题和按钮 */}
-              <div className='relative z-10 h-full flex flex-col justify-between p-4'>
-                <div className='flex justify-between items-center'>
-                  <Text strong style={{ color: 'white', fontSize: '16px' }}>
-                    {t('收益统计')}
-                  </Text>
-                  <Button
-                    type='primary'
-                    theme='solid'
-                    size='small'
-                    disabled={
-                      !userState?.user?.aff_quota ||
-                      userState?.user?.aff_quota <= 0
-                    }
-                    onClick={() => setOpenTransfer(true)}
-                    className='!rounded-lg'
-                  >
-                    <Zap size={12} className='mr-1' />
-                    {t('划转到余额')}
-                  </Button>
-                </div>
+      <Space vertical style={{ width: '100%' }} size='large'>
+        <Card className='!rounded-xl w-full'>
+          <div className='flex flex-col gap-4'>
+            <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  theme='solid'
+                  type='primary'
+                  size='small'
+                  onClick={handleGenerate}
+                  loading={generateLoading}
+                  className='!rounded-lg'
+                >
+                  {t('生成邀请码')}
+                </Button>
+                <Button
+                  size='small'
+                  icon={<Plus size={14} />}
+                  onClick={() => setShowBatchModal(true)}
+                >
+                  {t('批量创建')}
+                </Button>
+                <Button
+                  size='small'
+                  type='warning'
+                  icon={<Trash2 size={14} />}
+                  loading={batchActionLoading === 'clear'}
+                  onClick={handleClearUsed}
+                >
+                  {t('清理已使用')}
+                </Button>
+                <Button
+                  size='small'
+                  icon={<Copy size={14} />}
+                  loading={batchActionLoading === 'copy_raw_all'}
+                  onClick={handleCopyAllUnusedCodes}
+                >
+                  {t('复制全部未使用原始码')}
+                </Button>
+                <Button
+                  size='small'
+                  icon={<Copy size={14} />}
+                  disabled={selectedCodes.length === 0}
+                  onClick={handleCopySelectedCodes}
+                >
+                  {t('复制选中原始码')}
+                  {selectedCodes.length > 0 ? ` (${selectedCodes.length})` : ''}
+                </Button>
+                <Button
+                  size='small'
+                  type='danger'
+                  icon={<Trash2 size={14} />}
+                  loading={batchActionLoading === 'delete'}
+                  disabled={selectedRowKeys.length === 0}
+                  onClick={() =>
+                    confirmDeleteCodes(
+                      selectedRowKeys,
+                      t('确定要删除选中的邀请码吗？'),
+                    )
+                  }
+                >
+                  {t('批量删除')}
+                  {selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ''}
+                </Button>
+              </div>
 
-                {/* 统计数据 */}
-                <div className='grid grid-cols-3 gap-6 mt-4'>
-                  {/* 待使用收益 */}
-                  <div className='text-center'>
-                    <div
-                      className='text-base sm:text-2xl font-bold mb-2'
-                      style={{ color: 'white' }}
-                    >
-                      {renderQuota(userState?.user?.aff_quota || 0)}
-                    </div>
-                    <div className='flex items-center justify-center text-sm'>
-                      <TrendingUp
-                        size={14}
-                        className='mr-1'
-                        style={{ color: 'rgba(255,255,255,0.8)' }}
-                      />
-                      <Text
-                        style={{
-                          color: 'rgba(255,255,255,0.8)',
-                          fontSize: '12px',
-                        }}
-                      >
-                        {t('待使用收益')}
-                      </Text>
-                    </div>
-                  </div>
-
-                  {/* 总收益 */}
-                  <div className='text-center'>
-                    <div
-                      className='text-base sm:text-2xl font-bold mb-2'
-                      style={{ color: 'white' }}
-                    >
-                      {renderQuota(userState?.user?.aff_history_quota || 0)}
-                    </div>
-                    <div className='flex items-center justify-center text-sm'>
-                      <BarChart2
-                        size={14}
-                        className='mr-1'
-                        style={{ color: 'rgba(255,255,255,0.8)' }}
-                      />
-                      <Text
-                        style={{
-                          color: 'rgba(255,255,255,0.8)',
-                          fontSize: '12px',
-                        }}
-                      >
-                        {t('总收益')}
-                      </Text>
-                    </div>
-                  </div>
-
-                  {/* 邀请人数 */}
-                  <div className='text-center'>
-                    <div
-                      className='text-base sm:text-2xl font-bold mb-2'
-                      style={{ color: 'white' }}
-                    >
-                      {userState?.user?.aff_count || 0}
-                    </div>
-                    <div className='flex items-center justify-center text-sm'>
-                      <Users
-                        size={14}
-                        className='mr-1'
-                        style={{ color: 'rgba(255,255,255,0.8)' }}
-                      />
-                      <Text
-                        style={{
-                          color: 'rgba(255,255,255,0.8)',
-                          fontSize: '12px',
-                        }}
-                      >
-                        {t('邀请人数')}
-                      </Text>
-                    </div>
-                  </div>
-                </div>
+              <div className='flex flex-wrap items-center gap-2 text-xs text-[var(--semi-color-text-2)]'>
+                <Text type='tertiary'>
+                  {`共 ${total} 个邀请码`}
+                </Text>
+                <Button
+                  size='small'
+                  theme='borderless'
+                  icon={<RefreshCcw size={14} />}
+                  onClick={refreshCurrentPage}
+                >
+                  {t('刷新')}
+                </Button>
               </div>
             </div>
-          }
-        >
-          {/* 邀请链接部分 */}
-          <Input
-            value={affLink}
-            readonly
-            className='!rounded-lg'
-            prefix={t('邀请链接')}
-            suffix={
-              <Button
-                type='primary'
-                theme='solid'
-                onClick={handleAffLinkClick}
-                icon={<Copy size={14} />}
-                className='!rounded-lg'
-              >
-                {t('复制')}
-              </Button>
-            }
-          />
-        </Card>
 
-        {/* 奖励说明 */}
-        <Card
-          className='!rounded-xl w-full'
-          title={<Text type='tertiary'>{t('奖励说明')}</Text>}
-        >
-          <div className='space-y-3'>
-            <div className='flex items-start gap-2'>
-              <Badge dot type='success' />
-              <Text type='tertiary' className='text-sm'>
-                {t('邀请好友注册，好友充值后您可获得相应奖励')}
-              </Text>
-            </div>
-
-            <div className='flex items-start gap-2'>
-              <Badge dot type='success' />
-              <Text type='tertiary' className='text-sm'>
-                {t('通过划转功能将奖励额度转入到您的账户余额中')}
-              </Text>
-            </div>
-
-            <div className='flex items-start gap-2'>
-              <Badge dot type='success' />
-              <Text type='tertiary' className='text-sm'>
-                {t('邀请的好友越多，获得的奖励越多')}
-              </Text>
-            </div>
+            <Table
+              dataSource={myCodes}
+              loading={myCodesLoading}
+              rowKey='id'
+              size='small'
+              rowSelection={rowSelection}
+              columns={columns}
+              scroll={{ y: 520 }}
+              pagination={{
+                currentPage: activePage,
+                pageSize,
+                total,
+                showSizeChanger: true,
+                pageSizeOpts: [10, 20, 50],
+                onPageChange: setActivePage,
+                onPageSizeChange: (size) => {
+                  setPageSize(size);
+                  setActivePage(1);
+                },
+              }}
+              empty={
+                <Text type='tertiary'>
+                  {t('暂无邀请码，点击上方按钮生成')}
+                </Text>
+              }
+            />
           </div>
         </Card>
       </Space>
+
+      <Modal
+        title={t('批量生成邀请码')}
+        visible={showBatchModal}
+        onOk={handleBatchGenerate}
+        onCancel={() => setShowBatchModal(false)}
+        okText={t('生成')}
+        confirmLoading={batchGenerateLoading}
+        centered
+      >
+        <Form layout='vertical'>
+          <Form.Slot label={t('生成数量')}>
+            <InputNumber
+              value={batchCount}
+              onChange={setBatchCount}
+              min={1}
+              max={100}
+              style={{ width: '100%' }}
+            />
+          </Form.Slot>
+          <Form.Slot label={t('备注')}>
+            <Input
+              value={batchRemark}
+              onChange={setBatchRemark}
+              placeholder={t('可选备注信息')}
+            />
+          </Form.Slot>
+        </Form>
+      </Modal>
     </Card>
   );
 };

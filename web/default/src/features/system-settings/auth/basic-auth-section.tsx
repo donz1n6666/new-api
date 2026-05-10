@@ -1,26 +1,9 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useMemo } from 'react'
 import * as z from 'zod'
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import { quotaUnitsToDollars } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -31,8 +14,10 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { QuotaAmountFieldPair } from '../components/quota-amount-field-pair'
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
@@ -42,15 +27,33 @@ const basicAuthSchema = z.object({
   PasswordRegisterEnabled: z.boolean(),
   EmailVerificationEnabled: z.boolean(),
   RegisterEnabled: z.boolean(),
+  InvitationCodeEnabled: z.boolean(),
+  InvitationCodePrice: z.coerce.number().min(0),
+  InvitationCodePriceAmount: z.coerce.number().min(0),
+  InvitationCodeRewardRatio: z.coerce.number().min(0).max(100),
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
 })
 
-type BasicAuthFormValues = z.infer<typeof basicAuthSchema>
+type BasicAuthFormValues = {
+  PasswordLoginEnabled: boolean
+  PasswordRegisterEnabled: boolean
+  EmailVerificationEnabled: boolean
+  RegisterEnabled: boolean
+  InvitationCodeEnabled: boolean
+  InvitationCodePrice: number
+  InvitationCodePriceAmount: number
+  InvitationCodeRewardRatio: number
+  EmailDomainRestrictionEnabled: boolean
+  EmailAliasRestrictionEnabled: boolean
+  EmailDomainWhitelist: string
+}
+
+type BasicAuthDefaultValues = Omit<BasicAuthFormValues, 'InvitationCodePriceAmount'>
 
 type BasicAuthSectionProps = {
-  defaultValues: BasicAuthFormValues
+  defaultValues: BasicAuthDefaultValues
 }
 
 export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
@@ -60,6 +63,9 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
   const formDefaults = useMemo<BasicAuthFormValues>(
     () => ({
       ...defaultValues,
+      InvitationCodePriceAmount: Number(
+        quotaUnitsToDollars(defaultValues.InvitationCodePrice).toFixed(6)
+      ),
       EmailDomainWhitelist: defaultValues.EmailDomainWhitelist.split(',')
         .map((domain) => domain.trim())
         .filter(Boolean)
@@ -69,16 +75,21 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
   )
 
   const form = useForm<BasicAuthFormValues>({
-    resolver: zodResolver(basicAuthSchema),
+    resolver: zodResolver(basicAuthSchema) as Resolver<
+      BasicAuthFormValues,
+      unknown,
+      BasicAuthFormValues
+    >,
     defaultValues: formDefaults,
   })
 
   useResetForm(form, formDefaults)
 
   const onSubmit = async (data: BasicAuthFormValues) => {
-    const updates: Array<{ key: string; value: string | boolean }> = []
+    const updates: Array<{ key: string; value: string | boolean | number }> = []
 
     Object.entries(data).forEach(([key, value]) => {
+      if (key === 'InvitationCodePriceAmount') return
       if (key === 'EmailDomainWhitelist') {
         if (typeof value !== 'string') return
         const domains = value
@@ -154,6 +165,31 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
 
           <FormField
             control={form.control}
+            name='InvitationCodeEnabled'
+            render={({ field }) => (
+              <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
+                <div className='space-y-0.5'>
+                  <FormLabel className='text-base'>
+                    {t('Require Invitation Code')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Require users to provide an invitation code when registering'
+                    )}
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name='PasswordRegisterEnabled'
             render={({ field }) => (
               <FormItem className='flex flex-row items-center justify-between rounded-lg border p-4'>
@@ -171,6 +207,57 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                     onCheckedChange={field.onChange}
                   />
                 </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <QuotaAmountFieldPair
+            form={form}
+            amountName='InvitationCodePriceAmount'
+            quotaName='InvitationCodePrice'
+            amountLabel={t('Invitation Code Price (Amount)')}
+            quotaLabel={t('Invitation Code Price (Quota)')}
+            amountDescription={t(
+              'Displayed balance cost for generating one invitation code'
+            )}
+            quotaDescription={t(
+              'Raw quota cost for generating one invitation code'
+            )}
+            amountPlaceholder='0'
+            quotaPlaceholder='0'
+          />
+
+          <FormField
+            control={form.control}
+            name='InvitationCodeRewardRatio'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Invitation Reward Ratio (%)')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={field.value}
+                    onChange={(e) =>
+                      field.onChange(
+                        Number.isFinite(e.target.valueAsNumber)
+                          ? e.target.valueAsNumber
+                          : 0
+                      )
+                    }
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Percentage of the invitation code cost rewarded to the invitee after redemption'
+                  )}
+                </FormDescription>
+                <FormMessage />
               </FormItem>
             )}
           />
