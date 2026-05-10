@@ -442,7 +442,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
-		{Name: "quota_tiers", DDL: "`quota_tiers` text DEFAULT '[]'"},
+		{Name: "quota_tiers", DDL: "`quota_tiers` text"},
 		{Name: "disable_balance_deduction", DDL: "`disable_balance_deduction` numeric DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},

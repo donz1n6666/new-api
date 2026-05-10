@@ -200,7 +200,7 @@ type SubscriptionPlan struct {
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
 	// Multi-tier quota configuration (JSON array). When non-empty, overrides single-tier TotalAmount/QuotaResetPeriod.
-	QuotaTiers string `json:"quota_tiers" gorm:"type:text;default:'[]'"`
+	QuotaTiers string `json:"quota_tiers" gorm:"type:text"`
 
 	// When true, users on this plan cannot use wallet balance for deduction
 	DisableBalanceDeduction bool `json:"disable_balance_deduction" gorm:"default:false"`
