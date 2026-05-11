@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/thanhpk/randstr"
 )
 
@@ -41,11 +42,11 @@ type EthereumSubscriptionPayRequest struct {
 
 // EthereumPayResponse is returned to the frontend so it can call the contract.
 type EthereumPayResponse struct {
-	OrderId         string `json:"order_id"`          // bytes32 hex string (0x-prefixed, 66 chars)
+	OrderId         string `json:"order_id"` // bytes32 hex string (0x-prefixed, 66 chars)
 	ContractAddress string `json:"contract_address"`
 	ChainId         int64  `json:"chain_id"`
-	TokenAddress    string `json:"token_address"`     // address(0) or ERC-20
-	PayAmount       string `json:"pay_amount"`        // in smallest unit (wei / token decimals) as decimal string
+	TokenAddress    string `json:"token_address"` // address(0) or ERC-20
+	PayAmount       string `json:"pay_amount"`    // in smallest unit (wei / token decimals) as decimal string
 	Symbol          string `json:"symbol"`
 	Decimals        int    `json:"decimals"`
 }
@@ -117,7 +118,7 @@ func RequestEthereumPay(c *gin.Context) {
 	}
 
 	// Calculate pay amount in smallest unit
-	payAmountStr, err := calcPayAmount(req.Amount, tokenCfg.Price, tokenCfg.Decimals)
+	payAmountStr, err := calcPayAmountDecimal(decimal.NewFromInt(req.Amount), tokenCfg.Price, tokenCfg.Decimals)
 	if err != nil || payAmountStr == "0" {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "金额计算失败"})
 		return
@@ -150,13 +151,16 @@ func RequestEthereumPay(c *gin.Context) {
 
 	// Persist pending order
 	topUp := &model.TopUp{
-		UserId:        userId,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: "ethereum",
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:                userId,
+		Amount:                amount,
+		Money:                 payMoney,
+		TradeNo:               tradeNo,
+		PaymentMethod:         "ethereum",
+		PaymentProvider:       model.PaymentProviderEthereum,
+		ExpectedPaymentToken:  strings.ToLower(tokenCfg.Address),
+		ExpectedPaymentAmount: payAmountStr,
+		CreateTime:            time.Now().Unix(),
+		Status:                common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
 		common.SysLog(fmt.Sprintf("Ethereum: 创建本地订单失败: %v", err))
@@ -271,14 +275,18 @@ func handlePaymentReceivedLog(entry alchemyLog, callerIp string) {
 	}
 
 	common.SysLog(fmt.Sprintf("Ethereum Webhook: 收到支付事件 - tradeNo=%s, txHash=%s", tradeNo, entry.Transaction.Hash))
+	paidToken, paidAmount, err := parsePaymentReceivedData(entry.Data)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Ethereum Webhook: 支付事件解析失败 - tradeNo=%s, err=%v", tradeNo, err))
+		return
+	}
 
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
 
-	var err error
 	if strings.HasPrefix(tradeNo, "ETHSUB-") {
 		// Subscription purchase order
-		err = model.CompleteSubscriptionOrder(tradeNo, "", "", "")
+		err = model.CompleteSubscriptionOrderWithPaymentCheck(tradeNo, "", model.PaymentProviderEthereum, "ethereum", paidToken, paidAmount)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 订阅订单完成失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
@@ -286,7 +294,7 @@ func handlePaymentReceivedLog(entry alchemyLog, callerIp string) {
 		}
 	} else {
 		// Top-up (balance recharge) order
-		err = model.RechargeEthereum(tradeNo, callerIp)
+		err = model.RechargeEthereumWithPaymentCheck(tradeNo, callerIp, paidToken, paidAmount)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 充值失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
@@ -361,15 +369,10 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 
 	// Calculate pay amount: PriceAmount is the fiat price of the plan.
 	// Token price is "how many tokens per 1 top-up unit".
-	// For subscription, we treat PriceAmount as the number of units to multiply by token price.
-	payAmountStr, err := calcPayAmount(int64(plan.PriceAmount), tokenCfg.Price, tokenCfg.Decimals)
+	payAmountStr, err := calcPayAmountDecimal(decimal.NewFromFloat(plan.PriceAmount), tokenCfg.Price, tokenCfg.Decimals)
 	if err != nil || payAmountStr == "0" {
-		// Fallback: use big.Float for fractional PriceAmount
-		payAmountStr, err = calcPayAmountFloat(plan.PriceAmount, tokenCfg.Price, tokenCfg.Decimals)
-		if err != nil || payAmountStr == "0" {
-			common.ApiErrorMsg(c, "金额计算失败")
-			return
-		}
+		common.ApiErrorMsg(c, "金额计算失败")
+		return
 	}
 
 	// Generate trade number with ETHSUB- prefix (must fit in 32 bytes)
@@ -379,13 +382,16 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 
 	// Create pending subscription order
 	order := &model.SubscriptionOrder{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
-		TradeNo:       tradeNo,
-		PaymentMethod: "ethereum",
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:                userId,
+		PlanId:                plan.Id,
+		Money:                 plan.PriceAmount,
+		TradeNo:               tradeNo,
+		PaymentMethod:         "ethereum",
+		PaymentProvider:       model.PaymentProviderEthereum,
+		ExpectedPaymentToken:  strings.ToLower(tokenCfg.Address),
+		ExpectedPaymentAmount: payAmountStr,
+		CreateTime:            time.Now().Unix(),
+		Status:                common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
 		common.SysLog(fmt.Sprintf("Ethereum: 创建订阅订单失败: %v", err))
@@ -453,6 +459,45 @@ func orderIdToTradeNo(orderIdHex string) string {
 		end--
 	}
 	return string(b[:end])
+}
+
+func parsePaymentReceivedData(data string) (token string, amount string, err error) {
+	clean := strings.TrimPrefix(strings.TrimSpace(data), "0x")
+	if len(clean) < 128 {
+		return "", "", fmt.Errorf("invalid event data length: %d", len(clean))
+	}
+	tokenWord := clean[:64]
+	amountWord := clean[64:128]
+	tokenBytes, err := hex.DecodeString(tokenWord)
+	if err != nil || len(tokenBytes) != 32 {
+		return "", "", fmt.Errorf("invalid token word")
+	}
+	amountBytes, err := hex.DecodeString(amountWord)
+	if err != nil || len(amountBytes) != 32 {
+		return "", "", fmt.Errorf("invalid amount word")
+	}
+	token = "0x" + strings.ToLower(hex.EncodeToString(tokenBytes[12:]))
+	amountInt := new(big.Int).SetBytes(amountBytes)
+	if amountInt.Sign() <= 0 {
+		return "", "", fmt.Errorf("invalid paid amount")
+	}
+	return token, amountInt.String(), nil
+}
+
+func calcPayAmountDecimal(units decimal.Decimal, pricePerUnit string, decimals int) (string, error) {
+	price, err := decimal.NewFromString(pricePerUnit)
+	if err != nil || price.Sign() <= 0 {
+		return "", fmt.Errorf("invalid pricePerUnit: %s", pricePerUnit)
+	}
+	if units.Sign() <= 0 || decimals < 0 {
+		return "0", nil
+	}
+	result := units.Mul(price).Mul(decimal.New(1, int32(decimals)))
+	resultInt := result.Truncate(0)
+	if resultInt.Sign() <= 0 {
+		return "0", nil
+	}
+	return resultInt.StringFixed(0), nil
 }
 
 // calcPayAmount computes amount_in_smallest_unit = topUpUnits * pricePerUnit * 10^decimals

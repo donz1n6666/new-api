@@ -171,6 +171,17 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
+	if pref == "wallet_only" || pref == "wallet_first" {
+		noFallback, err := model.HasDisableBalanceDeductionSubscription(userId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if noFallback {
+			common.ApiErrorMsg(c, "当前订阅不允许使用余额扣费")
+			return
+		}
+	}
 
 	user, err := model.GetUserById(userId, true)
 	if err != nil {

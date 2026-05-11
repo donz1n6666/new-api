@@ -3,6 +3,8 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math/big"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -12,16 +14,18 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id                    int     `json:"id"`
+	UserId                int     `json:"user_id" gorm:"index"`
+	Amount                int64   `json:"amount"`
+	Money                 float64 `json:"money"`
+	TradeNo               string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod         string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider       string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	ExpectedPaymentToken  string  `json:"expected_payment_token" gorm:"type:varchar(64);default:''"`
+	ExpectedPaymentAmount string  `json:"expected_payment_amount" gorm:"type:varchar(128);default:''"`
+	CreateTime            int64   `json:"create_time"`
+	CompleteTime          int64   `json:"complete_time"`
+	Status                string  `json:"status"`
 }
 
 const (
@@ -37,13 +41,40 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderEthereum     = "ethereum"
 )
 
 var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrPaymentAmountMismatch = errors.New("payment amount mismatch")
 )
+
+func validateExpectedChainPayment(expectedToken, expectedAmount, paidToken, paidAmount string) error {
+	expectedToken = strings.TrimSpace(expectedToken)
+	expectedAmount = strings.TrimSpace(expectedAmount)
+	paidToken = strings.TrimSpace(paidToken)
+	paidAmount = strings.TrimSpace(paidAmount)
+	if expectedToken == "" || expectedAmount == "" || paidToken == "" || paidAmount == "" {
+		return ErrPaymentAmountMismatch
+	}
+	if !strings.EqualFold(expectedToken, paidToken) {
+		return ErrPaymentAmountMismatch
+	}
+	expected := new(big.Int)
+	if _, ok := expected.SetString(expectedAmount, 10); !ok || expected.Sign() <= 0 {
+		return ErrPaymentAmountMismatch
+	}
+	paid := new(big.Int)
+	if _, ok := paid.SetString(paidAmount, 10); !ok || paid.Sign() <= 0 {
+		return ErrPaymentAmountMismatch
+	}
+	if paid.Cmp(expected) < 0 {
+		return ErrPaymentAmountMismatch
+	}
+	return nil
+}
 
 func (topUp *TopUp) Insert() error {
 	var err error
@@ -463,6 +494,10 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 }
 
 func RechargeEthereum(tradeNo string, callerIp string) (err error) {
+	return RechargeEthereumWithPaymentCheck(tradeNo, callerIp, "", "")
+}
+
+func RechargeEthereumWithPaymentCheck(tradeNo string, callerIp string, paidToken string, paidAmount string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -476,13 +511,20 @@ func RechargeEthereum(tradeNo string, callerIp string) (err error) {
 	}
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error
+		err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
 		}
-
+		if topUp.PaymentProvider != PaymentProviderEthereum {
+			return ErrPaymentMethodMismatch
+		}
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil
+		}
+		if paidToken != "" || paidAmount != "" {
+			if err := validateExpectedChainPayment(topUp.ExpectedPaymentToken, topUp.ExpectedPaymentAmount, paidToken, paidAmount); err != nil {
+				return err
+			}
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
@@ -511,6 +553,9 @@ func RechargeEthereum(tradeNo string, callerIp string) (err error) {
 
 	if err != nil {
 		common.SysError("ethereum topup failed: " + err.Error())
+		if errors.Is(err, ErrPaymentAmountMismatch) || errors.Is(err, ErrPaymentMethodMismatch) {
+			return err
+		}
 		return errors.New("充值失败，请稍后重试")
 	}
 

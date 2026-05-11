@@ -436,43 +436,43 @@ func SyncGroupPricingForModels(sourceGroup string, targetGroups []string, modelN
 	// 只复制指定模型的配置到目标分组
 	for _, target := range targetGroups {
 		// 获取目标分组的现有配置
-		targetPrice := groupModelPriceMap.ReadAll()[target]
+		targetPrice := copyFloat64Map(groupModelPriceMap.ReadAll()[target])
 		if targetPrice == nil {
 			targetPrice = make(map[string]float64)
 		}
-		targetRatio := groupModelRatioMap.ReadAll()[target]
+		targetRatio := copyFloat64Map(groupModelRatioMap.ReadAll()[target])
 		if targetRatio == nil {
 			targetRatio = make(map[string]float64)
 		}
-		targetCompletion := groupCompletionRatioMap.ReadAll()[target]
+		targetCompletion := copyFloat64Map(groupCompletionRatioMap.ReadAll()[target])
 		if targetCompletion == nil {
 			targetCompletion = make(map[string]float64)
 		}
-		targetCache := groupCacheRatioMap.ReadAll()[target]
+		targetCache := copyFloat64Map(groupCacheRatioMap.ReadAll()[target])
 		if targetCache == nil {
 			targetCache = make(map[string]float64)
 		}
-		targetCreateCache := groupCreateCacheRatioMap.ReadAll()[target]
+		targetCreateCache := copyFloat64Map(groupCreateCacheRatioMap.ReadAll()[target])
 		if targetCreateCache == nil {
 			targetCreateCache = make(map[string]float64)
 		}
-		targetImage := groupImageRatioMap.ReadAll()[target]
+		targetImage := copyFloat64Map(groupImageRatioMap.ReadAll()[target])
 		if targetImage == nil {
 			targetImage = make(map[string]float64)
 		}
-		targetAudio := groupAudioRatioMap.ReadAll()[target]
+		targetAudio := copyFloat64Map(groupAudioRatioMap.ReadAll()[target])
 		if targetAudio == nil {
 			targetAudio = make(map[string]float64)
 		}
-		targetAudioCompletion := groupAudioCompletionRatioMap.ReadAll()[target]
+		targetAudioCompletion := copyFloat64Map(groupAudioCompletionRatioMap.ReadAll()[target])
 		if targetAudioCompletion == nil {
 			targetAudioCompletion = make(map[string]float64)
 		}
-		targetBillingMode := groupBillingModeMap.ReadAll()[target]
+		targetBillingMode := copyStringMap(groupBillingModeMap.ReadAll()[target])
 		if targetBillingMode == nil {
 			targetBillingMode = make(map[string]string)
 		}
-		targetBillingExpr := groupBillingExprMap.ReadAll()[target]
+		targetBillingExpr := copyStringMap(groupBillingExprMap.ReadAll()[target])
 		if targetBillingExpr == nil {
 			targetBillingExpr = make(map[string]string)
 		}
@@ -574,43 +574,43 @@ func SyncFromGlobalToGroups(targetGroups []string, modelNames []string) error {
 
 	for _, target := range targetGroups {
 		// 获取目标分组的现有配置
-		targetPrice := groupModelPriceMap.ReadAll()[target]
+		targetPrice := copyFloat64Map(groupModelPriceMap.ReadAll()[target])
 		if targetPrice == nil {
 			targetPrice = make(map[string]float64)
 		}
-		targetRatio := groupModelRatioMap.ReadAll()[target]
+		targetRatio := copyFloat64Map(groupModelRatioMap.ReadAll()[target])
 		if targetRatio == nil {
 			targetRatio = make(map[string]float64)
 		}
-		targetCompletion := groupCompletionRatioMap.ReadAll()[target]
+		targetCompletion := copyFloat64Map(groupCompletionRatioMap.ReadAll()[target])
 		if targetCompletion == nil {
 			targetCompletion = make(map[string]float64)
 		}
-		targetCache := groupCacheRatioMap.ReadAll()[target]
+		targetCache := copyFloat64Map(groupCacheRatioMap.ReadAll()[target])
 		if targetCache == nil {
 			targetCache = make(map[string]float64)
 		}
-		targetCreateCache := groupCreateCacheRatioMap.ReadAll()[target]
+		targetCreateCache := copyFloat64Map(groupCreateCacheRatioMap.ReadAll()[target])
 		if targetCreateCache == nil {
 			targetCreateCache = make(map[string]float64)
 		}
-		targetImage := groupImageRatioMap.ReadAll()[target]
+		targetImage := copyFloat64Map(groupImageRatioMap.ReadAll()[target])
 		if targetImage == nil {
 			targetImage = make(map[string]float64)
 		}
-		targetAudio := groupAudioRatioMap.ReadAll()[target]
+		targetAudio := copyFloat64Map(groupAudioRatioMap.ReadAll()[target])
 		if targetAudio == nil {
 			targetAudio = make(map[string]float64)
 		}
-		targetAudioCompletion := groupAudioCompletionRatioMap.ReadAll()[target]
+		targetAudioCompletion := copyFloat64Map(groupAudioCompletionRatioMap.ReadAll()[target])
 		if targetAudioCompletion == nil {
 			targetAudioCompletion = make(map[string]float64)
 		}
-		targetBillingMode := groupBillingModeMap.ReadAll()[target]
+		targetBillingMode := copyStringMap(groupBillingModeMap.ReadAll()[target])
 		if targetBillingMode == nil {
 			targetBillingMode = make(map[string]string)
 		}
-		targetBillingExpr := groupBillingExprMap.ReadAll()[target]
+		targetBillingExpr := copyStringMap(groupBillingExprMap.ReadAll()[target])
 		if targetBillingExpr == nil {
 			targetBillingExpr = make(map[string]string)
 		}
@@ -723,6 +723,9 @@ func SyncFromGlobalToGroups(targetGroups []string, modelNames []string) error {
 }
 
 func copyFloat64Map(m map[string]float64) map[string]float64 {
+	if m == nil {
+		return nil
+	}
 	result := make(map[string]float64, len(m))
 	for k, v := range m {
 		result[k] = v
@@ -731,6 +734,9 @@ func copyFloat64Map(m map[string]float64) map[string]float64 {
 }
 
 func copyStringMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
 	result := make(map[string]string, len(m))
 	for k, v := range m {
 		result[k] = v

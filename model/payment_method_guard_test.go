@@ -93,13 +93,71 @@ func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	insertUserForPaymentGuardTest(t, 101, 0)
 	insertTopUpForPaymentGuardTest(t, "waffo-pancake-guard", 101, PaymentProviderStripe)
 
-	err := RechargeWaffoPancake("waffo-pancake-guard")
+	err := RechargeWaffoPancake("waffo-pancake-guard", "127.0.0.1")
 	require.Error(t, err)
 
 	topUp := GetTopUpByTradeNo("waffo-pancake-guard")
 	require.NotNil(t, topUp)
 	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 101))
+}
+
+func TestRechargeEthereumWithPaymentCheck_RejectsUnderpaidPayment(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 404, 0)
+	topUp := &TopUp{
+		UserId:                404,
+		Amount:                2,
+		Money:                 9.99,
+		TradeNo:               "eth-underpaid-guard",
+		PaymentMethod:         "ethereum",
+		PaymentProvider:       PaymentProviderEthereum,
+		ExpectedPaymentToken:  "0x0000000000000000000000000000000000000000",
+		ExpectedPaymentAmount: "1000",
+		Status:                common.TopUpStatusPending,
+		CreateTime:            time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := RechargeEthereumWithPaymentCheck(
+		"eth-underpaid-guard",
+		"127.0.0.1",
+		"0x0000000000000000000000000000000000000000",
+		"999",
+	)
+	require.ErrorIs(t, err, ErrPaymentAmountMismatch)
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, "eth-underpaid-guard"))
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 404))
+}
+
+func TestCompleteSubscriptionOrderWithPaymentCheck_RejectsUnderpaidPayment(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 505, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 505)
+	insertSubscriptionOrderForPaymentGuardTest(t, "eth-sub-underpaid-guard", 505, plan.Id, PaymentProviderEthereum)
+	require.NoError(t, DB.Model(&SubscriptionOrder{}).
+		Where("trade_no = ?", "eth-sub-underpaid-guard").
+		Updates(map[string]interface{}{
+			"expected_payment_token":  "0x0000000000000000000000000000000000000000",
+			"expected_payment_amount": "1000",
+		}).Error)
+
+	err := CompleteSubscriptionOrderWithPaymentCheck(
+		"eth-sub-underpaid-guard",
+		"",
+		PaymentProviderEthereum,
+		"ethereum",
+		"0x0000000000000000000000000000000000000000",
+		"999",
+	)
+	require.ErrorIs(t, err, ErrPaymentAmountMismatch)
+
+	order := GetSubscriptionOrderByTradeNo("eth-sub-underpaid-guard")
+	require.NotNil(t, order)
+	assert.Equal(t, common.TopUpStatusPending, order.Status)
+	assert.Zero(t, countUserSubscriptionsForPaymentGuardTest(t, 505))
 }
 
 func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T) {

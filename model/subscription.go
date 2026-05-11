@@ -44,7 +44,7 @@ const (
 
 // QuotaTier defines a single tier in a multi-tier quota configuration
 type QuotaTier struct {
-	Period        string `json:"period"`        // monthly|weekly|daily|hourly|custom|none
+	Period        string `json:"period"`         // monthly|weekly|daily|hourly|custom|none
 	Limit         int64  `json:"limit"`          // Max usage in this period (0 = no limit)
 	CustomSeconds int64  `json:"custom_seconds"` // Only for period="custom"
 	SortPriority  int    `json:"sort_priority"`  // Lower = shorter period, checked first
@@ -235,7 +235,9 @@ type SubscriptionOrder struct {
 	CreateTime      int64  `json:"create_time"`
 	CompleteTime    int64  `json:"complete_time"`
 
-	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
+	ExpectedPaymentToken  string `json:"expected_payment_token" gorm:"type:varchar(64);default:''"`
+	ExpectedPaymentAmount string `json:"expected_payment_amount" gorm:"type:varchar(128);default:''"`
+	ProviderPayload       string `json:"provider_payload" gorm:"type:text"`
 }
 
 func (o *SubscriptionOrder) Insert() error {
@@ -545,6 +547,10 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
+	return CompleteSubscriptionOrderWithPaymentCheck(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, "", "")
+}
+
+func CompleteSubscriptionOrderWithPaymentCheck(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, paidToken string, paidAmount string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -559,7 +565,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -567,6 +573,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
+		}
+		if paidToken != "" || paidAmount != "" {
+			if err := validateExpectedChainPayment(order.ExpectedPaymentToken, order.ExpectedPaymentAmount, paidToken, paidAmount); err != nil {
+				return err
+			}
 		}
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
@@ -662,7 +673,7 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -772,7 +783,7 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
@@ -817,7 +828,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	var userId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
@@ -1073,7 +1084,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 
 		var subs []UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
@@ -1094,15 +1105,6 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 
 			tiers := plan.GetQuotaTiers()
 			if len(tiers) > 0 {
-				// Multi-tier path: check all tier limits
-				if err := checkTierLimits(tx, sub.Id, tiers, amount, now); err != nil {
-					continue // tier limits exceeded, try next subscription
-				}
-				// Increment all tier usages and get snapshot
-				tierSnapshot, err := incrementTierUsage(tx, sub.Id, tiers, amount, now)
-				if err != nil {
-					continue
-				}
 				usedBefore := sub.AmountUsed
 				// Also check legacy total amount if configured
 				if sub.AmountTotal > 0 {
@@ -1111,13 +1113,16 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 						continue
 					}
 				}
+				// Multi-tier path: check all tier limits
+				if err := checkTierLimits(tx, sub.Id, tiers, amount, now); err != nil {
+					continue // tier limits exceeded, try next subscription
+				}
 				record := &SubscriptionPreConsumeRecord{
 					RequestId:          requestId,
 					UserId:             userId,
 					UserSubscriptionId: sub.Id,
 					PreConsumed:        amount,
 					Status:             "consumed",
-					TierUsages:         tierSnapshot,
 				}
 				if err := tx.Create(record).Error; err != nil {
 					var dup SubscriptionPreConsumeRecord
@@ -1133,6 +1138,17 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 						return nil
 					}
 					return err
+				}
+				// Increment all tier usages and get snapshot after the idempotency row exists.
+				tierSnapshot, err := incrementTierUsage(tx, sub.Id, tiers, amount, now)
+				if err != nil {
+					return err
+				}
+				if tierSnapshot != "" {
+					record.TierUsages = tierSnapshot
+					if err := tx.Model(record).Update("tier_usages", tierSnapshot).Error; err != nil {
+						return err
+					}
 				}
 				sub.AmountUsed += amount
 				if err := tx.Save(&sub).Error; err != nil {
@@ -1202,7 +1218,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("request_id = ?", requestId).First(&record).Error; err != nil {
 			return err
 		}
@@ -1213,7 +1229,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed, false); err != nil {
 			return err
 		}
 		// Refund tier usages if multi-tier was used
@@ -1255,7 +1271,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := lockForUpdate(tx).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
@@ -1321,22 +1337,58 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
+		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta, true)
+	})
+}
+
+func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64, adjustTiers bool) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	var sub UserSubscription
+	if err := lockForUpdate(tx).
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	now := getDBTimestampTx(tx)
+	var plan *SubscriptionPlan
+	if sub.PlanId > 0 {
+		var err error
+		plan, err = getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		if err != nil {
 			return err
 		}
-		newUsed := sub.AmountUsed + delta
-		if newUsed < 0 {
-			newUsed = 0
+		if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+			return err
 		}
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+	}
+	newUsed := sub.AmountUsed + delta
+	if newUsed < 0 {
+		newUsed = 0
+	}
+	if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
+		return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+	}
+	if adjustTiers && plan != nil {
+		tiers := plan.GetQuotaTiers()
+		if len(tiers) > 0 {
+			if delta > 0 {
+				if err := checkTierLimits(tx, sub.Id, tiers, delta, now); err != nil {
+					return err
+				}
+				if _, err := incrementTierUsage(tx, sub.Id, tiers, delta, now); err != nil {
+					return err
+				}
+			} else if delta < 0 {
+				if err := decrementTierUsageAmount(tx, sub.Id, tiers, -delta); err != nil {
+					return err
+				}
+			}
 		}
-		sub.AmountUsed = newUsed
-		return tx.Save(&sub).Error
-	})
+	}
+	sub.AmountUsed = newUsed
+	return tx.Save(&sub).Error
 }
 
 // ---------------------------------------------------------------------------
@@ -1468,7 +1520,7 @@ func checkTierLimits(tx *gorm.DB, subId int, tiers []QuotaTier, amount int64, no
 			continue // no limit at this tier
 		}
 		var usage UserSubscriptionTierUsage
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("user_subscription_id = ? AND tier_index = ?", subId, i).
 			First(&usage).Error; err != nil {
 			return fmt.Errorf("tier usage not found for sub %d tier %d: %w", subId, i, err)
@@ -1529,7 +1581,7 @@ func incrementTierUsage(tx *gorm.DB, subId int, tiers []QuotaTier, amount int64,
 			continue
 		}
 		var usage UserSubscriptionTierUsage
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("user_subscription_id = ? AND tier_index = ?", subId, i).
 			First(&usage).Error; err != nil {
 			return "", err
@@ -1568,7 +1620,7 @@ func refundTierUsage(tx *gorm.DB, subId int, tierUsagesJSON string) error {
 			continue
 		}
 		var usage UserSubscriptionTierUsage
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("user_subscription_id = ? AND tier_index = ?", subId, snap.TierIndex).
 			First(&usage).Error; err != nil {
 			continue // tier usage row not found, skip
@@ -1581,6 +1633,38 @@ func refundTierUsage(tx *gorm.DB, subId int, tierUsagesJSON string) error {
 		usage.UsageInWindow -= snap.Delta
 		if usage.UsageInWindow < 0 {
 			usage.UsageInWindow = 0
+		}
+		if err := tx.Save(&usage).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func decrementTierUsageAmount(tx *gorm.DB, subId int, tiers []QuotaTier, amount int64) error {
+	if tx == nil || subId <= 0 || amount <= 0 || len(tiers) == 0 {
+		return nil
+	}
+	for i, tier := range tiers {
+		if tier.Limit <= 0 {
+			continue
+		}
+		var usage UserSubscriptionTierUsage
+		if err := lockForUpdate(tx).
+			Where("user_subscription_id = ? AND tier_index = ?", subId, i).
+			First(&usage).Error; err != nil {
+			return err
+		}
+		if isCalendarAligned(tier) {
+			usage.UsageInPeriod -= amount
+			if usage.UsageInPeriod < 0 {
+				usage.UsageInPeriod = 0
+			}
+		} else if isSlidingWindow(tier) || tier.Period == TierPeriodNone {
+			usage.UsageInWindow -= amount
+			if usage.UsageInWindow < 0 {
+				usage.UsageInWindow = 0
+			}
 		}
 		if err := tx.Save(&usage).Error; err != nil {
 			return err
@@ -1628,7 +1712,7 @@ func ResetExpiredCalendarTiers(limit int) (int, error) {
 		}
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscriptionTierUsage
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := lockForUpdate(tx).
 				Where("id = ? AND next_period_start > 0 AND next_period_start <= ?", uCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
@@ -1675,7 +1759,7 @@ func ResetExpiredTierWindows(limit int) (int, error) {
 		}
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscriptionTierUsage
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := lockForUpdate(tx).
 				Where("id = ?", uCopy.Id).
 				First(&locked).Error; err != nil {
 				return nil

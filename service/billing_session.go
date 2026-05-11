@@ -345,6 +345,10 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+	noBalanceDeduction, noBalanceErr := model.HasDisableBalanceDeductionSubscription(relayInfo.UserId)
+	if noBalanceErr != nil {
+		return nil, types.NewError(noBalanceErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -402,10 +406,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	case "subscription_only":
 		return trySubscription()
 	case "wallet_only":
+		if noBalanceDeduction {
+			return trySubscription()
+		}
 		return tryWallet()
 	case "wallet_first":
 		// If user has a DisableBalanceDeduction subscription, force subscription-only
-		if noFallback, _ := model.HasDisableBalanceDeductionSubscription(relayInfo.UserId); noFallback {
+		if noBalanceDeduction {
 			return trySubscription()
 		}
 		session, err := tryWallet()
@@ -430,8 +437,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
 				// Check if user has a DisableBalanceDeduction subscription
-				noFallback, _ := model.HasDisableBalanceDeductionSubscription(relayInfo.UserId)
-				if noFallback {
+				if noBalanceDeduction {
 					return nil, apiErr // Block wallet fallback
 				}
 				return tryWallet()

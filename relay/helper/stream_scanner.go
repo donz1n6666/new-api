@@ -24,6 +24,7 @@ import (
 const (
 	InitialScannerBufferSize    = 64 << 10 // 64KB (64*1024)
 	DefaultMaxScannerBufferSize = 64 << 20 // 64MB (64*1024*1024) default SSE buffer size
+	DefaultStreamingTimeout     = 300 * time.Second
 	DefaultPingInterval         = 10 * time.Second
 )
 
@@ -34,14 +35,22 @@ func getScannerBufferSize() int {
 	return DefaultMaxScannerBufferSize
 }
 
+func getStreamingTimeout() time.Duration {
+	if constant.StreamingTimeout > 0 {
+		return time.Duration(constant.StreamingTimeout) * time.Second
+	}
+	return DefaultStreamingTimeout
+}
+
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
 
-	if resp == nil || dataHandler == nil {
+	if resp == nil || info == nil || dataHandler == nil {
 		return
 	}
 
-	// 无条件新建 StreamStatus
-	info.StreamStatus = relaycommon.NewStreamStatus()
+	if info.StreamStatus == nil {
+		info.StreamStatus = relaycommon.NewStreamStatus()
+	}
 
 	// 确保响应体总是被关闭
 	defer func() {
@@ -50,7 +59,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		}
 	}()
 
-	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
+	streamingTimeout := getStreamingTimeout()
 
 	var (
 		stopChan   = make(chan bool, 3) // 增加缓冲区避免阻塞
