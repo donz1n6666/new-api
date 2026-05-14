@@ -96,8 +96,14 @@ const SubscriptionPurchaseModal = ({
   const hasAnyPayment = hasStripe || hasCreem || hasEpay || hasEthereum;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
+  const globalPurchaseLimit = Number(purchaseLimitInfo?.global_limit || 0);
+  const globalPurchaseCount = Number(purchaseLimitInfo?.global_count || 0);
+  const globalResetLabel = purchaseLimitInfo?.global_reset_label || '';
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const globalLimitReached =
+    globalPurchaseLimit > 0 && globalPurchaseCount >= globalPurchaseLimit;
+  const anyLimitReached = purchaseLimitReached || globalLimitReached;
 
   return (
     <Modal
@@ -194,10 +200,16 @@ const SubscriptionPurchaseModal = ({
           </Card>
 
           {/* 支付方式 */}
-          {purchaseLimitReached && (
+          {anyLimitReached && (
             <Banner
               type='warning'
-              description={`${t('已达到购买上限')} (${purchaseCount}/${purchaseLimit})`}
+              description={
+                globalLimitReached
+                  ? globalResetLabel
+                    ? `${t('该套餐已售罄')} · ${t('名额刷新')}: ${globalResetLabel}`
+                    : t('该套餐已售罄')
+                  : `${t('已达到购买上限')} (${purchaseCount}/${purchaseLimit})`
+              }
               className='!rounded-xl'
               closeIcon={null}
             />
@@ -219,7 +231,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiStripe size={14} color='#635BFF' />}
                       onClick={onPayStripe}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={anyLimitReached}
                     >
                       Stripe
                     </Button>
@@ -231,7 +243,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<IconCreditCard />}
                       onClick={onPayCreem}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={anyLimitReached}
                     >
                       Creem
                     </Button>
@@ -252,14 +264,14 @@ const SubscriptionPurchaseModal = ({
                       value: m.type,
                       label: m.name || m.type,
                     }))}
-                    disabled={purchaseLimitReached}
+                    disabled={anyLimitReached}
                   />
                   <Button
                     theme='solid'
                     type='primary'
                     onClick={onPayEpay}
                     loading={paying}
-                    disabled={!selectedEpayMethod || purchaseLimitReached}
+                    disabled={!selectedEpayMethod || anyLimitReached}
                   >
                     {t('支付')}
                   </Button>
@@ -274,7 +286,7 @@ const SubscriptionPurchaseModal = ({
                       key={index}
                       loading={paying}
                       onClick={() => onPayEthereum?.(token.address)}
-                      disabled={purchaseLimitReached}
+                      disabled={anyLimitReached}
                       style={{
                         background:
                           'linear-gradient(135deg, #627EEA, #8FA3F5)',

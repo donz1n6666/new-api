@@ -200,6 +200,10 @@ type SubscriptionPlan struct {
 	// Max purchases for all users combined (0 = unlimited)
 	MaxPurchaseTotal int `json:"max_purchase_total" gorm:"type:int;default:0"`
 
+	// Reset period for global purchase limit (only effective when MaxPurchaseTotal > 0)
+	MaxPurchaseResetPeriod        string `json:"max_purchase_reset_period" gorm:"type:varchar(16);default:'never'"`
+	MaxPurchaseResetCustomSeconds int64  `json:"max_purchase_reset_custom_seconds" gorm:"type:bigint;default:0"`
+
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
@@ -352,6 +356,37 @@ func NormalizeResetPeriod(period string) string {
 	}
 }
 
+func calcResetWindowStart(now time.Time, period string, customSeconds int64) int64 {
+	switch NormalizeResetPeriod(period) {
+	case SubscriptionResetDaily:
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	case SubscriptionResetWeekly:
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).
+			AddDate(0, 0, -(weekday - 1)).
+			Unix()
+	case SubscriptionResetMonthly:
+		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+	case SubscriptionResetCustom:
+		if customSeconds <= 0 {
+			return 0
+		}
+		return now.Add(-time.Duration(customSeconds) * time.Second).Unix()
+	default:
+		return 0
+	}
+}
+
+func getPlanPurchaseWindowStart(plan *SubscriptionPlan, now int64) int64 {
+	if plan == nil || plan.MaxPurchaseTotal <= 0 {
+		return 0
+	}
+	return calcResetWindowStart(time.Unix(now, 0), plan.MaxPurchaseResetPeriod, plan.MaxPurchaseResetCustomSeconds)
+}
+
 func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) int64 {
 	if plan == nil {
 		return 0
@@ -432,66 +467,69 @@ func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
 	return count, nil
 }
 
-func CountTotalSubscriptionsByPlan(planId int) (int64, error) {
-	if planId <= 0 {
-		return 0, errors.New("invalid planId")
+func countTotalSubscriptionsByPlanWithWindow(tx *gorm.DB, plan *SubscriptionPlan, now int64) (int64, error) {
+	if plan == nil || plan.Id <= 0 {
+		return 0, errors.New("invalid plan")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	query := tx.Model(&UserSubscription{}).Where("plan_id = ?", plan.Id)
+	if windowStart := getPlanPurchaseWindowStart(plan, now); windowStart > 0 {
+		query = query.Where("start_time >= ?", windowStart)
 	}
 	var count int64
-	if err := DB.Model(&UserSubscription{}).
-		Where("plan_id = ?", planId).
-		Count(&count).Error; err != nil {
+	if err := query.Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func CountPendingSubscriptionOrdersByPlan(planId int) (int64, error) {
-	if planId <= 0 {
-		return 0, errors.New("invalid planId")
+func countPendingSubscriptionOrdersByPlanWithWindow(tx *gorm.DB, plan *SubscriptionPlan, now int64) (int64, error) {
+	if plan == nil || plan.Id <= 0 {
+		return 0, errors.New("invalid plan")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	query := tx.Model(&SubscriptionOrder{}).Where("plan_id = ? AND status = ?", plan.Id, common.TopUpStatusPending)
+	if windowStart := getPlanPurchaseWindowStart(plan, now); windowStart > 0 {
+		query = query.Where("create_time >= ?", windowStart)
 	}
 	var count int64
-	if err := DB.Model(&SubscriptionOrder{}).
-		Where("plan_id = ? AND status = ?", planId, common.TopUpStatusPending).
-		Count(&count).Error; err != nil {
+	if err := query.Count(&count).Error; err != nil {
 		return 0, err
 	}
 	return count, nil
 }
 
-func CountSubscriptionPlanPurchaseCounts(planIds []int) (map[int]int64, error) {
-	counts := make(map[int]int64, len(planIds))
-	if len(planIds) == 0 {
+func CountSubscriptionPlanPurchaseCounts(plans []SubscriptionPlan, includePendingOrders bool) (map[int]int64, error) {
+	counts := make(map[int]int64, len(plans))
+	if len(plans) == 0 {
 		return counts, nil
 	}
-	uniqueIds := make([]int, 0, len(planIds))
-	seen := make(map[int]struct{}, len(planIds))
-	for _, planId := range planIds {
-		if planId <= 0 {
+	now := GetDBTimestamp()
+	seen := make(map[int]struct{}, len(plans))
+	for _, plan := range plans {
+		if plan.Id <= 0 {
 			continue
 		}
-		if _, ok := seen[planId]; ok {
+		if _, ok := seen[plan.Id]; ok {
 			continue
 		}
-		seen[planId] = struct{}{}
-		uniqueIds = append(uniqueIds, planId)
-	}
-	if len(uniqueIds) == 0 {
-		return counts, nil
-	}
-	type planCount struct {
-		PlanId int   `gorm:"column:plan_id"`
-		Count  int64 `gorm:"column:count"`
-	}
-	var rows []planCount
-	if err := DB.Model(&UserSubscription{}).
-		Select("plan_id, COUNT(*) AS count").
-		Where("plan_id IN ?", uniqueIds).
-		Group("plan_id").
-		Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		counts[row.PlanId] = row.Count
+		seen[plan.Id] = struct{}{}
+		totalCount, err := countTotalSubscriptionsByPlanWithWindow(nil, &plan, now)
+		if err != nil {
+			return nil, err
+		}
+		if includePendingOrders {
+			pendingCount, err := countPendingSubscriptionOrdersByPlanWithWindow(nil, &plan, now)
+			if err != nil {
+				return nil, err
+			}
+			totalCount += pendingCount
+		}
+		counts[plan.Id] = totalCount
 	}
 	return counts, nil
 }
@@ -513,12 +551,13 @@ func CheckSubscriptionPlanPurchaseAllowed(userId int, plan *SubscriptionPlan, in
 		}
 	}
 	if plan.MaxPurchaseTotal > 0 {
-		totalCount, err := CountTotalSubscriptionsByPlan(plan.Id)
+		now := GetDBTimestamp()
+		totalCount, err := countTotalSubscriptionsByPlanWithWindow(nil, plan, now)
 		if err != nil {
 			return err
 		}
 		if includePendingOrders {
-			pendingCount, err := CountPendingSubscriptionOrdersByPlan(plan.Id)
+			pendingCount, err := countPendingSubscriptionOrdersByPlanWithWindow(nil, plan, now)
 			if err != nil {
 				return err
 			}
@@ -557,10 +596,8 @@ func checkSubscriptionPlanPurchaseAllowedTx(tx *gorm.DB, userId int, plan *Subsc
 		if err := lockForUpdate(tx).Select("id").Where("id = ?", plan.Id).First(&lockedPlan).Error; err != nil {
 			return err
 		}
-		var count int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("plan_id = ?", plan.Id).
-			Count(&count).Error; err != nil {
+		count, err := countTotalSubscriptionsByPlanWithWindow(tx, plan, GetDBTimestamp())
+		if err != nil {
 			return err
 		}
 		if count >= int64(plan.MaxPurchaseTotal) {

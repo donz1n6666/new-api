@@ -127,6 +127,9 @@ const AddEditSubscriptionModal = ({
     enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
+    max_purchase_total: 0,
+    max_purchase_reset_period: 'never',
+    max_purchase_reset_custom_seconds: 0,
     total_amount: 0,
     upgrade_group: '',
     stripe_price_id: '',
@@ -151,6 +154,11 @@ const AddEditSubscriptionModal = ({
       enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
+      max_purchase_total: Number(p.max_purchase_total || 0),
+      max_purchase_reset_period: p.max_purchase_reset_period || 'never',
+      max_purchase_reset_custom_seconds: Number(
+        p.max_purchase_reset_custom_seconds || 0,
+      ),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
@@ -260,6 +268,16 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
+          max_purchase_total: Number(values.max_purchase_total || 0),
+          max_purchase_reset_period:
+            Number(values.max_purchase_total || 0) > 0
+              ? (values.max_purchase_reset_period || 'never')
+              : 'never',
+          max_purchase_reset_custom_seconds:
+            Number(values.max_purchase_total || 0) > 0 &&
+            values.max_purchase_reset_period === 'custom'
+              ? Number(values.max_purchase_reset_custom_seconds || 0)
+              : 0,
           total_amount: useMultiTier ? 0 : displayAmountToQuota(values.total_amount),
           upgrade_group: values.upgrade_group || '',
           quota_tiers: effectiveTiers.length > 0 ? JSON.stringify(effectiveTiers) : '[]',
@@ -467,6 +485,49 @@ const AddEditSubscriptionModal = ({
                         min={0}
                         precision={0}
                         extraText={t('0 表示不限')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='max_purchase_total'
+                        label={t('全局购买上限')}
+                        min={0}
+                        precision={0}
+                        extraText={t('0 表示不限；可用于控制总名额')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.Select
+                        field='max_purchase_reset_period'
+                        label={t('全局限购刷新周期')}
+                        disabled={Number(values.max_purchase_total || 0) <= 0}
+                        extraText={t(
+                          '用于自动补货/刷新名额，例如全局购买上限=1 且每天刷新，即每天只放 1 个名额',
+                        )}
+                      >
+                        {resetPeriodOptions.map((o) => (
+                          <Select.Option key={o.value} value={o.value}>
+                            {o.label}
+                          </Select.Option>
+                        ))}
+                      </Form.Select>
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='max_purchase_reset_custom_seconds'
+                        label={t('全局限购自定义秒数')}
+                        min={0}
+                        precision={0}
+                        disabled={
+                          Number(values.max_purchase_total || 0) <= 0 ||
+                          values.max_purchase_reset_period !== 'custom'
+                        }
+                        extraText={t('仅在全局限购刷新周期为自定义时生效')}
                         style={{ width: '100%' }}
                       />
                     </Col>

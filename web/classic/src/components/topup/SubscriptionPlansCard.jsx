@@ -70,6 +70,21 @@ function submitEpayForm({ url, params }) {
   document.body.removeChild(form);
 }
 
+function formatGlobalPurchaseResetPeriod(plan, t) {
+  const period = plan?.max_purchase_reset_period || 'never';
+  if (period === 'daily') return t('每天');
+  if (period === 'weekly') return t('每周');
+  if (period === 'monthly') return t('每月');
+  if (period === 'custom') {
+    const seconds = Number(plan?.max_purchase_reset_custom_seconds || 0);
+    if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('天')}`;
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)} ${t('小时')}`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)} ${t('分钟')}`;
+    return `${seconds} ${t('秒')}`;
+  }
+  return t('不刷新');
+}
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -681,7 +696,19 @@ const SubscriptionPlansCard = ({
                 );
                 const isPopular = index === 0 && plans.length > 1;
                 const limit = Number(plan?.max_purchase_per_user || 0);
+                const globalLimit = Number(plan?.max_purchase_total || 0);
+                const globalPurchaseCount = Number(plan?.purchase_count || 0);
                 const limitLabel = limit > 0 ? `${t('限购')} ${limit}` : null;
+                const globalLimitLabel =
+                  globalLimit > 0
+                    ? `${t('全局限购')}: ${globalPurchaseCount}/${globalLimit}`
+                    : null;
+                const globalResetLabel =
+                  globalLimit > 0 &&
+                  plan?.max_purchase_reset_period &&
+                  plan.max_purchase_reset_period !== 'never'
+                    ? `${t('名额刷新')}: ${formatGlobalPurchaseResetPeriod(plan, t)}`
+                    : null;
                 const totalLabel =
                   totalAmount > 0
                     ? `${t('总额度')}: ${renderQuota(totalAmount)}`
@@ -710,6 +737,8 @@ const SubscriptionPlansCard = ({
                       }
                     : (!tierSummary ? { label: totalLabel } : null),
                   limitLabel ? { label: limitLabel } : null,
+                  globalLimitLabel ? { label: globalLimitLabel } : null,
+                  globalResetLabel ? { label: globalResetLabel } : null,
                   upgradeLabel ? { label: upgradeLabel } : null,
                   disableBalanceLabel ? { label: disableBalanceLabel } : null,
                 ].filter(Boolean);
@@ -800,10 +829,18 @@ const SubscriptionPlansCard = ({
                         {/* 购买按钮 */}
                         {(() => {
                           const count = getPlanPurchaseCount(p?.plan?.id);
-                          const reached = limit > 0 && count >= limit;
-                          const tip = reached
-                            ? t('已达到购买上限') + ` (${count}/${limit})`
-                            : '';
+                          const reachedPerUser = limit > 0 && count >= limit;
+                          const soldOut =
+                            globalLimit > 0 &&
+                            globalPurchaseCount >= globalLimit;
+                          const reached = reachedPerUser || soldOut;
+                          const tip = soldOut
+                            ? globalResetLabel
+                              ? `${t('该套餐已售罄')} · ${globalResetLabel}`
+                              : t('该套餐已售罄')
+                            : reachedPerUser
+                              ? t('已达到购买上限') + ` (${count}/${limit})`
+                              : '';
                           const buttonEl = (
                             <Button
                               theme='outline'
@@ -814,7 +851,11 @@ const SubscriptionPlansCard = ({
                                 if (!reached) openBuy(p);
                               }}
                             >
-                              {reached ? t('已达上限') : t('立即订阅')}
+                              {reached
+                                ? soldOut
+                                  ? t('已售罄')
+                                  : t('已达上限')
+                                : t('立即订阅')}
                             </Button>
                           );
                           return reached ? (
@@ -870,6 +911,14 @@ const SubscriptionPlansCard = ({
             ? {
                 limit: Number(selectedPlan?.plan?.max_purchase_per_user || 0),
                 count: getPlanPurchaseCount(selectedPlan?.plan?.id),
+                global_limit: Number(selectedPlan?.plan?.max_purchase_total || 0),
+                global_count: Number(selectedPlan?.plan?.purchase_count || 0),
+                global_reset_label:
+                  Number(selectedPlan?.plan?.max_purchase_total || 0) > 0 &&
+                  selectedPlan?.plan?.max_purchase_reset_period &&
+                  selectedPlan.plan.max_purchase_reset_period !== 'never'
+                    ? formatGlobalPurchaseResetPeriod(selectedPlan.plan, t)
+                    : '',
               }
             : null
         }

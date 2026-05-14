@@ -51,6 +51,14 @@ export function getPlanFormSchema(t: TFunction) {
     sort_order: z.coerce.number(),
     max_purchase_per_user: z.coerce.number().min(0),
     max_purchase_total: z.coerce.number().min(0),
+    max_purchase_reset_period: z.enum([
+      'never',
+      'daily',
+      'weekly',
+      'monthly',
+      'custom',
+    ]),
+    max_purchase_reset_custom_seconds: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),
     upgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
@@ -102,6 +110,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   sort_order: 0,
   max_purchase_per_user: 0,
   max_purchase_total: 0,
+  max_purchase_reset_period: 'never',
+  max_purchase_reset_custom_seconds: 0,
   total_amount: 0,
   upgrade_group: '',
   stripe_price_id: '',
@@ -135,6 +145,10 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     sort_order: Number(plan.sort_order || 0),
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     max_purchase_total: Number(plan.max_purchase_total || 0),
+    max_purchase_reset_period: plan.max_purchase_reset_period || 'never',
+    max_purchase_reset_custom_seconds: Number(
+      plan.max_purchase_reset_custom_seconds || 0
+    ),
     total_amount: Number(plan.total_amount || 0),
     upgrade_group: plan.upgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
@@ -162,6 +176,15 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       max_purchase_total: Number(values.max_purchase_total || 0),
+      max_purchase_reset_period:
+        Number(values.max_purchase_total || 0) > 0
+          ? values.max_purchase_reset_period || 'never'
+          : 'never',
+      max_purchase_reset_custom_seconds:
+        Number(values.max_purchase_total || 0) > 0 &&
+        values.max_purchase_reset_period === 'custom'
+          ? Number(values.max_purchase_reset_custom_seconds || 0)
+          : 0,
       total_amount: useMultiTier ? 0 : Number(values.total_amount || 0),
       upgrade_group: values.upgrade_group || '',
       quota_tiers: useMultiTier ? JSON.stringify(values.quota_tiers) : '[]',

@@ -134,13 +134,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	planIds := make([]int, 0, len(plans))
-	for _, plan := range plans {
-		if plan.Id > 0 {
-			planIds = append(planIds, plan.Id)
-		}
-	}
-	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(planIds)
+	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(plans, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -245,13 +239,7 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	planIds := make([]int, 0, len(plans))
-	for _, plan := range plans {
-		if plan.Id > 0 {
-			planIds = append(planIds, plan.Id)
-		}
-	}
-	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(planIds)
+	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(plans, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -306,6 +294,19 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.MaxPurchaseTotal < 0 {
 		common.ApiErrorMsg(c, "全局购买上限不能为负数")
 		return
+	}
+	req.Plan.MaxPurchaseResetPeriod = model.NormalizeResetPeriod(req.Plan.MaxPurchaseResetPeriod)
+	if req.Plan.MaxPurchaseTotal <= 0 {
+		req.Plan.MaxPurchaseResetPeriod = model.SubscriptionResetNever
+		req.Plan.MaxPurchaseResetCustomSeconds = 0
+	} else {
+		if req.Plan.MaxPurchaseResetPeriod == model.SubscriptionResetCustom && req.Plan.MaxPurchaseResetCustomSeconds <= 0 {
+			common.ApiErrorMsg(c, "全局限购自定义刷新周期需大于0秒")
+			return
+		}
+		if req.Plan.MaxPurchaseResetPeriod != model.SubscriptionResetCustom {
+			req.Plan.MaxPurchaseResetCustomSeconds = 0
+		}
 	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
@@ -381,6 +382,19 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "全局购买上限不能为负数")
 		return
 	}
+	req.Plan.MaxPurchaseResetPeriod = model.NormalizeResetPeriod(req.Plan.MaxPurchaseResetPeriod)
+	if req.Plan.MaxPurchaseTotal <= 0 {
+		req.Plan.MaxPurchaseResetPeriod = model.SubscriptionResetNever
+		req.Plan.MaxPurchaseResetCustomSeconds = 0
+	} else {
+		if req.Plan.MaxPurchaseResetPeriod == model.SubscriptionResetCustom && req.Plan.MaxPurchaseResetCustomSeconds <= 0 {
+			common.ApiErrorMsg(c, "全局限购自定义刷新周期需大于0秒")
+			return
+		}
+		if req.Plan.MaxPurchaseResetPeriod != model.SubscriptionResetCustom {
+			req.Plan.MaxPurchaseResetCustomSeconds = 0
+		}
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -408,26 +422,28 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"stripe_price_id":            req.Plan.StripePriceId,
-			"creem_product_id":           req.Plan.CreemProductId,
-			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
-			"max_purchase_total":         req.Plan.MaxPurchaseTotal,
-			"total_amount":               req.Plan.TotalAmount,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"quota_reset_period":         req.Plan.QuotaResetPeriod,
-			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"quota_tiers":                req.Plan.QuotaTiers,
-			"disable_balance_deduction":  req.Plan.DisableBalanceDeduction,
-			"updated_at":                 common.GetTimestamp(),
+			"title":                             req.Plan.Title,
+			"subtitle":                          req.Plan.Subtitle,
+			"price_amount":                      req.Plan.PriceAmount,
+			"currency":                          req.Plan.Currency,
+			"duration_unit":                     req.Plan.DurationUnit,
+			"duration_value":                    req.Plan.DurationValue,
+			"custom_seconds":                    req.Plan.CustomSeconds,
+			"enabled":                           req.Plan.Enabled,
+			"sort_order":                        req.Plan.SortOrder,
+			"stripe_price_id":                   req.Plan.StripePriceId,
+			"creem_product_id":                  req.Plan.CreemProductId,
+			"max_purchase_per_user":             req.Plan.MaxPurchasePerUser,
+			"max_purchase_total":                req.Plan.MaxPurchaseTotal,
+			"max_purchase_reset_period":         req.Plan.MaxPurchaseResetPeriod,
+			"max_purchase_reset_custom_seconds": req.Plan.MaxPurchaseResetCustomSeconds,
+			"total_amount":                      req.Plan.TotalAmount,
+			"upgrade_group":                     req.Plan.UpgradeGroup,
+			"quota_reset_period":                req.Plan.QuotaResetPeriod,
+			"quota_reset_custom_seconds":        req.Plan.QuotaResetCustomSeconds,
+			"quota_tiers":                       req.Plan.QuotaTiers,
+			"disable_balance_deduction":         req.Plan.DisableBalanceDeduction,
+			"updated_at":                        common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err

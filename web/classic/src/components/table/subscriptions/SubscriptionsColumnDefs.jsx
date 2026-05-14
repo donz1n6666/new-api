@@ -64,6 +64,21 @@ function formatResetPeriod(plan, t) {
   return t('不重置');
 }
 
+function formatGlobalPurchaseResetPeriod(plan, t) {
+  const period = plan?.max_purchase_reset_period || 'never';
+  if (period === 'daily') return t('每天');
+  if (period === 'weekly') return t('每周');
+  if (period === 'monthly') return t('每月');
+  if (period === 'custom') {
+    const seconds = Number(plan?.max_purchase_reset_custom_seconds || 0);
+    if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('天')}`;
+    if (seconds >= 3600) return `${Math.floor(seconds / 3600)} ${t('小时')}`;
+    if (seconds >= 60) return `${Math.floor(seconds / 60)} ${t('分钟')}`;
+    return `${seconds} ${t('秒')}`;
+  }
+  return t('不刷新');
+}
+
 const renderPlanTitle = (text, record, t) => {
   const subtitle = record?.plan?.subtitle;
   const plan = record?.plan;
@@ -96,6 +111,18 @@ const renderPlanTitle = (text, record, t) => {
           {plan?.max_purchase_per_user > 0
             ? plan.max_purchase_per_user
             : t('不限')}
+        </Text>
+        <Text type='tertiary'>{t('全局购买上限')}</Text>
+        <Text>
+          {plan?.max_purchase_total > 0
+            ? `${plan.purchase_count || 0}/${plan.max_purchase_total}`
+            : t('不限')}
+        </Text>
+        <Text type='tertiary'>{t('全局限购刷新')}</Text>
+        <Text>
+          {plan?.max_purchase_total > 0
+            ? formatGlobalPurchaseResetPeriod(plan, t)
+            : t('不启用')}
         </Text>
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
@@ -135,9 +162,15 @@ const renderPrice = (text) => {
 
 const renderPurchaseLimit = (text, record, t) => {
   const limit = Number(record?.plan?.max_purchase_per_user || 0);
+  const globalLimit = Number(record?.plan?.max_purchase_total || 0);
+  const globalCount = Number(record?.plan?.purchase_count || 0);
   return (
-    <Text type={limit > 0 ? 'secondary' : 'tertiary'}>
-      {limit > 0 ? limit : t('不限')}
+    <Text type={limit > 0 || globalLimit > 0 ? 'secondary' : 'tertiary'}>
+      {limit > 0 ? `${t('用户')} ${limit}` : `${t('用户')} ${t('不限')}`}
+      {' / '}
+      {globalLimit > 0
+        ? `${t('全局')} ${globalCount}/${globalLimit}`
+        : `${t('全局')} ${t('不限')}`}
     </Text>
   );
 };

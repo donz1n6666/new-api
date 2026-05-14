@@ -120,6 +120,76 @@ func TestCheckSubscriptionPlanPurchaseAllowed_GlobalLimitIncludesPendingOrders(t
 	assert.Equal(t, "该套餐已售罄", err.Error())
 }
 
+func TestCheckSubscriptionPlanPurchaseAllowed_GlobalLimitResetsByDay(t *testing.T) {
+	truncateTables(t)
+
+	plan := insertPlanForGroupBillingTest(t, 1005, "Daily Limited Plan", false, 1)
+	plan.MaxPurchaseResetPeriod = SubscriptionResetDaily
+	require.NoError(t, DB.Save(plan).Error)
+
+	yesterday := time.Now().Add(-24 * time.Hour).Unix()
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2005,
+		UserId:      3008,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusActive,
+		StartTime:   yesterday,
+		EndTime:     time.Now().Add(29 * 24 * time.Hour).Unix(),
+	}).Error)
+
+	err := CheckSubscriptionPlanPurchaseAllowed(3009, plan, true)
+	require.NoError(t, err)
+}
+
+func TestCountSubscriptionPlanPurchaseCounts_UsesCurrentWindowAndPendingOrders(t *testing.T) {
+	truncateTables(t)
+
+	now := time.Now()
+	plan := insertPlanForGroupBillingTest(t, 1006, "Rolling Seats", false, 2)
+	plan.MaxPurchaseResetPeriod = SubscriptionResetDaily
+	require.NoError(t, DB.Save(plan).Error)
+
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2006,
+		UserId:      3013,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusActive,
+		StartTime:   now.Unix(),
+		EndTime:     now.Add(30 * 24 * time.Hour).Unix(),
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2007,
+		UserId:      3014,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusExpired,
+		StartTime:   now.Add(-48 * time.Hour).Unix(),
+		EndTime:     now.Add(-24 * time.Hour).Unix(),
+	}).Error)
+	require.NoError(t, DB.Create(&SubscriptionOrder{
+		UserId:     3015,
+		PlanId:     plan.Id,
+		Money:      9.99,
+		TradeNo:    "pending-current-window",
+		Status:     common.TopUpStatusPending,
+		CreateTime: now.Unix(),
+	}).Error)
+	require.NoError(t, DB.Create(&SubscriptionOrder{
+		UserId:     3016,
+		PlanId:     plan.Id,
+		Money:      9.99,
+		TradeNo:    "pending-old-window",
+		Status:     common.TopUpStatusPending,
+		CreateTime: now.Add(-48 * time.Hour).Unix(),
+	}).Error)
+
+	counts, err := CountSubscriptionPlanPurchaseCounts([]SubscriptionPlan{*plan}, true)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, counts[plan.Id])
+}
+
 func TestCreateUserSubscriptionFromPlanTx_GlobalLimitBlocksFurtherCreation(t *testing.T) {
 	truncateTables(t)
 

@@ -334,6 +334,70 @@ export function SubscriptionsMutateDrawer({
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
+                  name='max_purchase_reset_period'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Global Purchase Reset Period')}</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={Number(form.watch('max_purchase_total') || 0) <= 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {resetPeriodOpts.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t(
+                          'Use global limit + reset period to auto-restock seats, for example 1 seat per day'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='max_purchase_reset_custom_seconds'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Global Purchase Custom Seconds')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          disabled={
+                            Number(form.watch('max_purchase_total') || 0) <= 0 ||
+                            form.watch('max_purchase_reset_period') !== 'custom'
+                          }
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Only used when global purchase reset period is custom')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
                   name='sort_order'
                   render={({ field }) => (
                     <FormItem>
