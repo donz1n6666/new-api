@@ -16,6 +16,7 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     EthereumChainId: 11155111,
     EthereumContractAddress: '',
     EthereumAlchemyWebhookSigningKey: '',
+    EthereumAlchemyWebhookSigningKeyConfigured: false,
     EthereumMinTopUp: 1,
     EthereumWalletConnectProjectID: '',
     EthereumWalletConnectAppName: '',
@@ -41,6 +42,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       EthereumChainId: parseInt(options.EthereumChainId) || 11155111,
       EthereumContractAddress: options.EthereumContractAddress || '',
       EthereumAlchemyWebhookSigningKey: options.EthereumAlchemyWebhookSigningKey || '',
+      EthereumAlchemyWebhookSigningKeyConfigured:
+        options.EthereumAlchemyWebhookSigningKeyConfigured === 'true' ||
+        options.EthereumAlchemyWebhookSigningKeyConfigured === true,
       EthereumMinTopUp: parseInt(options.EthereumMinTopUp) || 1,
       EthereumWalletConnectProjectID: options.EthereumWalletConnectProjectID || '',
       EthereumWalletConnectAppName: options.EthereumWalletConnectAppName || '',
@@ -66,22 +70,23 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
   const submitSettings = async () => {
     setLoading(true);
     try {
+      const formValues = formApiRef.current?.getValues?.() || inputs;
       const opts = [
-        { key: 'EthereumEnabled', value: inputs.EthereumEnabled ? 'true' : 'false' },
-        { key: 'EthereumChainId', value: String(inputs.EthereumChainId || 11155111) },
-        { key: 'EthereumContractAddress', value: inputs.EthereumContractAddress || '' },
-        { key: 'EthereumMinTopUp', value: String(inputs.EthereumMinTopUp || 1) },
-        { key: 'EthereumWalletConnectProjectID', value: inputs.EthereumWalletConnectProjectID || '' },
-        { key: 'EthereumWalletConnectAppName', value: inputs.EthereumWalletConnectAppName || '' },
-        { key: 'EthereumWalletConnectAppDescription', value: inputs.EthereumWalletConnectAppDescription || '' },
-        { key: 'EthereumWalletConnectAppURL', value: inputs.EthereumWalletConnectAppURL || '' },
-        { key: 'EthereumWalletConnectAppIcon', value: inputs.EthereumWalletConnectAppIcon || '' },
+        { key: 'EthereumEnabled', value: formValues.EthereumEnabled ? 'true' : 'false' },
+        { key: 'EthereumChainId', value: String(formValues.EthereumChainId || 11155111) },
+        { key: 'EthereumContractAddress', value: formValues.EthereumContractAddress || '' },
+        { key: 'EthereumMinTopUp', value: String(formValues.EthereumMinTopUp || 1) },
+        { key: 'EthereumWalletConnectProjectID', value: formValues.EthereumWalletConnectProjectID || '' },
+        { key: 'EthereumWalletConnectAppName', value: formValues.EthereumWalletConnectAppName || '' },
+        { key: 'EthereumWalletConnectAppDescription', value: formValues.EthereumWalletConnectAppDescription || '' },
+        { key: 'EthereumWalletConnectAppURL', value: formValues.EthereumWalletConnectAppURL || '' },
+        { key: 'EthereumWalletConnectAppIcon', value: formValues.EthereumWalletConnectAppIcon || '' },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
-      if ((inputs.EthereumAlchemyWebhookSigningKey || '').trim()) {
+      if ((formValues.EthereumAlchemyWebhookSigningKey || '').trim()) {
         opts.push({
           key: 'EthereumAlchemyWebhookSigningKey',
-          value: inputs.EthereumAlchemyWebhookSigningKey.trim(),
+          value: formValues.EthereumAlchemyWebhookSigningKey.trim(),
         });
       }
 
@@ -221,6 +226,14 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 mode='password'
                 extraText={t('用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变')}
               />
+              <div style={{ marginTop: 6 }}>
+                <Text type={inputs.EthereumAlchemyWebhookSigningKeyConfigured ? 'success' : 'warning'}>
+                  {t('Webhook Signing Key 状态：')}
+                  {inputs.EthereumAlchemyWebhookSigningKeyConfigured
+                    ? t('已配置')
+                    : t('未配置')}
+                </Text>
+              </div>
             </Col>
             <Col xs={24} md={8}>
               <Form.InputNumber

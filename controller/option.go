@@ -99,6 +99,10 @@ func GetOptions(c *gin.Context) {
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
+	options = append(options, &model.Option{
+		Key:   "EthereumAlchemyWebhookSigningKeyConfigured",
+		Value: common.Interface2String(strings.TrimSpace(setting.EthereumAlchemyWebhookSigningKey) != ""),
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

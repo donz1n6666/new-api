@@ -66,6 +66,7 @@ const PaymentSetting = () => {
     EthereumChainId: 11155111,
     EthereumContractAddress: '',
     EthereumAlchemyWebhookSigningKey: '',
+    EthereumAlchemyWebhookSigningKeyConfigured: false,
     EthereumMinTopUp: 1,
     EthereumWalletConnectProjectID: '',
     EthereumWalletConnectAppName: '',
