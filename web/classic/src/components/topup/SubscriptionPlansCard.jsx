@@ -34,6 +34,7 @@ import { API, showError, showSuccess, showInfo, renderQuota } from '../../helper
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
+import EthereumWalletConnectModal from './modals/EthereumWalletConnectModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
@@ -124,6 +125,8 @@ const SubscriptionPlansCard = ({
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
+  const [walletConnectModalOpen, setWalletConnectModalOpen] = useState(false);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -274,7 +277,7 @@ const SubscriptionPlansCard = ({
         pay_amount,
       } = res.data.data;
       showInfo(
-        t('正在连接钱包，如未检测到浏览器钱包将自动拉起 WalletConnect 二维码...'),
+        t('正在连接钱包，如未检测到浏览器钱包将显示 WalletConnect 连接信息...'),
       );
       const receipt = await executeEthereumOrderWithAutoWallet(
         {
@@ -285,6 +288,28 @@ const SubscriptionPlansCard = ({
           pay_amount,
         },
         getWalletConnectConfig(ethereumInfo),
+        {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalOpen(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalOpen(true);
+          },
+          onWalletConnectConnected: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+          onWalletConnectDisconnected: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+        },
       );
       showSuccess(
         receipt?.walletName
@@ -293,6 +318,8 @@ const SubscriptionPlansCard = ({
       );
       closeBuy();
     } catch (e) {
+      setWalletConnectModalOpen(false);
+      setWalletConnectUri('');
       if (isEthereumUserRejected(e)) {
         showError(t('用户取消了交易'));
       } else {
@@ -887,6 +914,16 @@ const SubscriptionPlansCard = ({
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayEthereum={payEthereum}
+      />
+
+      <EthereumWalletConnectModal
+        t={t}
+        visible={walletConnectModalOpen}
+        uri={walletConnectUri}
+        onCancel={() => {
+          setWalletConnectModalOpen(false);
+          setWalletConnectUri('');
+        }}
       />
     </>
   );

@@ -132,7 +132,7 @@ async function connectWalletConnectProvider(chainId, walletConnectConfig) {
   const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
   const provider = await EthereumProvider.init({
     projectId: String(walletConnectConfig.projectId).trim(),
-    showQrModal: true,
+    showQrModal: false,
     chains: [Number(chainId)],
     optionalChains: [Number(chainId)],
     metadata: buildWalletConnectMetadata(walletConnectConfig),
@@ -145,7 +145,11 @@ async function connectWalletConnectProvider(chainId, walletConnectConfig) {
   };
 }
 
-export async function connectEthereumWallet(chainId, walletConnectConfig = {}) {
+export async function connectEthereumWallet(
+  chainId,
+  walletConnectConfig = {},
+  lifecycle = {},
+) {
   const injectedWallets = await discoverInjectedWallets();
   if (injectedWallets.length > 0) {
     const preferred = injectedWallets[0];
@@ -157,7 +161,26 @@ export async function connectEthereumWallet(chainId, walletConnectConfig = {}) {
   }
 
   if (hasWalletConnectProjectId(walletConnectConfig)) {
-    return connectWalletConnectProvider(chainId, walletConnectConfig);
+    lifecycle?.onWalletConnectPending?.();
+    const connection = await connectWalletConnectProvider(
+      chainId,
+      walletConnectConfig,
+    );
+    const provider = connection.provider;
+
+    if (typeof provider?.on === 'function') {
+      provider.on('display_uri', (uri) => {
+        lifecycle?.onWalletConnectUri?.(uri);
+      });
+      provider.on('connect', () => {
+        lifecycle?.onWalletConnectConnected?.();
+      });
+      provider.on('disconnect', () => {
+        lifecycle?.onWalletConnectDisconnected?.();
+      });
+    }
+
+    return connection;
   }
 
   throw new Error(
@@ -199,16 +222,24 @@ async function requestEthereumAccounts(browserProvider, rawProvider) {
 export async function executeEthereumOrderWithAutoWallet(
   order,
   walletConnectConfig = {},
+  lifecycle = {},
 ) {
   const connection = await connectEthereumWallet(
     Number(order?.chain_id || 0),
     walletConnectConfig,
+    lifecycle,
   );
   const rawProvider = connection.provider;
 
   const { ethers } = await import('ethers');
   const browserProvider = new ethers.BrowserProvider(rawProvider);
-  await requestEthereumAccounts(browserProvider, rawProvider);
+  try {
+    await requestEthereumAccounts(browserProvider, rawProvider);
+    lifecycle?.onWalletConnectConnected?.();
+  } catch (error) {
+    lifecycle?.onWalletConnectError?.(error);
+    throw error;
+  }
 
   const expectedChainId = BigInt(order.chain_id);
   const currentNetwork = await browserProvider.getNetwork();

@@ -37,6 +37,7 @@ import { StatusContext } from '../../context/Status';
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
+import EthereumWalletConnectModal from './modals/EthereumWalletConnectModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import {
@@ -111,6 +112,8 @@ const TopUp = () => {
     useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [walletConnectModalOpen, setWalletConnectModalOpen] = useState(false);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -524,7 +527,7 @@ const TopUp = () => {
 
       setPaymentLoading(false);
       showInfo(
-        t('正在连接钱包，如未检测到浏览器钱包将自动拉起 WalletConnect 二维码...'),
+        t('正在连接钱包，如未检测到浏览器钱包将显示 WalletConnect 连接信息...'),
       );
       const receipt = await executeEthereumOrderWithAutoWallet(
         {
@@ -535,6 +538,28 @@ const TopUp = () => {
           pay_amount,
         },
         getWalletConnectConfig(),
+        {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalOpen(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalOpen(true);
+          },
+          onWalletConnectConnected: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+          onWalletConnectDisconnected: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalOpen(false);
+            setWalletConnectUri('');
+          },
+        },
       );
 
       showSuccess(
@@ -551,6 +576,8 @@ const TopUp = () => {
       setOpen(false);
     } catch (e) {
       console.error('Ethereum payment error:', e);
+      setWalletConnectModalOpen(false);
+      setWalletConnectUri('');
       let msg = e.message || t('支付失败');
       if (isEthereumUserRejected(e)) {
         msg = t('用户拒绝了签名');
@@ -1001,6 +1028,16 @@ const TopUp = () => {
         visible={openHistory}
         onCancel={handleHistoryCancel}
         t={t}
+      />
+
+      <EthereumWalletConnectModal
+        t={t}
+        visible={walletConnectModalOpen}
+        uri={walletConnectUri}
+        onCancel={() => {
+          setWalletConnectModalOpen(false);
+          setWalletConnectUri('');
+        }}
       />
 
       {/* Creem 充值确认模态框 */}
