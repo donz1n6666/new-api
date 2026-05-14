@@ -11,12 +11,12 @@ const { Text } = Typography;
 export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [signingKeyConfigured, setSigningKeyConfigured] = useState(false);
   const [inputs, setInputs] = useState({
     EthereumEnabled: false,
     EthereumChainId: 11155111,
     EthereumContractAddress: '',
     EthereumAlchemyWebhookSigningKey: '',
-    EthereumAlchemyWebhookSigningKeyConfigured: false,
     EthereumMinTopUp: 1,
     EthereumWalletConnectProjectID: '',
     EthereumWalletConnectAppName: '',
@@ -42,9 +42,6 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       EthereumChainId: parseInt(options.EthereumChainId) || 11155111,
       EthereumContractAddress: options.EthereumContractAddress || '',
       EthereumAlchemyWebhookSigningKey: options.EthereumAlchemyWebhookSigningKey || '',
-      EthereumAlchemyWebhookSigningKeyConfigured:
-        options.EthereumAlchemyWebhookSigningKeyConfigured === 'true' ||
-        options.EthereumAlchemyWebhookSigningKeyConfigured === true,
       EthereumMinTopUp: parseInt(options.EthereumMinTopUp) || 1,
       EthereumWalletConnectProjectID: options.EthereumWalletConnectProjectID || '',
       EthereumWalletConnectAppName: options.EthereumWalletConnectAppName || '',
@@ -52,6 +49,10 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       EthereumWalletConnectAppURL: options.EthereumWalletConnectAppURL || '',
       EthereumWalletConnectAppIcon: options.EthereumWalletConnectAppIcon || '',
     };
+    setSigningKeyConfigured(
+      options.EthereumAlchemyWebhookSigningKeyConfigured === 'true' ||
+      options.EthereumAlchemyWebhookSigningKeyConfigured === true,
+    );
     setInputs(currentInputs);
     formApiRef.current.setValues(currentInputs);
 
@@ -227,9 +228,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 extraText={t('用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变')}
               />
               <div style={{ marginTop: 6 }}>
-                <Text type={inputs.EthereumAlchemyWebhookSigningKeyConfigured ? 'success' : 'warning'}>
+                <Text type={signingKeyConfigured ? 'success' : 'warning'}>
                   {t('Webhook Signing Key 状态：')}
-                  {inputs.EthereumAlchemyWebhookSigningKeyConfigured
+                  {signingKeyConfigured
                     ? t('已配置')
                     : t('未配置')}
                 </Text>
