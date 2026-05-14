@@ -39,6 +39,10 @@ import {
   formatSubscriptionResetPeriod,
   formatTiersSummary,
 } from '../../helpers/subscriptionFormat';
+import {
+  executeEthereumOrderWithAutoWallet,
+  isEthereumUserRejected,
+} from '../../helpers/ethereumWallet';
 
 const { Text } = Typography;
 
@@ -84,6 +88,17 @@ function formatGlobalPurchaseResetPeriod(plan, t) {
     return `${seconds} ${t('秒')}`;
   }
   return t('不刷新');
+}
+
+function getWalletConnectConfig(ethereumInfo) {
+  const walletConnect = ethereumInfo?.wallet_connect || {};
+  return {
+    projectId: walletConnect.project_id || '',
+    appName: walletConnect.app_name || '',
+    description: walletConnect.description || '',
+    url: walletConnect.url || '',
+    icon: walletConnect.icon || '',
+  };
 }
 
 const SubscriptionPlansCard = ({
@@ -165,7 +180,7 @@ const SubscriptionPlansCard = ({
       });
       if (res.data?.message === 'success') {
         window.open(res.data.data?.pay_link, '_blank');
-        showSuccess(t('已打开支付页面'));
+        showSuccess(t('已创建订单并打开支付页面，可在账单继续支付'));
         closeBuy();
       } else {
         const errorMsg =
@@ -193,7 +208,7 @@ const SubscriptionPlansCard = ({
       });
       if (res.data?.message === 'success') {
         window.open(res.data.data?.checkout_url, '_blank');
-        showSuccess(t('已打开支付页面'));
+        showSuccess(t('已创建订单并打开支付页面，可在账单继续支付'));
         closeBuy();
       } else {
         const errorMsg =
@@ -222,7 +237,7 @@ const SubscriptionPlansCard = ({
       });
       if (res.data?.message === 'success') {
         submitEpayForm({ url: res.data.url, params: res.data.data });
-        showSuccess(t('已发起支付'));
+        showSuccess(t('已创建订单并发起支付，可在账单继续支付'));
         closeBuy();
       } else {
         const errorMsg =
@@ -258,82 +273,27 @@ const SubscriptionPlansCard = ({
         token_address: respTokenAddr,
         pay_amount,
       } = res.data.data;
-
-      // 2. Connect MetaMask
-      if (!window.ethereum) {
-        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
-        return;
-      }
-      const { ethers } = await import('ethers');
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
-
-      // 3. Switch chain
-      const network = await provider.getNetwork();
-      if (network.chainId !== BigInt(chain_id)) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x' + chain_id.toString(16) }],
-          });
-        } catch (switchError) {
-          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
-          return;
-        }
-      }
-
-      const signer = await provider.getSigner();
-      const isNativeETH =
-        respTokenAddr === '0x0000000000000000000000000000000000000000';
-
-      const abi = isNativeETH
-        ? ['function payWithETH(bytes32 orderId) payable']
-        : [
-            'function payWithToken(bytes32 orderId, address token, uint256 amount)',
-          ];
-      const contract = new ethers.Contract(contract_address, abi, signer);
-
-      let tx;
-      if (isNativeETH) {
-        tx = await contract.payWithETH(order_id, {
-          value: BigInt(pay_amount),
-        });
-      } else {
-        const erc20Abi = [
-          'function approve(address spender, uint256 amount) returns (bool)',
-          'function allowance(address owner, address spender) view returns (uint256)',
-        ];
-        const tokenContract = new ethers.Contract(
-          respTokenAddr,
-          erc20Abi,
-          signer,
-        );
-        const signerAddress = await signer.getAddress();
-        const currentAllowance = await tokenContract.allowance(
-          signerAddress,
-          contract_address,
-        );
-        if (currentAllowance < BigInt(pay_amount)) {
-          showInfo(t('请在钱包中批准代币支出...'));
-          const approveTx = await tokenContract.approve(
-            contract_address,
-            BigInt(pay_amount),
-          );
-          await approveTx.wait();
-        }
-        tx = await contract.payWithToken(
+      showInfo(
+        t('正在连接钱包，如未检测到浏览器钱包将自动拉起 WalletConnect 二维码...'),
+      );
+      const receipt = await executeEthereumOrderWithAutoWallet(
+        {
           order_id,
-          respTokenAddr,
-          BigInt(pay_amount),
-        );
-      }
-
-      showInfo(t('交易已提交，等待确认...'));
-      await tx.wait();
-      showSuccess(t('交易确认！额度将在几秒内到账'));
+          contract_address,
+          chain_id,
+          token_address: respTokenAddr,
+          pay_amount,
+        },
+        getWalletConnectConfig(ethereumInfo),
+      );
+      showSuccess(
+        receipt?.walletName
+          ? t('交易确认！额度将在几秒内到账，钱包：') + receipt.walletName
+          : t('交易确认！额度将在几秒内到账'),
+      );
       closeBuy();
     } catch (e) {
-      if (e?.code === 4001 || e?.info?.error?.code === 4001) {
+      if (isEthereumUserRejected(e)) {
         showError(t('用户取消了交易'));
       } else {
         showError(e?.reason || e?.message || t('交易失败'));

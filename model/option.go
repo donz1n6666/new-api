@@ -118,6 +118,17 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
+	common.OptionMap["EthereumEnabled"] = strconv.FormatBool(setting.EthereumEnabled)
+	common.OptionMap["EthereumChainId"] = strconv.FormatInt(setting.EthereumChainId, 10)
+	common.OptionMap["EthereumContractAddress"] = setting.EthereumContractAddress
+	common.OptionMap["EthereumAlchemyWebhookSigningKey"] = setting.EthereumAlchemyWebhookSigningKey
+	common.OptionMap["EthereumMinTopUp"] = strconv.Itoa(setting.EthereumMinTopUp)
+	common.OptionMap["EthereumWalletConnectProjectID"] = setting.EthereumWalletConnectProjectID
+	common.OptionMap["EthereumWalletConnectAppName"] = setting.EthereumWalletConnectAppName
+	common.OptionMap["EthereumWalletConnectAppDescription"] = setting.EthereumWalletConnectAppDescription
+	common.OptionMap["EthereumWalletConnectAppURL"] = setting.EthereumWalletConnectAppURL
+	common.OptionMap["EthereumWalletConnectAppIcon"] = setting.EthereumWalletConnectAppIcon
+	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -469,6 +480,16 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.EthereumAlchemyWebhookSigningKey = value
 	case "EthereumMinTopUp":
 		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumWalletConnectProjectID":
+		setting.EthereumWalletConnectProjectID = value
+	case "EthereumWalletConnectAppName":
+		setting.EthereumWalletConnectAppName = value
+	case "EthereumWalletConnectAppDescription":
+		setting.EthereumWalletConnectAppDescription = value
+	case "EthereumWalletConnectAppURL":
+		setting.EthereumWalletConnectAppURL = value
+	case "EthereumWalletConnectAppIcon":
+		setting.EthereumWalletConnectAppIcon = value
 	case "EthereumSupportedTokens":
 		// validated lazily via GetEthereumTokens(), just store in OptionMap
 	case "TopupGroupRatio":

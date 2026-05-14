@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +25,25 @@ type BillingPreferenceRequest struct {
 
 type SwitchSelfSubscriptionRequest struct {
 	SubscriptionId int `json:"subscription_id"`
+}
+
+type SubscriptionOrderSelfDTO struct {
+	Id               int               `json:"id"`
+	TradeNo          string            `json:"trade_no"`
+	PlanId           int               `json:"plan_id"`
+	PlanTitle        string            `json:"plan_title"`
+	Money            float64           `json:"money"`
+	PaymentMethod    string            `json:"payment_method"`
+	PaymentProvider  string            `json:"payment_provider"`
+	Status           string            `json:"status"`
+	CreateTime       int64             `json:"create_time"`
+	CompleteTime     int64             `json:"complete_time"`
+	ExpiresAt        int64             `json:"expires_at"`
+	RemainingSeconds int64             `json:"remaining_seconds"`
+	ResumeType       string            `json:"resume_type,omitempty"`
+	ResumeURL        string            `json:"resume_url,omitempty"`
+	ResumeParams     map[string]string `json:"resume_params,omitempty"`
+	ResumeMessage    string            `json:"resume_message,omitempty"`
 }
 
 // tierPeriodOrder maps tier period types to numeric order (shorter = smaller)
@@ -229,6 +249,83 @@ func SwitchSelfSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"message": msg})
+}
+
+func GetSubscriptionOrdersSelf(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+
+	_, _ = model.ExpireStalePendingSubscriptionOrders(100)
+
+	orders, total, err := model.GetUserSubscriptionOrders(userId, keyword, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	now := common.GetTimestamp()
+	planTitleMap := make(map[int]string, len(orders))
+	items := make([]SubscriptionOrderSelfDTO, 0, len(orders))
+	for _, order := range orders {
+		planTitle, ok := planTitleMap[order.PlanId]
+		if !ok {
+			plan, planErr := model.GetSubscriptionPlanById(order.PlanId)
+			if planErr == nil && plan != nil {
+				planTitle = plan.Title
+			}
+			planTitleMap[order.PlanId] = planTitle
+		}
+
+		item := SubscriptionOrderSelfDTO{
+			Id:               order.Id,
+			TradeNo:          order.TradeNo,
+			PlanId:           order.PlanId,
+			PlanTitle:        planTitle,
+			Money:            order.Money,
+			PaymentMethod:    order.PaymentMethod,
+			PaymentProvider:  order.PaymentProvider,
+			Status:           order.EffectiveStatus(now),
+			CreateTime:       order.CreateTime,
+			CompleteTime:     order.CompleteTime,
+			ExpiresAt:        order.ExpiresAt(),
+			RemainingSeconds: order.RemainingSeconds(now),
+		}
+		if item.Status == common.TopUpStatusPending {
+			if payload := order.GetResumePayload(); payload != nil {
+				item.ResumeType = payload.Type
+				item.ResumeURL = payload.URL
+				item.ResumeParams = payload.Params
+				item.ResumeMessage = payload.Message
+			}
+		}
+		items = append(items, item)
+	}
+
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func CancelSubscriptionOrderSelf(c *gin.Context) {
+	userId := c.GetInt("id")
+	tradeNo := strings.TrimSpace(c.Param("tradeNo"))
+	if tradeNo == "" {
+		common.ApiErrorMsg(c, "订单号不能为空")
+		return
+	}
+	if err := model.CancelPendingSubscriptionOrder(userId, tradeNo); err != nil {
+		switch {
+		case errors.Is(err, model.ErrSubscriptionOrderNotFound):
+			common.ApiErrorMsg(c, "订单不存在")
+		case errors.Is(err, model.ErrSubscriptionOrderStatusInvalid):
+			common.ApiErrorMsg(c, "当前订单不可取消")
+		default:
+			common.ApiError(c, err)
+		}
+		return
+	}
+	common.ApiSuccess(c, gin.H{"trade_no": tradeNo})
 }
 
 // ---- Admin APIs ----

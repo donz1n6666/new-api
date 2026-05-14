@@ -386,6 +386,14 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 		CreateTime:            time.Now().Unix(),
 		Status:                common.TopUpStatusPending,
 	}
+	if err := order.SetResumePayload(&model.SubscriptionOrderResumePayload{
+		Type:    "recreate",
+		Message: "链上支付需要重新拉起钱包签名，请重新发起支付",
+	}); err != nil {
+		common.SysLog(fmt.Sprintf("Ethereum: 保存订阅订单恢复支付信息失败: %v", err))
+		common.ApiErrorMsg(c, "创建订单失败")
+		return
+	}
 	if err := order.Insert(); err != nil {
 		common.SysLog(fmt.Sprintf("Ethereum: 创建订阅订单失败: %v", err))
 		common.ApiErrorMsg(c, "创建订单失败")
@@ -548,11 +556,20 @@ func getEthereumTopUpInfo() (enabled bool, info map[string]interface{}) {
 	if !enabled {
 		return false, nil
 	}
+	walletConnect := map[string]interface{}{
+		"enabled":     strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
+		"project_id":  strings.TrimSpace(setting.EthereumWalletConnectProjectID),
+		"app_name":    strings.TrimSpace(setting.EthereumWalletConnectAppName),
+		"description": strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
+		"url":         strings.TrimSpace(setting.EthereumWalletConnectAppURL),
+		"icon":        strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
+	}
 	info = map[string]interface{}{
 		"chain_id":         setting.EthereumChainId,
 		"contract_address": setting.EthereumContractAddress,
 		"min_topup":        setting.EthereumMinTopUp,
 		"tokens":           setting.GetEthereumTokens(),
+		"wallet_connect":   walletConnect,
 	}
 	return true, info
 }

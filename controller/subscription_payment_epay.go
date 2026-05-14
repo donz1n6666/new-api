@@ -102,6 +102,15 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
+	if err := order.SetResumePayload(&model.SubscriptionOrderResumePayload{
+		Type:   "form",
+		URL:    uri,
+		Params: params,
+	}); err == nil {
+		if updateErr := order.Update(); updateErr != nil {
+			common.SysLog(fmt.Sprintf("Epay: 保存订阅订单恢复支付信息失败 trade_no=%s err=%v", tradeNo, updateErr))
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 

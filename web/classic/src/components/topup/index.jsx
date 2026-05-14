@@ -39,6 +39,10 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import {
+  executeEthereumOrderWithAutoWallet,
+  isEthereumUserRejected,
+} from '../../helpers/ethereumWallet';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -117,6 +121,17 @@ const TopUp = () => {
     amount_options: [],
     discount: {},
   });
+
+  const getWalletConnectConfig = () => {
+    const walletConnect = ethereumInfo?.wallet_connect || {};
+    return {
+      projectId: walletConnect.project_id || '',
+      appName: walletConnect.app_name || '',
+      description: walletConnect.description || '',
+      url: walletConnect.url || '',
+      icon: walletConnect.icon || '',
+    };
+  };
 
   const confirmPayMethods = [
     ...payMethods,
@@ -507,93 +522,37 @@ const TopUp = () => {
         symbol,
       } = res.data.data;
 
-      // 2. Connect MetaMask
-      if (!window.ethereum) {
-        showError(t('请安装 MetaMask 或其他 EVM 钱包'));
-        return;
-      }
-      const { ethers } = await import('ethers');
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
-
-      // 3. Switch chain
-      const network = await provider.getNetwork();
-      if (network.chainId !== BigInt(chain_id)) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x' + chain_id.toString(16) }],
-          });
-        } catch (switchError) {
-          showError(t('请在钱包中切换到正确的网络，Chain ID: ') + chain_id);
-          return;
-        }
-      }
-
-      const signer = await provider.getSigner();
-      const isNativeETH =
-        respTokenAddr === '0x0000000000000000000000000000000000000000';
-
-      const abi = isNativeETH
-        ? ['function payWithETH(bytes32 orderId) payable']
-        : [
-            'function payWithToken(bytes32 orderId, address token, uint256 amount)',
-          ];
-      const contract = new ethers.Contract(contract_address, abi, signer);
-
       setPaymentLoading(false);
-      showInfo(t('请在钱包中确认交易...'));
-
-      let tx;
-      if (isNativeETH) {
-        tx = await contract.payWithETH(order_id, {
-          value: BigInt(pay_amount),
-        });
-      } else {
-        const erc20Abi = [
-          'function approve(address spender, uint256 amount) returns (bool)',
-          'function allowance(address owner, address spender) view returns (uint256)',
-        ];
-        const tokenContract = new ethers.Contract(
-          respTokenAddr,
-          erc20Abi,
-          signer,
-        );
-        const signerAddress = await signer.getAddress();
-        const currentAllowance = await tokenContract.allowance(
-          signerAddress,
-          contract_address,
-        );
-        if (currentAllowance < BigInt(pay_amount)) {
-          showInfo(t('请在钱包中批准代币支出...'));
-          const approveTx = await tokenContract.approve(
-            contract_address,
-            BigInt(pay_amount),
-          );
-          await approveTx.wait();
-          showSuccess(t('代币批准成功！请确认支付交易...'));
-        }
-        tx = await contract.payWithToken(order_id, respTokenAddr, pay_amount);
-      }
-
       showInfo(
-        t('交易已发送，等待区块链确认... 交易哈希：') + tx.hash.slice(0, 10) + '...',
+        t('正在连接钱包，如未检测到浏览器钱包将自动拉起 WalletConnect 二维码...'),
+      );
+      const receipt = await executeEthereumOrderWithAutoWallet(
+        {
+          order_id,
+          contract_address,
+          chain_id,
+          token_address: respTokenAddr,
+          pay_amount,
+        },
+        getWalletConnectConfig(),
       );
 
-      // Wait for transaction confirmation
-      const receipt = await tx.wait();
-      if (receipt.status === 1) {
-        showSuccess(
-          t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'),
+      showSuccess(
+        t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'),
+      );
+      if (receipt?.hash) {
+        showInfo(
+          t('交易哈希：') + receipt.hash.slice(0, 10) + '...' +
+            (receipt?.walletName ? ` (${receipt.walletName})` : ''),
         );
-        setOpen(false);
-      } else {
-        showError(t('交易失败，请重试'));
+      } else if (receipt?.walletName) {
+        showInfo(t('已使用钱包：') + receipt.walletName);
       }
+      setOpen(false);
     } catch (e) {
       console.error('Ethereum payment error:', e);
       let msg = e.message || t('支付失败');
-      if (e.code === 'ACTION_REJECTED') {
+      if (isEthereumUserRejected(e)) {
         msg = t('用户拒绝了签名');
       } else if (e.code === 'INSUFFICIENT_FUNDS') {
         msg = t('钱包余额不足');

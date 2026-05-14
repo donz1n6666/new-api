@@ -72,8 +72,9 @@ var (
 )
 
 const (
-	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
-	subscriptionPlanInfoCacheNamespace = "new-api:subscription_plan_info:v1"
+	subscriptionPlanCacheNamespace            = "new-api:subscription_plan:v1"
+	subscriptionPlanInfoCacheNamespace        = "new-api:subscription_plan_info:v1"
+	subscriptionOrderQueryWindowSeconds int64 = 30 * 24 * 60 * 60
 )
 
 var (
@@ -117,15 +118,22 @@ func subscriptionPlanInfoCacheCapacity() int {
 }
 
 func subscriptionPendingHoldSeconds() int64 {
-	seconds := int64(common.GetEnvOrDefault("SUBSCRIPTION_PENDING_HOLD_SECONDS", 1800))
+	seconds := int64(common.GetEnvOrDefault("SUBSCRIPTION_PENDING_HOLD_SECONDS", 300))
 	if seconds <= 0 {
-		seconds = 1800
+		seconds = 300
 	}
 	return seconds
 }
 
 func pendingSubscriptionOrderCutoff(now int64) int64 {
 	return now - subscriptionPendingHoldSeconds()
+}
+
+func subscriptionOrderExpiresAt(createTime int64) int64 {
+	if createTime <= 0 {
+		return 0
+	}
+	return createTime + subscriptionPendingHoldSeconds()
 }
 
 func isSubscriptionOrderExpiredByTime(order *SubscriptionOrder, now int64) bool {
@@ -279,6 +287,13 @@ type SubscriptionOrder struct {
 	ProviderPayload       string `json:"provider_payload" gorm:"type:text"`
 }
 
+type SubscriptionOrderResumePayload struct {
+	Type    string            `json:"type"`
+	URL     string            `json:"url,omitempty"`
+	Params  map[string]string `json:"params,omitempty"`
+	Message string            `json:"message,omitempty"`
+}
+
 func (o *SubscriptionOrder) Insert() error {
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
@@ -299,6 +314,129 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 		return nil
 	}
 	return &order
+}
+
+func (o *SubscriptionOrder) ExpiresAt() int64 {
+	if o == nil {
+		return 0
+	}
+	return subscriptionOrderExpiresAt(o.CreateTime)
+}
+
+func (o *SubscriptionOrder) RemainingSeconds(now int64) int64 {
+	if o == nil || o.Status != common.TopUpStatusPending {
+		return 0
+	}
+	remaining := o.ExpiresAt() - now
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func (o *SubscriptionOrder) EffectiveStatus(now int64) string {
+	if o == nil {
+		return ""
+	}
+	if isSubscriptionOrderExpiredByTime(o, now) {
+		return common.TopUpStatusExpired
+	}
+	return o.Status
+}
+
+func (o *SubscriptionOrder) SetResumePayload(payload *SubscriptionOrderResumePayload) error {
+	if o == nil {
+		return errors.New("subscription order is nil")
+	}
+	if payload == nil {
+		o.ProviderPayload = ""
+		return nil
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	o.ProviderPayload = string(data)
+	return nil
+}
+
+func (o *SubscriptionOrder) GetResumePayload() *SubscriptionOrderResumePayload {
+	if o == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(o.ProviderPayload)
+	if trimmed == "" {
+		return nil
+	}
+	var payload SubscriptionOrderResumePayload
+	if err := common.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(payload.Type) == "" {
+		return nil
+	}
+	return &payload
+}
+
+func subscriptionOrderQueryCutoff() int64 {
+	return common.GetTimestamp() - subscriptionOrderQueryWindowSeconds
+}
+
+func GetUserSubscriptionOrders(userId int, keyword string, pageInfo *common.PageInfo) (orders []*SubscriptionOrder, total int64, err error) {
+	tx := DB.Begin()
+	if tx.Error != nil {
+		return nil, 0, tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	query := tx.Model(&SubscriptionOrder{}).Where("user_id = ? AND create_time >= ?", userId, subscriptionOrderQueryCutoff())
+	if keyword != "" {
+		query = query.Where("trade_no LIKE ?", "%"+keyword+"%")
+	}
+	if err = query.Count(&total).Error; err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&orders).Error; err != nil {
+		tx.Rollback()
+		return nil, 0, err
+	}
+	if err = tx.Commit().Error; err != nil {
+		return nil, 0, err
+	}
+	return orders, total, nil
+}
+
+func CancelPendingSubscriptionOrder(userId int, tradeNo string) error {
+	if userId <= 0 || tradeNo == "" {
+		return errors.New("invalid userId or tradeNo")
+	}
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+			return ErrSubscriptionOrderNotFound
+		}
+		if order.UserId != userId {
+			return ErrSubscriptionOrderNotFound
+		}
+		if order.Status == common.TopUpStatusExpired {
+			return nil
+		}
+		if order.Status != common.TopUpStatusPending {
+			return ErrSubscriptionOrderStatusInvalid
+		}
+		order.Status = common.TopUpStatusExpired
+		order.CompleteTime = getDBTimestampTx(tx)
+		return tx.Save(&order).Error
+	})
 }
 
 // User subscription instance

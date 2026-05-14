@@ -110,9 +110,18 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	checkoutUrl, err := genCreemLink(c.Request.Context(), referenceId, product, user.Email, user.Username)
 	if err != nil {
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderCreem)
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付链接创建失败 trade_no=%s product_id=%s error=%q", referenceId, product.ProductId, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
+	}
+	if err := order.SetResumePayload(&model.SubscriptionOrderResumePayload{
+		Type: "url",
+		URL:  checkoutUrl,
+	}); err == nil {
+		if updateErr := order.Update(); updateErr != nil {
+			common.SysLog(fmt.Sprintf("Creem: 保存订阅订单恢复支付信息失败 trade_no=%s err=%v", referenceId, updateErr))
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

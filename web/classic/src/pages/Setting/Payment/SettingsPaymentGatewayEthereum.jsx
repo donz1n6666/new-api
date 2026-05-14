@@ -17,6 +17,11 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     EthereumContractAddress: '',
     EthereumAlchemyWebhookSigningKey: '',
     EthereumMinTopUp: 1,
+    EthereumWalletConnectProjectID: '',
+    EthereumWalletConnectAppName: '',
+    EthereumWalletConnectAppDescription: '',
+    EthereumWalletConnectAppURL: '',
+    EthereumWalletConnectAppIcon: '',
   });
   const [tokens, setTokens] = useState([
     { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', decimals: 18, price: '0.001' },
@@ -37,6 +42,11 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       EthereumContractAddress: options.EthereumContractAddress || '',
       EthereumAlchemyWebhookSigningKey: options.EthereumAlchemyWebhookSigningKey || '',
       EthereumMinTopUp: parseInt(options.EthereumMinTopUp) || 1,
+      EthereumWalletConnectProjectID: options.EthereumWalletConnectProjectID || '',
+      EthereumWalletConnectAppName: options.EthereumWalletConnectAppName || '',
+      EthereumWalletConnectAppDescription: options.EthereumWalletConnectAppDescription || '',
+      EthereumWalletConnectAppURL: options.EthereumWalletConnectAppURL || '',
+      EthereumWalletConnectAppIcon: options.EthereumWalletConnectAppIcon || '',
     };
     setInputs(currentInputs);
     formApiRef.current.setValues(currentInputs);
@@ -62,6 +72,11 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
         { key: 'EthereumContractAddress', value: inputs.EthereumContractAddress || '' },
         { key: 'EthereumAlchemyWebhookSigningKey', value: inputs.EthereumAlchemyWebhookSigningKey || '' },
         { key: 'EthereumMinTopUp', value: String(inputs.EthereumMinTopUp || 1) },
+        { key: 'EthereumWalletConnectProjectID', value: inputs.EthereumWalletConnectProjectID || '' },
+        { key: 'EthereumWalletConnectAppName', value: inputs.EthereumWalletConnectAppName || '' },
+        { key: 'EthereumWalletConnectAppDescription', value: inputs.EthereumWalletConnectAppDescription || '' },
+        { key: 'EthereumWalletConnectAppURL', value: inputs.EthereumWalletConnectAppURL || '' },
+        { key: 'EthereumWalletConnectAppIcon', value: inputs.EthereumWalletConnectAppIcon || '' },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
 
@@ -155,6 +170,8 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
               <>
                 {t('通过 MetaMask 钱包接受 ETH 及 ERC-20 代币支付。需要：1) 已部署智能合约 2) 配置 Alchemy Custom Webhook。')}
                 <br />
+                {t('如需支持手机钱包二维码连接，请配置 WalletConnect Project ID。')}
+                <br />
                 {t('Webhook 地址：')}
                 <Text copyable code>{window.location.origin}/api/ethereum/webhook</Text>
               </>
@@ -207,6 +224,53 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 min={1}
                 step={1}
                 placeholder='1'
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectProjectID'
+                label={t('WalletConnect Project ID')}
+                placeholder={t('从 cloud.walletconnect.com / Reown Dashboard 获取')}
+                extraText={t('配置后可在无浏览器扩展时拉起二维码连接')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppName'
+                label={t('WalletConnect 应用名称')}
+                placeholder={t('默认使用当前站点名称')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppDescription'
+                label={t('WalletConnect 应用描述')}
+                placeholder={t('可选')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppURL'
+                label={t('WalletConnect 应用地址')}
+                placeholder='https://your-domain.com'
+                extraText={t('留空则默认使用当前站点地址')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppIcon'
+                label={t('WalletConnect 图标地址')}
+                placeholder='https://your-domain.com/icon.png'
+                extraText={t('可选，建议使用公开可访问的 HTTPS 图片地址')}
               />
             </Col>
           </Row>
