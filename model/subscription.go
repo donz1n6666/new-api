@@ -189,6 +189,9 @@ type SubscriptionPlan struct {
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
 
+	// Max purchases for all users combined (0 = unlimited)
+	MaxPurchaseTotal int `json:"max_purchase_total" gorm:"type:int;default:0"`
+
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
@@ -207,6 +210,9 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+
+	// Derived fields for UI display
+	PurchaseCount int64 `json:"purchase_count,omitempty" gorm:"-"`
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
@@ -418,6 +424,144 @@ func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
 	return count, nil
 }
 
+func CountTotalSubscriptionsByPlan(planId int) (int64, error) {
+	if planId <= 0 {
+		return 0, errors.New("invalid planId")
+	}
+	var count int64
+	if err := DB.Model(&UserSubscription{}).
+		Where("plan_id = ?", planId).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func CountPendingSubscriptionOrdersByPlan(planId int) (int64, error) {
+	if planId <= 0 {
+		return 0, errors.New("invalid planId")
+	}
+	var count int64
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("plan_id = ? AND status = ?", planId, common.TopUpStatusPending).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func CountSubscriptionPlanPurchaseCounts(planIds []int) (map[int]int64, error) {
+	counts := make(map[int]int64, len(planIds))
+	if len(planIds) == 0 {
+		return counts, nil
+	}
+	uniqueIds := make([]int, 0, len(planIds))
+	seen := make(map[int]struct{}, len(planIds))
+	for _, planId := range planIds {
+		if planId <= 0 {
+			continue
+		}
+		if _, ok := seen[planId]; ok {
+			continue
+		}
+		seen[planId] = struct{}{}
+		uniqueIds = append(uniqueIds, planId)
+	}
+	if len(uniqueIds) == 0 {
+		return counts, nil
+	}
+	type planCount struct {
+		PlanId int   `gorm:"column:plan_id"`
+		Count  int64 `gorm:"column:count"`
+	}
+	var rows []planCount
+	if err := DB.Model(&UserSubscription{}).
+		Select("plan_id, COUNT(*) AS count").
+		Where("plan_id IN ?", uniqueIds).
+		Group("plan_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.PlanId] = row.Count
+	}
+	return counts, nil
+}
+
+func CheckSubscriptionPlanPurchaseAllowed(userId int, plan *SubscriptionPlan, includePendingOrders bool) error {
+	if plan == nil || plan.Id <= 0 {
+		return errors.New("invalid plan")
+	}
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if plan.MaxPurchasePerUser > 0 {
+		count, err := CountUserSubscriptionsByPlan(userId, plan.Id)
+		if err != nil {
+			return err
+		}
+		if count >= int64(plan.MaxPurchasePerUser) {
+			return errors.New("已达到该套餐购买上限")
+		}
+	}
+	if plan.MaxPurchaseTotal > 0 {
+		totalCount, err := CountTotalSubscriptionsByPlan(plan.Id)
+		if err != nil {
+			return err
+		}
+		if includePendingOrders {
+			pendingCount, err := CountPendingSubscriptionOrdersByPlan(plan.Id)
+			if err != nil {
+				return err
+			}
+			totalCount += pendingCount
+		}
+		if totalCount >= int64(plan.MaxPurchaseTotal) {
+			return errors.New("该套餐已售罄")
+		}
+	}
+	return nil
+}
+
+func checkSubscriptionPlanPurchaseAllowedTx(tx *gorm.DB, userId int, plan *SubscriptionPlan) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if plan == nil || plan.Id <= 0 {
+		return errors.New("invalid plan")
+	}
+	if userId <= 0 {
+		return errors.New("invalid userId")
+	}
+	if plan.MaxPurchasePerUser > 0 {
+		var count int64
+		if err := tx.Model(&UserSubscription{}).
+			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(plan.MaxPurchasePerUser) {
+			return errors.New("已达到该套餐购买上限")
+		}
+	}
+	if plan.MaxPurchaseTotal > 0 {
+		var lockedPlan SubscriptionPlan
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", plan.Id).First(&lockedPlan).Error; err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&UserSubscription{}).
+			Where("plan_id = ?", plan.Id).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(plan.MaxPurchaseTotal) {
+			return errors.New("该套餐已售罄")
+		}
+	}
+	return nil
+}
+
 func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	if userId <= 0 {
 		return "", errors.New("invalid userId")
@@ -477,16 +621,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
-	if plan.MaxPurchasePerUser > 0 {
-		var count int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
-			Count(&count).Error; err != nil {
-			return nil, err
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			return nil, errors.New("已达到该套餐购买上限")
-		}
+	if err := checkSubscriptionPlanPurchaseAllowedTx(tx, userId, plan); err != nil {
+		return nil, err
 	}
 	nowUnix := GetDBTimestamp()
 	now := time.Unix(nowUnix, 0)
@@ -1046,8 +1182,22 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
-// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func subscriptionMatchesUsingGroup(upgradeGroup string, usingGroup string) bool {
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
+	usingGroup = strings.TrimSpace(usingGroup)
+	if upgradeGroup == "" {
+		return true
+	}
+	if usingGroup == "" {
+		return false
+	}
+	return upgradeGroup == usingGroup
+}
+
+// PreConsumeUserSubscription pre-consumes from an active subscription that matches
+// the current using group. Group-bound subscriptions only apply to the same group;
+// subscriptions without UpgradeGroup remain globally usable.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, usingGroup string) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1095,6 +1245,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 		for _, candidate := range subs {
 			sub := candidate
+			if !subscriptionMatchesUsingGroup(sub.UpgradeGroup, usingGroup) {
+				continue
+			}
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
 			if err != nil {
 				return err
@@ -1793,6 +1946,71 @@ func HasDisableBalanceDeductionSubscription(userId int) (bool, error) {
 	err := DB.Model(&UserSubscription{}).
 		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ? AND subscription_plans.disable_balance_deduction = ?",
+			userId, "active", now, true).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// HasActiveUserSubscriptionForUsingGroup checks whether the user has any active
+// subscription usable by the current request group.
+func HasActiveUserSubscriptionForUsingGroup(userId int, usingGroup string) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	usingGroup = strings.TrimSpace(usingGroup)
+	if usingGroup == "" {
+		return HasActiveUserSubscription(userId)
+	}
+	now := GetDBTimestamp()
+	var count int64
+	err := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ? AND (upgrade_group = '' OR upgrade_group = ?)",
+			userId, "active", now, usingGroup).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// HasDisableBalanceDeductionSubscriptionForUsingGroup checks whether the current
+// request group is bound to a subscription that forbids wallet fallback. Generic
+// subscriptions (without UpgradeGroup) still apply to all groups.
+func HasDisableBalanceDeductionSubscriptionForUsingGroup(userId int, usingGroup string) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	usingGroup = strings.TrimSpace(usingGroup)
+	if usingGroup == "" {
+		return HasDisableBalanceDeductionSubscription(userId)
+	}
+	now := GetDBTimestamp()
+	var count int64
+	err := DB.Model(&UserSubscription{}).
+		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ? AND subscription_plans.disable_balance_deduction = ? AND (user_subscriptions.upgrade_group = '' OR user_subscriptions.upgrade_group = ?)",
+			userId, "active", now, true, usingGroup).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// HasGlobalDisableBalanceDeductionSubscription checks whether the user has an
+// active subscription that forbids wallet fallback for every group.
+func HasGlobalDisableBalanceDeductionSubscription(userId int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	now := GetDBTimestamp()
+	var count int64
+	err := DB.Model(&UserSubscription{}).
+		Joins("JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ? AND subscription_plans.disable_balance_deduction = ? AND user_subscriptions.upgrade_group = ''",
 			userId, "active", now, true).
 		Count(&count).Error
 	if err != nil {

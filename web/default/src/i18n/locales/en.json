@@ -4047,6 +4047,10 @@
     "Used invitation codes cleared": "Used invitation codes cleared",
     "Useful when one model has multiple native-format channels and you want to constrain selection by request path.": "Useful when one model has multiple native-format channels and you want to constrain selection by request path.",
     "User Token Consumption Ranking": "User Token Consumption Ranking",
+    "Global Purchase Limit": "Global Purchase Limit",
+    "0 means unlimited for all users": "0 means unlimited for all users",
+    "Sold Out": "Sold Out",
+    "Global purchase limit reached": "Global purchase limit reached",
     "When enabled, if a rule matches but all channels in the pool are unavailable, the request fails directly instead of falling back.": "When enabled, if a rule matches but all channels in the pool are unavailable, the request fails directly instead of falling back.",
     "You rejected the wallet request": "You rejected the wallet request",
     "e.g. qwen messages native": "e.g. qwen messages native"

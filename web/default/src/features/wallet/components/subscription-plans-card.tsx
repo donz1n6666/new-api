@@ -465,8 +465,12 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                 const price = Number(plan.price_amount || 0).toFixed(2)
                 const isPopular = index === 0 && plans.length > 1
                 const limit = Number(plan.max_purchase_per_user || 0)
+                const globalLimit = Number(plan.max_purchase_total || 0)
                 const count = planPurchaseCountMap.get(plan.id) || 0
-                const reached = limit > 0 && count >= limit
+                const purchaseCount = Number(plan.purchase_count || 0)
+                const reachedPerUser = limit > 0 && count >= limit
+                const soldOut = globalLimit > 0 && purchaseCount >= globalLimit
+                const reached = reachedPerUser || soldOut
 
                 const tierSummary = formatTiersSummary(plan.quota_tiers, t)
                 const benefits = [
@@ -480,6 +484,9 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                     ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
                     : (!tierSummary ? `${t('Total Quota')}: ${t('Unlimited')}` : null),
                   limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
+                  globalLimit > 0
+                    ? `${t('Global Purchase Limit')}: ${purchaseCount}/${globalLimit}`
+                    : null,
                   plan.upgrade_group
                     ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
                     : null,
@@ -549,12 +556,14 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                                 className='w-full'
                                 disabled
                               >
-                                {t('Limit Reached')}
+                                {soldOut ? t('Sold Out') : t('Limit Reached')}
                               </Button>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent>
-                            {t('Purchase limit reached')} ({count}/{limit})
+                            {soldOut
+                              ? t('Global purchase limit reached')
+                              : `${t('Purchase limit reached')} (${count}/${limit})`}
                           </TooltipContent>
                         </Tooltip>
                       ) : (

@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +46,9 @@ func TestMain(m *testing.M) {
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
+		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
+		&model.SubscriptionPreConsumeRecord{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -64,7 +69,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
+		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
 	})
 }
 
@@ -98,6 +105,39 @@ func seedSubscription(t *testing.T, id int, userId int, amountTotal int64, amoun
 		Status:      "active",
 		StartTime:   time.Now().Unix(),
 		EndTime:     time.Now().Add(30 * 24 * time.Hour).Unix(),
+	}
+	require.NoError(t, model.DB.Create(sub).Error)
+}
+
+func seedSubscriptionPlan(t *testing.T, id int, title string, disableBalance bool) *model.SubscriptionPlan {
+	t.Helper()
+	plan := &model.SubscriptionPlan{
+		Id:                      id,
+		Title:                   title,
+		PriceAmount:             9.99,
+		Currency:                "USD",
+		DurationUnit:            model.SubscriptionDurationMonth,
+		DurationValue:           1,
+		Enabled:                 true,
+		TotalAmount:             5000,
+		DisableBalanceDeduction: disableBalance,
+	}
+	require.NoError(t, model.DB.Create(plan).Error)
+	return plan
+}
+
+func seedSubscriptionWithPlan(t *testing.T, id int, userId int, planId int, upgradeGroup string, amountTotal int64, amountUsed int64) {
+	t.Helper()
+	sub := &model.UserSubscription{
+		Id:           id,
+		UserId:       userId,
+		PlanId:       planId,
+		AmountTotal:  amountTotal,
+		AmountUsed:   amountUsed,
+		Status:       "active",
+		StartTime:    time.Now().Unix(),
+		EndTime:      time.Now().Add(30 * 24 * time.Hour).Unix(),
+		UpgradeGroup: upgradeGroup,
 	}
 	require.NoError(t, model.DB.Create(sub).Error)
 }
@@ -158,6 +198,72 @@ func getTokenUsedQuota(t *testing.T, id int) int {
 	var token model.Token
 	require.NoError(t, model.DB.Select("used_quota").Where("id = ?", id).First(&token).Error)
 	return token.UsedQuota
+}
+
+func TestNewBillingSession_UsesSubscriptionForMatchingGroup(t *testing.T) {
+	truncate(t)
+
+	seedUser(t, 7101, 5000)
+	plan := seedSubscriptionPlan(t, 8101, "VIP Subscription", true)
+	seedSubscriptionWithPlan(t, 9101, 7101, plan.Id, "vip", 2000, 0)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		RequestId:       "billing-vip-group",
+		UserId:          7101,
+		UserGroup:       "vip",
+		UsingGroup:      "vip",
+		TokenGroup:      "vip",
+		OriginModelName: "gpt-test",
+		IsPlayground:    true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "wallet_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, info, 120)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	assert.Equal(t, BillingSourceSubscription, info.BillingSource)
+	assert.Equal(t, 5000, getUserQuota(t, 7101))
+
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", 9101).First(&sub).Error)
+	assert.EqualValues(t, 120, sub.AmountUsed)
+}
+
+func TestNewBillingSession_UsesWalletForOtherGroupEvenWhenUserUpgraded(t *testing.T) {
+	truncate(t)
+
+	seedUser(t, 7102, 5000)
+	plan := seedSubscriptionPlan(t, 8102, "VIP Subscription", true)
+	seedSubscriptionWithPlan(t, 9102, 7102, plan.Id, "vip", 2000, 0)
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		RequestId:       "billing-default-group",
+		UserId:          7102,
+		UserGroup:       "vip",
+		UsingGroup:      "default",
+		TokenGroup:      "default",
+		OriginModelName: "gpt-test",
+		IsPlayground:    true,
+		UserSetting: dto.UserSetting{
+			BillingPreference: "subscription_first",
+		},
+	}
+
+	session, apiErr := NewBillingSession(ctx, info, 120)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	assert.Equal(t, BillingSourceWallet, info.BillingSource)
+	assert.Equal(t, 4880, getUserQuota(t, 7102))
+
+	var sub model.UserSubscription
+	require.NoError(t, model.DB.Where("id = ?", 9102).First(&sub).Error)
+	assert.EqualValues(t, 0, sub.AmountUsed)
 }
 
 func getSubscriptionUsed(t *testing.T, id int) int64 {

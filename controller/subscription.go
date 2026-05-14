@@ -130,8 +130,20 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	planIds := make([]int, 0, len(plans))
+	for _, plan := range plans {
+		if plan.Id > 0 {
+			planIds = append(planIds, plan.Id)
+		}
+	}
+	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(planIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		p.PurchaseCount = purchaseCounts[p.Id]
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -172,7 +184,7 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
 	if pref == "wallet_only" || pref == "wallet_first" {
-		noFallback, err := model.HasDisableBalanceDeductionSubscription(userId)
+		noFallback, err := model.HasGlobalDisableBalanceDeductionSubscription(userId)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -206,8 +218,20 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	planIds := make([]int, 0, len(plans))
+	for _, plan := range plans {
+		if plan.Id > 0 {
+			planIds = append(planIds, plan.Id)
+		}
+	}
+	purchaseCounts, err := model.CountSubscriptionPlanPurchaseCounts(planIds)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		p.PurchaseCount = purchaseCounts[p.Id]
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -250,6 +274,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
+		return
+	}
+	if req.Plan.MaxPurchaseTotal < 0 {
+		common.ApiErrorMsg(c, "全局购买上限不能为负数")
 		return
 	}
 	if req.Plan.TotalAmount < 0 {
@@ -322,6 +350,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if req.Plan.MaxPurchaseTotal < 0 {
+		common.ApiErrorMsg(c, "全局购买上限不能为负数")
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -361,6 +393,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"max_purchase_total":         req.Plan.MaxPurchaseTotal,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,

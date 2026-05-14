@@ -4047,6 +4047,10 @@
     "Used invitation codes cleared": "已使用的邀请码已清理",
     "Useful when one model has multiple native-format channels and you want to constrain selection by request path.": "适用于同模型存在多种原生格式渠道时，按调用路径和分组限定可选渠道，减少格式转换。",
     "User Token Consumption Ranking": "用户词元消耗排行",
+    "Global Purchase Limit": "全局购买上限",
+    "0 means unlimited for all users": "0 表示全体用户不限",
+    "Sold Out": "已售罄",
+    "Global purchase limit reached": "全局购买上限已达",
     "When enabled, if a rule matches but all channels in the pool are unavailable, the request fails directly instead of falling back.": "开启后，规则命中但渠道池无可用渠道时直接拒绝；关闭则回退到原始选路。",
     "You rejected the wallet request": "你已拒绝钱包请求",
     "e.g. qwen messages native": "例如：qwen messages native"
