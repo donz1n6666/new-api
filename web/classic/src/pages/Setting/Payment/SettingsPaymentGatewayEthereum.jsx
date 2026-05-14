@@ -70,7 +70,6 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
         { key: 'EthereumEnabled', value: inputs.EthereumEnabled ? 'true' : 'false' },
         { key: 'EthereumChainId', value: String(inputs.EthereumChainId || 11155111) },
         { key: 'EthereumContractAddress', value: inputs.EthereumContractAddress || '' },
-        { key: 'EthereumAlchemyWebhookSigningKey', value: inputs.EthereumAlchemyWebhookSigningKey || '' },
         { key: 'EthereumMinTopUp', value: String(inputs.EthereumMinTopUp || 1) },
         { key: 'EthereumWalletConnectProjectID', value: inputs.EthereumWalletConnectProjectID || '' },
         { key: 'EthereumWalletConnectAppName', value: inputs.EthereumWalletConnectAppName || '' },
@@ -79,6 +78,12 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
         { key: 'EthereumWalletConnectAppIcon', value: inputs.EthereumWalletConnectAppIcon || '' },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
+      if ((inputs.EthereumAlchemyWebhookSigningKey || '').trim()) {
+        opts.push({
+          key: 'EthereumAlchemyWebhookSigningKey',
+          value: inputs.EthereumAlchemyWebhookSigningKey.trim(),
+        });
+      }
 
       const results = await Promise.all(
         opts.map((o) => API.put('/api/option/', { key: o.key, value: o.value }))
@@ -214,7 +219,7 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 label={t('Alchemy Webhook 签名密钥')}
                 placeholder={t('从 Alchemy 控制台复制 Signing Key')}
                 mode='password'
-                extraText={t('用于验证 Alchemy 发来的 webhook 签名')}
+                extraText={t('用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变')}
               />
             </Col>
             <Col xs={24} md={8}>
