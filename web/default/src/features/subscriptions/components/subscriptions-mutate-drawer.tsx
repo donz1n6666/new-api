@@ -119,6 +119,10 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnitOpts = getDurationUnitOptions(t)
   const resetPeriodOpts = getResetPeriodOptions(t)
+  const purchaseResetPeriodOpts = [
+    ...resetPeriodOpts,
+    { value: 'active', label: t('Release on subscription expiry') },
+  ]
   const tierPeriodOpts = getTierPeriodOptions(t)
 
   const handleAddTier = () => {
@@ -349,7 +353,7 @@ export function SubscriptionsMutateDrawer({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {resetPeriodOpts.map((o) => (
+                          {purchaseResetPeriodOpts.map((o) => (
                             <SelectItem key={o.value} value={o.value}>
                               {o.label}
                             </SelectItem>
@@ -358,7 +362,7 @@ export function SubscriptionsMutateDrawer({
                       </Select>
                       <FormDescription>
                         {t(
-                          'Use global limit + reset period to auto-restock seats, for example 1 seat per day'
+                          'Use global limit + reset period to auto-restock seats, or release seats when subscriptions expire'
                         )}
                       </FormDescription>
                       <FormMessage />

@@ -66,6 +66,7 @@ function formatResetPeriod(plan, t) {
 
 function formatGlobalPurchaseResetPeriod(plan, t) {
   const period = plan?.max_purchase_reset_period || 'never';
+  if (period === 'active') return t('到期释放名额');
   if (period === 'daily') return t('每天');
   if (period === 'weekly') return t('每周');
   if (period === 'monthly') return t('每月');

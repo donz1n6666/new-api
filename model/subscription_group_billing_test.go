@@ -190,6 +190,113 @@ func TestCountSubscriptionPlanPurchaseCounts_UsesCurrentWindowAndPendingOrders(t
 	assert.EqualValues(t, 2, counts[plan.Id])
 }
 
+func TestCheckSubscriptionPlanPurchaseAllowed_IgnoresExpiredPendingOrders(t *testing.T) {
+	truncateTables(t)
+
+	plan := insertPlanForGroupBillingTest(t, 1007, "Hold Limited Plan", false, 1)
+	require.NoError(t, DB.Create(&SubscriptionOrder{
+		UserId:     3017,
+		PlanId:     plan.Id,
+		Money:      9.99,
+		TradeNo:    "pending-expired-window",
+		Status:     common.TopUpStatusPending,
+		CreateTime: time.Now().Add(-31 * time.Minute).Unix(),
+	}).Error)
+
+	err := CheckSubscriptionPlanPurchaseAllowed(3018, plan, true)
+	require.NoError(t, err)
+}
+
+func TestCompleteSubscriptionOrder_ExpiresStalePendingOrder(t *testing.T) {
+	truncateTables(t)
+
+	plan := insertPlanForGroupBillingTest(t, 1008, "Timeout Plan", false, 1)
+	require.NoError(t, DB.Create(&SubscriptionOrder{
+		UserId:          3019,
+		PlanId:          plan.Id,
+		Money:           9.99,
+		TradeNo:         "pending-timeout-complete",
+		PaymentMethod:   PaymentMethodStripe,
+		PaymentProvider: PaymentProviderStripe,
+		Status:          common.TopUpStatusPending,
+		CreateTime:      time.Now().Add(-31 * time.Minute).Unix(),
+	}).Error)
+
+	err := CompleteSubscriptionOrder("pending-timeout-complete", "{}", PaymentProviderStripe, PaymentMethodStripe)
+	require.ErrorIs(t, err, ErrSubscriptionOrderExpired)
+
+	order := GetSubscriptionOrderByTradeNo("pending-timeout-complete")
+	require.NotNil(t, order)
+	assert.Equal(t, common.TopUpStatusExpired, order.Status)
+}
+
+func TestCheckSubscriptionPlanPurchaseAllowed_ActiveLimitBlocksWhileSubscriptionIsLive(t *testing.T) {
+	truncateTables(t)
+
+	plan := insertPlanForGroupBillingTest(t, 1009, "Single Active Seat", false, 1)
+	plan.MaxPurchaseResetPeriod = SubscriptionResetActive
+	require.NoError(t, DB.Save(plan).Error)
+
+	insertUserSubscriptionForGroupBillingTest(t, 2008, 3020, plan.Id, "", 1000)
+
+	err := CheckSubscriptionPlanPurchaseAllowed(3021, plan, true)
+	require.Error(t, err)
+	assert.Equal(t, "该套餐已售罄", err.Error())
+}
+
+func TestCheckSubscriptionPlanPurchaseAllowed_ActiveLimitReleasesAfterExpiry(t *testing.T) {
+	truncateTables(t)
+
+	plan := insertPlanForGroupBillingTest(t, 1010, "Single Active Seat", false, 1)
+	plan.MaxPurchaseResetPeriod = SubscriptionResetActive
+	require.NoError(t, DB.Save(plan).Error)
+
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2009,
+		UserId:      3022,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusExpired,
+		StartTime:   time.Now().Add(-10 * time.Hour).Unix(),
+		EndTime:     time.Now().Add(-5 * time.Hour).Unix(),
+	}).Error)
+
+	err := CheckSubscriptionPlanPurchaseAllowed(3023, plan, true)
+	require.NoError(t, err)
+}
+
+func TestCountSubscriptionPlanPurchaseCounts_ActiveLimitCountsOnlyLiveSubscriptions(t *testing.T) {
+	truncateTables(t)
+
+	now := time.Now()
+	plan := insertPlanForGroupBillingTest(t, 1011, "Concurrent Seat Plan", false, 2)
+	plan.MaxPurchaseResetPeriod = SubscriptionResetActive
+	require.NoError(t, DB.Save(plan).Error)
+
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2010,
+		UserId:      3024,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusActive,
+		StartTime:   now.Add(-1 * time.Hour).Unix(),
+		EndTime:     now.Add(4 * time.Hour).Unix(),
+	}).Error)
+	require.NoError(t, DB.Create(&UserSubscription{
+		Id:          2011,
+		UserId:      3025,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		Status:      SubscriptionStatusExpired,
+		StartTime:   now.Add(-10 * time.Hour).Unix(),
+		EndTime:     now.Add(-5 * time.Hour).Unix(),
+	}).Error)
+
+	counts, err := CountSubscriptionPlanPurchaseCounts([]SubscriptionPlan{*plan}, true)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, counts[plan.Id])
+}
+
 func TestCreateUserSubscriptionFromPlanTx_GlobalLimitBlocksFurtherCreation(t *testing.T) {
 	truncateTables(t)
 

@@ -57,6 +57,7 @@ export function getPlanFormSchema(t: TFunction) {
       'weekly',
       'monthly',
       'custom',
+      'active',
     ]),
     max_purchase_reset_custom_seconds: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),

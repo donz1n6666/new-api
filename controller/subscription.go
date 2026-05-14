@@ -295,7 +295,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "全局购买上限不能为负数")
 		return
 	}
-	req.Plan.MaxPurchaseResetPeriod = model.NormalizeResetPeriod(req.Plan.MaxPurchaseResetPeriod)
+	req.Plan.MaxPurchaseResetPeriod = model.NormalizePurchaseResetPeriod(req.Plan.MaxPurchaseResetPeriod)
 	if req.Plan.MaxPurchaseTotal <= 0 {
 		req.Plan.MaxPurchaseResetPeriod = model.SubscriptionResetNever
 		req.Plan.MaxPurchaseResetCustomSeconds = 0
@@ -382,7 +382,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "全局购买上限不能为负数")
 		return
 	}
-	req.Plan.MaxPurchaseResetPeriod = model.NormalizeResetPeriod(req.Plan.MaxPurchaseResetPeriod)
+	req.Plan.MaxPurchaseResetPeriod = model.NormalizePurchaseResetPeriod(req.Plan.MaxPurchaseResetPeriod)
 	if req.Plan.MaxPurchaseTotal <= 0 {
 		req.Plan.MaxPurchaseResetPeriod = model.SubscriptionResetNever
 		req.Plan.MaxPurchaseResetCustomSeconds = 0

@@ -30,6 +30,7 @@ const (
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
 	SubscriptionResetCustom  = "custom"
+	SubscriptionResetActive  = "active"
 )
 
 // Subscription lifecycle status
@@ -67,6 +68,7 @@ type TierUsageSnapshot struct {
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrSubscriptionOrderExpired       = errors.New("subscription order expired")
 )
 
 const (
@@ -112,6 +114,25 @@ func subscriptionPlanInfoCacheCapacity() int {
 		capacity = 10000
 	}
 	return capacity
+}
+
+func subscriptionPendingHoldSeconds() int64 {
+	seconds := int64(common.GetEnvOrDefault("SUBSCRIPTION_PENDING_HOLD_SECONDS", 1800))
+	if seconds <= 0 {
+		seconds = 1800
+	}
+	return seconds
+}
+
+func pendingSubscriptionOrderCutoff(now int64) int64 {
+	return now - subscriptionPendingHoldSeconds()
+}
+
+func isSubscriptionOrderExpiredByTime(order *SubscriptionOrder, now int64) bool {
+	if order == nil || order.Status != common.TopUpStatusPending {
+		return false
+	}
+	return order.CreateTime > 0 && order.CreateTime <= pendingSubscriptionOrderCutoff(now)
 }
 
 func getSubscriptionPlanCache() *cachex.HybridCache[SubscriptionPlan] {
@@ -356,6 +377,15 @@ func NormalizeResetPeriod(period string) string {
 	}
 }
 
+func NormalizePurchaseResetPeriod(period string) string {
+	switch strings.TrimSpace(period) {
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetCustom, SubscriptionResetActive:
+		return strings.TrimSpace(period)
+	default:
+		return SubscriptionResetNever
+	}
+}
+
 func calcResetWindowStart(now time.Time, period string, customSeconds int64) int64 {
 	switch NormalizeResetPeriod(period) {
 	case SubscriptionResetDaily:
@@ -382,6 +412,9 @@ func calcResetWindowStart(now time.Time, period string, customSeconds int64) int
 
 func getPlanPurchaseWindowStart(plan *SubscriptionPlan, now int64) int64 {
 	if plan == nil || plan.MaxPurchaseTotal <= 0 {
+		return 0
+	}
+	if NormalizePurchaseResetPeriod(plan.MaxPurchaseResetPeriod) == SubscriptionResetActive {
 		return 0
 	}
 	return calcResetWindowStart(time.Unix(now, 0), plan.MaxPurchaseResetPeriod, plan.MaxPurchaseResetCustomSeconds)
@@ -475,7 +508,9 @@ func countTotalSubscriptionsByPlanWithWindow(tx *gorm.DB, plan *SubscriptionPlan
 		tx = DB
 	}
 	query := tx.Model(&UserSubscription{}).Where("plan_id = ?", plan.Id)
-	if windowStart := getPlanPurchaseWindowStart(plan, now); windowStart > 0 {
+	if NormalizePurchaseResetPeriod(plan.MaxPurchaseResetPeriod) == SubscriptionResetActive {
+		query = query.Where("end_time > ? AND status IN ?", now, []string{SubscriptionStatusActive, SubscriptionStatusInactive})
+	} else if windowStart := getPlanPurchaseWindowStart(plan, now); windowStart > 0 {
 		query = query.Where("start_time >= ?", windowStart)
 	}
 	var count int64
@@ -493,6 +528,7 @@ func countPendingSubscriptionOrdersByPlanWithWindow(tx *gorm.DB, plan *Subscript
 		tx = DB
 	}
 	query := tx.Model(&SubscriptionOrder{}).Where("plan_id = ? AND status = ?", plan.Id, common.TopUpStatusPending)
+	query = query.Where("create_time > ?", pendingSubscriptionOrderCutoff(now))
 	if windowStart := getPlanPurchaseWindowStart(plan, now); windowStart > 0 {
 		query = query.Where("create_time >= ?", windowStart)
 	}
@@ -798,6 +834,7 @@ func CompleteSubscriptionOrderWithPaymentCheck(tradeNo string, providerPayload s
 	var logMoney float64
 	var logPaymentMethod string
 	var cacheGroup string
+	orderExpired := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
@@ -806,7 +843,17 @@ func CompleteSubscriptionOrderWithPaymentCheck(tradeNo string, providerPayload s
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
+		now := getDBTimestampTx(tx)
 		if order.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if isSubscriptionOrderExpiredByTime(&order, now) {
+			order.Status = common.TopUpStatusExpired
+			order.CompleteTime = now
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			orderExpired = true
 			return nil
 		}
 		if paidToken != "" || paidAmount != "" {
@@ -853,6 +900,9 @@ func CompleteSubscriptionOrderWithPaymentCheck(tradeNo string, providerPayload s
 	})
 	if err != nil {
 		return err
+	}
+	if orderExpired {
+		return ErrSubscriptionOrderExpired
 	}
 	if cacheGroup != "" && logUserId > 0 {
 		_ = UpdateUserGroupCache(logUserId, cacheGroup)
@@ -923,6 +973,51 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		order.CompleteTime = common.GetTimestamp()
 		return tx.Save(&order).Error
 	})
+}
+
+func ExpireStalePendingSubscriptionOrders(limit int) (int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	now := GetDBTimestamp()
+	cutoff := pendingSubscriptionOrderCutoff(now)
+	if cutoff <= 0 {
+		return 0, nil
+	}
+	var ids []int
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("status = ? AND create_time <= ?", common.TopUpStatusPending, cutoff).
+		Order("create_time asc").
+		Limit(limit).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	total := 0
+	for _, id := range ids {
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var order SubscriptionOrder
+			if err := lockForUpdate(tx).Where("id = ?", id).First(&order).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil
+				}
+				return err
+			}
+			if !isSubscriptionOrderExpiredByTime(&order, now) {
+				return nil
+			}
+			order.Status = common.TopUpStatusExpired
+			order.CompleteTime = now
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			total++
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
 }
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.

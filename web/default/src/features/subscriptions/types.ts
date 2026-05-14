@@ -44,7 +44,7 @@ export const subscriptionPlanSchema = z.object({
   max_purchase_per_user: z.number(),
   max_purchase_total: z.number().optional(),
   max_purchase_reset_period: z
-    .enum(['never', 'daily', 'weekly', 'monthly', 'custom'])
+    .enum(['never', 'daily', 'weekly', 'monthly', 'custom', 'active'])
     .optional(),
   max_purchase_reset_custom_seconds: z.number().optional(),
   purchase_count: z.number().optional(),

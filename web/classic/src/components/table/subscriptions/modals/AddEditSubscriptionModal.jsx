@@ -67,6 +67,15 @@ const resetPeriodOptions = [
   { value: 'custom', label: '自定义(秒)' },
 ];
 
+const purchaseResetPeriodOptions = [
+  { value: 'never', label: '不重置' },
+  { value: 'daily', label: '每天' },
+  { value: 'weekly', label: '每周' },
+  { value: 'monthly', label: '每月' },
+  { value: 'custom', label: '自定义(秒)' },
+  { value: 'active', label: '到期释放名额' },
+];
+
 const tierPeriodOptions = [
   { value: 'monthly', label: '每月' },
   { value: 'weekly', label: '每周' },
@@ -506,10 +515,10 @@ const AddEditSubscriptionModal = ({
                         label={t('全局限购刷新周期')}
                         disabled={Number(values.max_purchase_total || 0) <= 0}
                         extraText={t(
-                          '用于自动补货/刷新名额，例如全局购买上限=1 且每天刷新，即每天只放 1 个名额',
+                          '可设置按固定周期补货，或按订阅到期释放名额。例如全局购买上限=1 且选择到期释放名额，即同时只允许 1 个有效订阅',
                         )}
                       >
-                        {resetPeriodOptions.map((o) => (
+                        {purchaseResetPeriodOptions.map((o) => (
                           <Select.Option key={o.value} value={o.value}>
                             {o.label}
                           </Select.Option>
