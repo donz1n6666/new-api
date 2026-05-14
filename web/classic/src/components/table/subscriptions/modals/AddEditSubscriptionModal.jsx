@@ -24,6 +24,7 @@ import {
   Card,
   Col,
   Form,
+  InputNumber,
   Row,
   Select,
   SideSheet,
@@ -103,6 +104,36 @@ const AddEditSubscriptionModal = ({
   const formApiRef = useRef(null);
   const isEdit = editingPlan?.plan?.id !== undefined;
   const formKey = isEdit ? `edit-${editingPlan?.plan?.id}` : 'create';
+
+  const normalizeTierLimitForForm = useCallback((limit) => {
+    return Number(quotaToDisplayAmount(limit || 0).toFixed(2));
+  }, []);
+
+  const normalizeTierLimitForPayload = useCallback((limit) => {
+    return displayAmountToQuota(limit || 0);
+  }, []);
+
+  const mapQuotaTiersToForm = useCallback((tiers) => {
+    if (!Array.isArray(tiers)) return [];
+    return tiers.map((tier, index) => ({
+      period: tier?.period || 'monthly',
+      limit: normalizeTierLimitForForm(tier?.limit || 0),
+      custom_seconds: Number(tier?.custom_seconds || 0),
+      sort_priority: Number(tier?.sort_priority || (index + 1) * 10),
+    }));
+  }, [normalizeTierLimitForForm]);
+
+  const mapQuotaTiersToPayload = useCallback((tiers) => {
+    if (!Array.isArray(tiers)) return [];
+    return tiers
+      .map((tier, index) => ({
+        period: tier?.period || 'monthly',
+        limit: normalizeTierLimitForPayload(tier?.limit || 0),
+        custom_seconds: Number(tier?.custom_seconds || 0),
+        sort_priority: Number(tier?.sort_priority || (index + 1) * 10),
+      }))
+      .filter((tier) => tier.limit > 0);
+  }, [normalizeTierLimitForPayload]);
 
   const addTier = useCallback(() => {
     setQuotaTiers(prev => [...prev, {
@@ -197,7 +228,7 @@ const AddEditSubscriptionModal = ({
         const tiers = JSON.parse(plan.quota_tiers);
         if (Array.isArray(tiers) && tiers.length > 0) {
           setUseMultiTier(true);
-          setQuotaTiers(tiers);
+          setQuotaTiers(mapQuotaTiersToForm(tiers));
         } else {
           setUseMultiTier(false);
           setQuotaTiers([]);
@@ -211,7 +242,7 @@ const AddEditSubscriptionModal = ({
       setQuotaTiers([]);
     }
     setDisableBalanceDeduction(plan?.disable_balance_deduction || false);
-  }, [visible, editingPlan]);
+  }, [visible, editingPlan, mapQuotaTiersToForm]);
 
   const TIER_PERIOD_ORDER = { hourly: 1, daily: 2, weekly: 3, monthly: 4, none: 5, custom: 1 };
 
@@ -246,14 +277,14 @@ const AddEditSubscriptionModal = ({
     return null;
   };
 
-  const submit = async (values) => {
+  const submit = useCallback(async (values) => {
     if (!values.title || values.title.trim() === '') {
       showError(t('套餐标题不能为空'));
       return;
     }
     // Validate tier ordering
     if (useMultiTier) {
-      const activeTiers = quotaTiers.filter(t => t.limit > 0);
+      const activeTiers = mapQuotaTiersToPayload(quotaTiers);
       const error = validateTiers(activeTiers);
       if (error) {
         showError(error);
@@ -262,7 +293,7 @@ const AddEditSubscriptionModal = ({
     }
     setLoading(true);
     try {
-      const effectiveTiers = useMultiTier ? quotaTiers.filter(t => t.limit > 0) : [];
+      const effectiveTiers = useMultiTier ? mapQuotaTiersToPayload(quotaTiers) : [];
       const payload = {
         plan: {
           ...values,
@@ -320,7 +351,7 @@ const AddEditSubscriptionModal = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [disableBalanceDeduction, editingPlan, handleClose, mapQuotaTiersToPayload, quotaTiers, refresh, t, useMultiTier]);
 
   return (
     <>
@@ -670,14 +701,18 @@ const AddEditSubscriptionModal = ({
                             </Col>
                             <Col span={8}>
                               <div className='mb-1 text-xs text-gray-500'>{t('限额')}</div>
-                              <input
-                                type='number'
-                                className='semi-input'
+                              <InputNumber
                                 value={tier.limit}
                                 min={0}
-                                onChange={(e) => updateTier(index, 'limit', parseInt(e.target.value, 10) || 0)}
+                                precision={2}
+                                onChange={(value) => updateTier(index, 'limit', Number(value || 0))}
                                 style={{ width: '100%' }}
                               />
+                              <div className='mt-1 text-xs text-gray-500'>
+                                {t('0 表示不限')} · {t('原生额度')}：{normalizeTierLimitForPayload(
+                                  tier.limit,
+                                )}
+                              </div>
                             </Col>
                             {tier.period === 'custom' && (
                               <Col span={8}>

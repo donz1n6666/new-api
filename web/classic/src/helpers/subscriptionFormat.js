@@ -1,3 +1,5 @@
+import { renderQuota } from './render';
+
 export function formatSubscriptionDuration(plan, t) {
   const unit = plan?.duration_unit || 'month';
   const value = plan?.duration_value || 1;
@@ -56,9 +58,7 @@ export function formatQuotaTierPeriod(tier, t) {
 
 export function formatQuotaTierLimit(limit) {
   if (limit <= 0) return '∞';
-  if (limit >= 1000000) return `${(limit / 1000000).toFixed(1)}M`;
-  if (limit >= 1000) return `${(limit / 1000).toFixed(0)}k`;
-  return String(limit);
+  return renderQuota(limit);
 }
 
 export function formatTiersSummary(quotaTiers, t) {

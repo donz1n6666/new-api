@@ -31,6 +31,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
 import { convertUSDToCurrency } from '../../../helpers/render';
+import { formatTiersSummary } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
 
@@ -83,6 +84,7 @@ function formatGlobalPurchaseResetPeriod(plan, t) {
 const renderPlanTitle = (text, record, t) => {
   const subtitle = record?.plan?.subtitle;
   const plan = record?.plan;
+  const tierSummary = formatTiersSummary(plan?.quota_tiers, t);
   const popoverContent = (
     <div style={{ width: 260 }}>
       <Text strong>{text}</Text>
@@ -98,7 +100,11 @@ const renderPlanTitle = (text, record, t) => {
           {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
         </Text>
         <Text type='tertiary'>{t('总额度')}</Text>
-        {plan?.total_amount > 0 ? (
+        {tierSummary ? (
+          <Tooltip content={`${t('多周期限额')}：${tierSummary}`}>
+            <Text>{tierSummary}</Text>
+          </Tooltip>
+        ) : plan?.total_amount > 0 ? (
           <Tooltip content={`${t('原生额度')}：${plan.total_amount}`}>
             <Text>{renderQuota(plan.total_amount)}</Text>
           </Tooltip>
@@ -204,6 +210,16 @@ const renderEnabled = (text, record, t) => {
 
 const renderTotalAmount = (text, record, t) => {
   const total = Number(record?.plan?.total_amount || 0);
+  const tierSummary = formatTiersSummary(record?.plan?.quota_tiers, t);
+  if (tierSummary) {
+    return (
+      <Tooltip content={`${t('多周期限额')}：${tierSummary}`}>
+        <Text type='secondary' ellipsis={{ showTooltip: false }}>
+          {tierSummary}
+        </Text>
+      </Tooltip>
+    );
+  }
   return (
     <Text type={total > 0 ? 'secondary' : 'tertiary'}>
       {total > 0 ? (
@@ -371,7 +387,7 @@ export const getSubscriptionsColumns = ({
     },
     {
       title: t('总额度'),
-      width: 100,
+      width: 220,
       render: (text, record) => renderTotalAmount(text, record, t),
     },
     {
