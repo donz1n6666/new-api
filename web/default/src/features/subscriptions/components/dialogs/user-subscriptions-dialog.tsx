@@ -52,11 +52,20 @@ function SubscriptionStatusBadge(props: {
   const now = Date.now() / 1000
   const isExpired = (props.sub.end_time || 0) > 0 && props.sub.end_time < now
   const isActive = props.sub.status === 'active' && !isExpired
+  const isInactive = props.sub.status === 'inactive' && !isExpired
   if (isActive)
     return (
       <StatusBadge
         label={props.t('Active')}
         variant='success'
+        copyable={false}
+      />
+    )
+  if (isInactive)
+    return (
+      <StatusBadge
+        label={props.t('Inactive')}
+        variant='warning'
         copyable={false}
       />
     )

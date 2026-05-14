@@ -6,6 +6,7 @@ import type {
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
+  SwitchSelfSubscriptionRequest,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
@@ -154,6 +155,13 @@ export async function updateBillingPreference(
   const res = await api.put('/api/subscription/self/preference', {
     billing_preference: preference,
   })
+  return res.data
+}
+
+export async function switchSelfSubscription(
+  data: SwitchSelfSubscriptionRequest
+): Promise<ApiResponse<{ message?: string }>> {
+  const res = await api.post('/api/subscription/self/switch', data)
   return res.data
 }
 

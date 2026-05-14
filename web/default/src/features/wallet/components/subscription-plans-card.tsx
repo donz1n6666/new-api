@@ -36,6 +36,7 @@ import {
 import {
   getPublicPlans,
   getSelfSubscriptionFull,
+  switchSelfSubscription,
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
@@ -75,6 +76,7 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [switchingSubId, setSwitchingSubId] = useState<number | null>(null)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -151,6 +153,25 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
     }
   }
 
+  const handleSwitchSubscription = async (subscriptionId: number) => {
+    setSwitchingSubId(subscriptionId)
+    try {
+      const res = await switchSelfSubscription({
+        subscription_id: subscriptionId,
+      })
+      if (res.success) {
+        toast.success(res.data?.message || t('Updated successfully'))
+        await fetchSelfSubscription()
+        return
+      }
+      toast.error(res.message || t('Operation failed'))
+    } catch {
+      toast.error(t('Request failed'))
+    } finally {
+      setSwitchingSubId(null)
+    }
+  }
+
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
   const disablePref = !hasActive
@@ -179,6 +200,31 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
     }
     return map
   }, [plans])
+
+  const subscriptionStatusCounts = useMemo(() => {
+    const now = Date.now() / 1000
+    let inactive = 0
+    let expired = 0
+    let cancelled = 0
+    for (const record of allSubscriptions) {
+      const subscription = record.subscription
+      const isExpired =
+        (subscription?.end_time || 0) > 0 &&
+        (subscription?.end_time || 0) < now
+      if (subscription?.status === 'cancelled') {
+        cancelled++
+        continue
+      }
+      if (subscription?.status === 'inactive' && !isExpired) {
+        inactive++
+        continue
+      }
+      if (subscription?.status === 'expired' || isExpired) {
+        expired++
+      }
+    }
+    return { inactive, expired, cancelled }
+  }, [allSubscriptions])
 
   const getRemainingDays = (sub: UserSubscriptionRecord) => {
     const endTime = sub?.subscription?.end_time || 0
@@ -259,12 +305,27 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                       {t('No Active')}
                     </span>
                   )}
-                  {allSubscriptions.length > activeSubscriptions.length && (
+                  {subscriptionStatusCounts.inactive > 0 && (
                     <>
                       <span className='text-muted-foreground/30'>·</span>
                       <span className='text-muted-foreground'>
-                        {allSubscriptions.length - activeSubscriptions.length}{' '}
-                        {t('expired')}
+                        {subscriptionStatusCounts.inactive} {t('Inactive')}
+                      </span>
+                    </>
+                  )}
+                  {subscriptionStatusCounts.expired > 0 && (
+                    <>
+                      <span className='text-muted-foreground/30'>·</span>
+                      <span className='text-muted-foreground'>
+                        {subscriptionStatusCounts.expired} {t('expired')}
+                      </span>
+                    </>
+                  )}
+                  {subscriptionStatusCounts.cancelled > 0 && (
+                    <>
+                      <span className='text-muted-foreground/30'>·</span>
+                      <span className='text-muted-foreground'>
+                        {subscriptionStatusCounts.cancelled} {t('Cancelled')}
                       </span>
                     </>
                   )}
@@ -348,6 +409,8 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                     const now = Date.now() / 1000
                     const isExpired = (subscription?.end_time || 0) < now
                     const isCancelled = subscription?.status === 'cancelled'
+                    const isInactive =
+                      subscription?.status === 'inactive' && !isExpired
                     const isActive =
                       subscription?.status === 'active' && !isExpired
 
@@ -367,6 +430,12 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                               <StatusBadge
                                 label={t('Active')}
                                 variant='success'
+                                copyable={false}
+                              />
+                            ) : isInactive ? (
+                              <StatusBadge
+                                label={t('Inactive')}
+                                variant='warning'
                                 copyable={false}
                               />
                             ) : isCancelled ? (
@@ -392,7 +461,7 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                           )}
                         </div>
                         <div className='text-muted-foreground mt-1.5'>
-                          {isActive
+                          {isActive || isInactive
                             ? t('Until')
                             : isCancelled
                               ? t('Cancelled at')
@@ -401,7 +470,7 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                             (subscription?.end_time || 0) * 1000
                           ).toLocaleString()}
                         </div>
-                        {isActive &&
+                        {(isActive || isInactive) &&
                           (subscription?.next_reset_time ?? 0) > 0 && (
                             <div className='text-muted-foreground mt-1'>
                               {t('Next reset')}:{' '}
@@ -435,11 +504,25 @@ export function SubscriptionPlansCard(props: SubscriptionPlansCardProps) {
                             </span>
                           )}
                         </div>
-                        {totalAmount > 0 && isActive && (
-                          <Progress
-                            value={usagePercent}
-                            className='mt-2 h-1.5'
-                          />
+                        {totalAmount > 0 && (isActive || isInactive) && (
+                          <Progress value={usagePercent} className='mt-2 h-1.5' />
+                        )}
+                        {isInactive && (
+                          <div className='mt-3 flex justify-end'>
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              disabled={switchingSubId === subscription?.id}
+                              onClick={() =>
+                                subscription?.id &&
+                                handleSwitchSubscription(subscription.id)
+                              }
+                            >
+                              {switchingSubId === subscription?.id
+                                ? t('Switching...')
+                                : t('Switch')}
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +27,20 @@ func insertPlanForGroupBillingTest(t *testing.T, id int, title string, disableBa
 	}
 	require.NoError(t, DB.Create(plan).Error)
 	return plan
+}
+
+func insertUserForSubscriptionTest(t *testing.T, id int, group string) *User {
+	t.Helper()
+	user := &User{
+		Id:       id,
+		Username: "user-" + strconv.Itoa(id),
+		Password: "password123",
+		Group:    group,
+		Status:   common.UserStatusEnabled,
+		Role:     common.RoleCommonUser,
+	}
+	require.NoError(t, DB.Create(user).Error)
+	return user
 }
 
 func insertUserSubscriptionForGroupBillingTest(t *testing.T, id int, userId int, planId int, upgradeGroup string, totalAmount int64) *UserSubscription {
@@ -117,4 +132,117 @@ func TestCreateUserSubscriptionFromPlanTx_GlobalLimitBlocksFurtherCreation(t *te
 	})
 	require.Error(t, err)
 	assert.Equal(t, "该套餐已售罄", err.Error())
+}
+
+func TestCreateUserSubscriptionFromPlanTx_SecondSubscriptionBecomesInactive(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForSubscriptionTest(t, 3010, "default")
+	firstPlan := insertPlanForGroupBillingTest(t, 1010, "VIP Plan", false, 0)
+	firstPlan.UpgradeGroup = "vip"
+	require.NoError(t, DB.Save(firstPlan).Error)
+	secondPlan := insertPlanForGroupBillingTest(t, 1011, "SVIP Plan", false, 0)
+	secondPlan.UpgradeGroup = "svip"
+	require.NoError(t, DB.Save(secondPlan).Error)
+
+	var firstSub *UserSubscription
+	var secondSub *UserSubscription
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		firstSub, err = CreateUserSubscriptionFromPlanTx(tx, 3010, firstPlan, "order")
+		if err != nil {
+			return err
+		}
+		secondSub, err = CreateUserSubscriptionFromPlanTx(tx, 3010, secondPlan, "order")
+		return err
+	})
+	require.NoError(t, err)
+	require.NotNil(t, firstSub)
+	require.NotNil(t, secondSub)
+
+	firstSaved := getUserSubscriptionForGroupBillingTest(t, firstSub.Id)
+	secondSaved := getUserSubscriptionForGroupBillingTest(t, secondSub.Id)
+	assert.Equal(t, SubscriptionStatusActive, firstSaved.Status)
+	assert.Equal(t, SubscriptionStatusInactive, secondSaved.Status)
+	assert.Equal(t, "default", firstSaved.PrevUserGroup)
+	assert.Empty(t, secondSaved.PrevUserGroup)
+
+	var user User
+	require.NoError(t, DB.Where("id = ?", 3010).First(&user).Error)
+	assert.Equal(t, "vip", user.Group)
+}
+
+func TestSwitchUserActiveSubscription_ChangesActiveAndGroup(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForSubscriptionTest(t, 3011, "default")
+	vipPlan := insertPlanForGroupBillingTest(t, 1012, "VIP Plan", false, 0)
+	vipPlan.UpgradeGroup = "vip"
+	require.NoError(t, DB.Save(vipPlan).Error)
+	svipPlan := insertPlanForGroupBillingTest(t, 1013, "SVIP Plan", false, 0)
+	svipPlan.UpgradeGroup = "svip"
+	require.NoError(t, DB.Save(svipPlan).Error)
+
+	var vipSub *UserSubscription
+	var svipSub *UserSubscription
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		vipSub, err = CreateUserSubscriptionFromPlanTx(tx, 3011, vipPlan, "order")
+		if err != nil {
+			return err
+		}
+		svipSub, err = CreateUserSubscriptionFromPlanTx(tx, 3011, svipPlan, "order")
+		return err
+	})
+	require.NoError(t, err)
+
+	msg, err := SwitchUserActiveSubscription(3011, svipSub.Id)
+	require.NoError(t, err)
+	assert.Contains(t, msg, "svip")
+
+	vipSaved := getUserSubscriptionForGroupBillingTest(t, vipSub.Id)
+	svipSaved := getUserSubscriptionForGroupBillingTest(t, svipSub.Id)
+	assert.Equal(t, SubscriptionStatusInactive, vipSaved.Status)
+	assert.Equal(t, SubscriptionStatusActive, svipSaved.Status)
+	assert.Equal(t, "default", svipSaved.PrevUserGroup)
+
+	var user User
+	require.NoError(t, DB.Where("id = ?", 3011).First(&user).Error)
+	assert.Equal(t, "svip", user.Group)
+
+	var activeCount int64
+	require.NoError(t, DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ?", 3011, SubscriptionStatusActive).
+		Count(&activeCount).Error)
+	assert.EqualValues(t, 1, activeCount)
+}
+
+func TestExpireDueSubscriptions_ExpiresInactiveSubscription(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForSubscriptionTest(t, 3012, "default")
+	plan := insertPlanForGroupBillingTest(t, 1014, "Inactive Plan", false, 0)
+	sub := &UserSubscription{
+		Id:           2014,
+		UserId:       3012,
+		PlanId:       plan.Id,
+		AmountTotal:  1000,
+		AmountUsed:   100,
+		Status:       SubscriptionStatusInactive,
+		StartTime:    time.Now().Add(-48 * time.Hour).Unix(),
+		EndTime:      time.Now().Add(-1 * time.Hour).Unix(),
+		UpgradeGroup: "vip",
+	}
+	require.NoError(t, DB.Create(sub).Error)
+
+	n, err := ExpireDueSubscriptions(10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	saved := getUserSubscriptionForGroupBillingTest(t, sub.Id)
+	assert.Equal(t, SubscriptionStatusExpired, saved.Status)
+
+	var user User
+	require.NoError(t, DB.Where("id = ?", 3012).First(&user).Error)
+	assert.Equal(t, "default", user.Group)
 }

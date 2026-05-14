@@ -64,7 +64,7 @@ export const userSubscriptionSchema = z.object({
   id: z.number(),
   user_id: z.number(),
   plan_id: z.number(),
-  status: z.string(),
+  status: z.enum(['active', 'inactive', 'expired', 'cancelled']),
   source: z.string().optional(),
   start_time: z.number(),
   end_time: z.number(),
@@ -110,6 +110,10 @@ export interface SubscriptionPayResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+}
+
+export interface SwitchSelfSubscriptionRequest {
+  subscription_id: number
 }
 
 // ============================================================================

@@ -22,6 +22,10 @@ type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
 
+type SwitchSelfSubscriptionRequest struct {
+	SubscriptionId int `json:"subscription_id"`
+}
+
 // tierPeriodOrder maps tier period types to numeric order (shorter = smaller)
 var tierPeriodOrder = map[string]int{
 	model.TierPeriodHourly:  1,
@@ -208,6 +212,29 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+}
+
+func SwitchSelfSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req SwitchSelfSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.SubscriptionId <= 0 {
+		common.ApiErrorMsg(c, "订阅ID无效")
+		return
+	}
+	msg, err := model.SwitchUserActiveSubscription(userId, req.SubscriptionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if strings.TrimSpace(msg) == "" {
+		common.ApiSuccess(c, gin.H{})
+		return
+	}
+	common.ApiSuccess(c, gin.H{"message": msg})
 }
 
 // ---- Admin APIs ----
