@@ -40,7 +40,6 @@ type ModelRatioFormProps = {
   selectedGroup?: string
   onGroupChange?: (group: string) => void
   availableGroups?: string[]
-  groupPricingData?: Record<string, Record<string, Record<string, unknown>>>
   onSyncComplete?: () => void
 }
 
@@ -53,7 +52,6 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   selectedGroup = 'global',
   onGroupChange,
   availableGroups = [],
-  groupPricingData,
   onSyncComplete,
 }: ModelRatioFormProps) {
   const { t } = useTranslation()
@@ -117,7 +115,6 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               selectedGroup={selectedGroup}
               onGroupChange={onGroupChange}
               availableGroups={availableGroups}
-              groupPricingData={groupPricingData}
               onSyncComplete={onSyncComplete}
             />
 

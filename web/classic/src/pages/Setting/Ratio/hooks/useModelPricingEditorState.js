@@ -1082,6 +1082,21 @@ export function useModelPricingEditorState({
         tieredOutput['billing_setting.billing_expr'] = {};
       }
 
+      const groupLeafOutput = isGroupMode
+        ? {
+            GroupModelPrice: {},
+            GroupModelRatio: {},
+            GroupCompletionRatio: {},
+            GroupCacheRatio: {},
+            GroupCreateCacheRatio: {},
+            GroupImageRatio: {},
+            GroupAudioRatio: {},
+            GroupAudioCompletionRatio: {},
+          }
+        : null;
+      const groupBillingModeLeaf = isGroupMode ? {} : null;
+      const groupBillingExprLeaf = isGroupMode ? {} : null;
+
       for (const model of models) {
         if (model.billingMode === 'tiered_expr') {
           const finalBillingExpr = combineBillingExpr(
@@ -1090,23 +1105,8 @@ export function useModelPricingEditorState({
           );
           if (finalBillingExpr) {
             if (isGroupMode) {
-              // 分组模式：需要合并到现有的分组配置中
-              const existingModes = parseOptionJSON(options.GroupBillingMode);
-              const existingExprs = parseOptionJSON(options.GroupBillingExpr);
-              tieredOutput['GroupBillingMode'] = {
-                ...existingModes,
-                [selectedGroup]: {
-                  ...(existingModes[selectedGroup] || {}),
-                  [model.name]: 'tiered_expr',
-                },
-              };
-              tieredOutput['GroupBillingExpr'] = {
-                ...existingExprs,
-                [selectedGroup]: {
-                  ...(existingExprs[selectedGroup] || {}),
-                  [model.name]: finalBillingExpr,
-                },
-              };
+              groupBillingModeLeaf[model.name] = 'tiered_expr';
+              groupBillingExprLeaf[model.name] = finalBillingExpr;
             } else {
               tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
               tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
@@ -1117,19 +1117,20 @@ export function useModelPricingEditorState({
         // 序列化价格/倍率值
         try {
           const serialized = serializeModel(model, t);
+          const hasSerializedValue = Object.values(serialized).some(
+            (value) => value !== null,
+          );
+
+          if (isGroupMode && hasSerializedValue && model.billingMode !== 'tiered_expr') {
+            groupBillingModeLeaf[model.name] =
+              model.billingMode === 'per-request' ? 'per-request' : 'per-token';
+          }
+
           Object.entries(serialized).forEach(([key, value]) => {
             if (value !== null) {
               const outputKey = `${groupPrefix}${key}`;
               if (isGroupMode) {
-                // 分组模式：需要合并到现有的分组配置中
-                const existingData = parseOptionJSON(options[outputKey]);
-                output[outputKey] = {
-                  ...existingData,
-                  [selectedGroup]: {
-                    ...(existingData[selectedGroup] || {}),
-                    [model.name]: value,
-                  },
-                };
+                groupLeafOutput[outputKey][model.name] = value;
               } else {
                 output[outputKey][model.name] = value;
               }
@@ -1140,6 +1141,34 @@ export function useModelPricingEditorState({
             throw e;
           }
         }
+      }
+
+      if (isGroupMode) {
+        Object.keys(groupLeafOutput).forEach((key) => {
+          const existingData = parseOptionJSON(options[key]);
+          if (Object.keys(groupLeafOutput[key]).length === 0) {
+            delete existingData[selectedGroup];
+          } else {
+            existingData[selectedGroup] = groupLeafOutput[key];
+          }
+          output[key] = existingData;
+        });
+
+        const existingModes = parseOptionJSON(options.GroupBillingMode);
+        if (Object.keys(groupBillingModeLeaf).length === 0) {
+          delete existingModes[selectedGroup];
+        } else {
+          existingModes[selectedGroup] = groupBillingModeLeaf;
+        }
+        tieredOutput['GroupBillingMode'] = existingModes;
+
+        const existingExprs = parseOptionJSON(options.GroupBillingExpr);
+        if (Object.keys(groupBillingExprLeaf).length === 0) {
+          delete existingExprs[selectedGroup];
+        } else {
+          existingExprs[selectedGroup] = groupBillingExprLeaf;
+        }
+        tieredOutput['GroupBillingExpr'] = existingExprs;
       }
 
       const requestQueue = [

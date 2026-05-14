@@ -73,13 +73,12 @@ const ModelPricingTable = ({
         group: group,
         ratio: groupRatioValue,
         billingType:
-          modelData?.billing_mode === 'tiered_expr'
+          priceData?.isDynamicPricing
             ? t('动态计费')
-            : modelData?.quota_type === 0
+            : priceData?.isPerToken
               ? t('按量计费')
-              : modelData?.quota_type === 1
-                ? t('按次计费')
-                : '-',
+              : t('按次计费'),
+        priceData,
         priceItems: getModelPriceItems(priceData, t, siteDisplayType),
       };
     });
@@ -132,11 +131,17 @@ const ModelPricingTable = ({
     columns.push({
       title: siteDisplayType === 'TOKENS' ? t('计费摘要') : t('价格摘要'),
       dataIndex: 'priceItems',
-      render: (items) => {
+      render: (items, row) => {
         if (items.length === 1 && items[0].isDynamic) {
+          const usesGlobalDynamicBreakdown =
+            modelData?.billing_mode === 'tiered_expr' &&
+            modelData?.billing_expr &&
+            row?.priceData?.billingExpr === modelData?.billing_expr;
           return (
             <Text type='tertiary' size='small'>
-              {t('见上方动态计费详情')}
+              {usesGlobalDynamicBreakdown
+                ? t('见上方动态计费详情')
+                : t('使用该分组专属动态计费规则')}
             </Text>
           );
         }

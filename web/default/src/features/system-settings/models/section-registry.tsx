@@ -127,6 +127,18 @@ const MODELS_SECTIONS = [
           BillingMode: settings['billing_setting.billing_mode'],
           BillingExpr: settings['billing_setting.billing_expr'],
         }}
+        groupModelDefaults={{
+          GroupModelPrice: settings.GroupModelPrice,
+          GroupModelRatio: settings.GroupModelRatio,
+          GroupCompletionRatio: settings.GroupCompletionRatio,
+          GroupCacheRatio: settings.GroupCacheRatio,
+          GroupCreateCacheRatio: settings.GroupCreateCacheRatio,
+          GroupImageRatio: settings.GroupImageRatio,
+          GroupAudioRatio: settings.GroupAudioRatio,
+          GroupAudioCompletionRatio: settings.GroupAudioCompletionRatio,
+          GroupBillingMode: settings.GroupBillingMode,
+          GroupBillingExpr: settings.GroupBillingExpr,
+        }}
         toolPricesDefault={settings['tool_price_setting.prices']}
         groupDefaults={{
           TopupGroupRatio: settings.TopupGroupRatio,

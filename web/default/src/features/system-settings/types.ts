@@ -214,6 +214,7 @@ export type ModelSettings = {
   'global.pass_through_request_enabled': boolean
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
+  'global.model_endpoint_protect_enabled': boolean
   'general_setting.ping_interval_enabled': boolean
   'general_setting.ping_interval_seconds': number
   'channel_route_setting.enabled': boolean
@@ -239,6 +240,16 @@ export type ModelSettings = {
   ImageRatio: string
   AudioRatio: string
   AudioCompletionRatio: string
+  GroupModelPrice: string
+  GroupModelRatio: string
+  GroupCompletionRatio: string
+  GroupCacheRatio: string
+  GroupCreateCacheRatio: string
+  GroupImageRatio: string
+  GroupAudioRatio: string
+  GroupAudioCompletionRatio: string
+  GroupBillingMode: string
+  GroupBillingExpr: string
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string

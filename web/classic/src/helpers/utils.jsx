@@ -619,49 +619,42 @@ export const calculateModelPrice = ({
   precision = 4,
   groupPricing = null, // 新增：分组定价数据
 }) => {
-  // 1. 选择实际使用的分组
-  let usedGroup = selectedGroup;
-  let usedGroupRatio = groupRatio[selectedGroup];
+  const modelKey = record?.model_name || record?.model || record?.name || '';
+  const availableGroups = Array.isArray(record?.enable_groups)
+    ? record.enable_groups
+    : [];
+  const hasRatioValue = (value) =>
+    value !== undefined &&
+    value !== null &&
+    value !== '' &&
+    Number.isFinite(Number(value));
 
-  if (selectedGroup === 'all' || usedGroupRatio === undefined) {
-    // 在模型可用分组中选择倍率最小的分组，若无则使用 1
-    let minRatio = Number.POSITIVE_INFINITY;
-    if (
-      Array.isArray(record.enable_groups) &&
-      record.enable_groups.length > 0
-    ) {
-      record.enable_groups.forEach((g) => {
-        const r = groupRatio[g];
-        if (r !== undefined && r < minRatio) {
-          minRatio = r;
-          usedGroup = g;
-          usedGroupRatio = r;
-        }
-      });
-    }
-
-    // 如果找不到合适分组倍率，回退为 1
-    if (usedGroupRatio === undefined) {
-      usedGroupRatio = 1;
-    }
-  }
-
-  // 2. 获取分组级别的定价配置（如果有）
-  const getGroupModelData = () => {
-    if (!groupPricing || usedGroup === 'all') {
+  // 1. 获取分组级别的定价配置（如果有）
+  const getGroupModelData = (groupName) => {
+    if (!groupPricing || !groupName || groupName === 'all' || !modelKey) {
       return null;
     }
 
-    const groupBillingMode = groupPricing.group_billing_mode?.[usedGroup]?.[record.model] || null;
-    const groupModelPrice = groupPricing.group_model_price?.[usedGroup]?.[record.model] || null;
-    const groupModelRatio = groupPricing.group_model_ratio?.[usedGroup]?.[record.model] || null;
-    const groupCompletionRatio = groupPricing.group_completion_ratio?.[usedGroup]?.[record.model] || null;
-    const groupCacheRatio = groupPricing.group_cache_ratio?.[usedGroup]?.[record.model] || null;
-    const groupCreateCacheRatio = groupPricing.group_create_cache_ratio?.[usedGroup]?.[record.model] || null;
-    const groupImageRatio = groupPricing.group_image_ratio?.[usedGroup]?.[record.model] || null;
-    const groupAudioRatio = groupPricing.group_audio_ratio?.[usedGroup]?.[record.model] || null;
-    const groupAudioCompletionRatio = groupPricing.group_audio_completion_ratio?.[usedGroup]?.[record.model] || null;
-    const groupBillingExpr = groupPricing.group_billing_expr?.[usedGroup]?.[record.model] || null;
+    const groupBillingMode =
+      groupPricing.group_billing_mode?.[groupName]?.[modelKey] || null;
+    const groupModelPrice =
+      groupPricing.group_model_price?.[groupName]?.[modelKey] || null;
+    const groupModelRatio =
+      groupPricing.group_model_ratio?.[groupName]?.[modelKey] || null;
+    const groupCompletionRatio =
+      groupPricing.group_completion_ratio?.[groupName]?.[modelKey] || null;
+    const groupCacheRatio =
+      groupPricing.group_cache_ratio?.[groupName]?.[modelKey] || null;
+    const groupCreateCacheRatio =
+      groupPricing.group_create_cache_ratio?.[groupName]?.[modelKey] || null;
+    const groupImageRatio =
+      groupPricing.group_image_ratio?.[groupName]?.[modelKey] || null;
+    const groupAudioRatio =
+      groupPricing.group_audio_ratio?.[groupName]?.[modelKey] || null;
+    const groupAudioCompletionRatio =
+      groupPricing.group_audio_completion_ratio?.[groupName]?.[modelKey] || null;
+    const groupBillingExpr =
+      groupPricing.group_billing_expr?.[groupName]?.[modelKey] || null;
 
     // 如果分组没有任何配置，返回 null
     if (!groupBillingMode && !groupModelPrice && !groupModelRatio) {
@@ -682,7 +675,81 @@ export const calculateModelPrice = ({
     };
   };
 
-  const groupModelData = getGroupModelData();
+  // 2. 选择实际使用的分组
+  let usedGroup = selectedGroup;
+  let usedGroupRatio = groupRatio[selectedGroup];
+  let groupModelData =
+    selectedGroup && selectedGroup !== 'all'
+      ? getGroupModelData(selectedGroup)
+      : null;
+
+  if (selectedGroup === 'all' || usedGroupRatio === undefined) {
+    let minScore = Number.POSITIVE_INFINITY;
+    let fallbackGroup = availableGroups[0];
+    let fallbackRatio = groupRatio[fallbackGroup];
+    let fallbackGroupModelData = getGroupModelData(fallbackGroup);
+
+    availableGroups.forEach((g) => {
+      const currentRatio =
+        groupRatio[g] !== undefined ? Number(groupRatio[g]) : 1;
+      const currentGroupModelData = getGroupModelData(g);
+      const currentBillingMode =
+        currentGroupModelData?.billingMode || record.billing_mode;
+
+      let score = currentRatio;
+
+      if (
+        currentBillingMode === 'tiered_expr' &&
+        (currentGroupModelData?.billingExpr || record.billing_expr)
+      ) {
+        score = currentRatio;
+      } else {
+        const currentModelPrice =
+          currentGroupModelData?.modelPrice ?? record.model_price;
+        const currentModelRatio =
+          currentGroupModelData?.modelRatio ?? record.model_ratio;
+        const currentCompletionRatio =
+          currentGroupModelData?.completionRatio ?? record.completion_ratio;
+        const currentBillingTypeIsPerRequest =
+          currentGroupModelData?.billingMode === 'per-request' ||
+          (currentGroupModelData?.billingMode == null &&
+            record.quota_type === 1) ||
+          hasRatioValue(currentGroupModelData?.modelPrice);
+
+        if (currentBillingTypeIsPerRequest && hasRatioValue(currentModelPrice)) {
+          score = Number(currentModelPrice) * currentRatio;
+        } else if (hasRatioValue(currentModelRatio)) {
+          const completionMultiplier = hasRatioValue(currentCompletionRatio)
+            ? Math.max(Number(currentCompletionRatio), 1)
+            : 1;
+          score = Number(currentModelRatio) * 2 * completionMultiplier * currentRatio;
+        }
+      }
+
+      if (score < minScore) {
+        minScore = score;
+        usedGroup = g;
+        usedGroupRatio = currentRatio;
+        groupModelData = currentGroupModelData;
+      }
+
+      if (fallbackRatio === undefined) {
+        fallbackGroup = g;
+        fallbackRatio = currentRatio;
+        fallbackGroupModelData = currentGroupModelData;
+      }
+    });
+
+    if (!usedGroup && fallbackGroup) {
+      usedGroup = fallbackGroup;
+      usedGroupRatio = fallbackRatio;
+      groupModelData = fallbackGroupModelData;
+    }
+
+    if (usedGroupRatio === undefined) {
+      usedGroupRatio = 1;
+    }
+  }
 
   // 3. 动态计费（tiered_expr）
   const effectiveBillingExpr = groupModelData?.billingExpr || record.billing_expr;
@@ -691,6 +758,7 @@ export const calculateModelPrice = ({
   if (effectiveBillingMode === 'tiered_expr' && effectiveBillingExpr) {
     return {
       isDynamicPricing: true,
+      billingMode: effectiveBillingMode,
       billingExpr: effectiveBillingExpr,
       usedGroup,
       usedGroupRatio,
@@ -720,11 +788,6 @@ export const calculateModelPrice = ({
     const inputRatioPriceUSD = (effectiveModelRatio || 0) * 2 * usedGroupRatio;
     const unitDivisor = tokenUnit === 'K' ? 1000 : 1;
     const unitLabel = tokenUnit === 'K' ? 'K' : 'M';
-    const hasRatioValue = (value) =>
-      value !== undefined &&
-      value !== null &&
-      value !== '' &&
-      Number.isFinite(Number(value));
 
     const formatRatio = (value) =>
       hasRatioValue(value) ? Number(Number(value).toFixed(6)) : null;
@@ -738,6 +801,7 @@ export const calculateModelPrice = ({
         imageRatio: formatRatio(effectiveImageRatio),
         audioInputRatio: formatRatio(effectiveAudioRatio),
         audioOutputRatio: formatRatio(effectiveAudioCompletionRatio),
+        billingMode: effectiveBillingMode || 'per-token',
         isPerToken: true,
         isTokensDisplay: true,
         usedGroup,
@@ -798,6 +862,7 @@ export const calculateModelPrice = ({
             )
           : null,
       unitLabel,
+      billingMode: effectiveBillingMode || 'per-token',
       isPerToken: true,
       isTokensDisplay: false,
       usedGroup,
@@ -811,6 +876,7 @@ export const calculateModelPrice = ({
 
   return {
     price: displayVal,
+    billingMode: effectiveBillingMode || 'per-request',
     isPerToken: false,
     isTokensDisplay: false,
     usedGroup,

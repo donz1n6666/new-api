@@ -53,7 +53,6 @@ type ModelRatioVisualEditorProps = {
   selectedGroup?: string
   onGroupChange?: (group: string) => void
   availableGroups?: string[]
-  groupPricingData?: Record<string, Record<string, Record<string, unknown>>>
   onSyncComplete?: () => void
 }
 
@@ -96,7 +95,6 @@ export const ModelRatioVisualEditor = memo(
     selectedGroup = 'global',
     onGroupChange,
     availableGroups = [],
-    groupPricingData,
     onSyncComplete,
   }: ModelRatioVisualEditorProps) {
     const { t } = useTranslation()
