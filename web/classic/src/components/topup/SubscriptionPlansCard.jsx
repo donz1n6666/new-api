@@ -92,6 +92,7 @@ const SubscriptionPlansCard = ({
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -113,6 +114,26 @@ const SubscriptionPlansCard = ({
       await reloadSubscriptionSelf?.();
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleSwitchSubscription = async (subscriptionId) => {
+    if (!subscriptionId) return;
+    setSwitchingSubscriptionId(subscriptionId);
+    try {
+      const res = await API.post('/api/subscription/self/switch', {
+        subscription_id: subscriptionId,
+      });
+      if (res.data?.success) {
+        showSuccess(res.data?.data?.message || t('切换成功'));
+        await reloadSubscriptionSelf?.();
+      } else {
+        showError(res.data?.message || t('切换失败'));
+      }
+    } catch (e) {
+      showError(t('请求失败'));
+    } finally {
+      setSwitchingSubscriptionId(null);
     }
   };
 
@@ -340,6 +361,29 @@ const SubscriptionPlansCard = ({
     return map;
   }, [plans]);
 
+  const subscriptionStatusCounts = useMemo(() => {
+    const now = Date.now() / 1000;
+    let inactive = 0;
+    let expired = 0;
+    let cancelled = 0;
+    (allSubscriptions || []).forEach((sub) => {
+      const subscription = sub?.subscription;
+      const isExpired = (subscription?.end_time || 0) > 0 && (subscription?.end_time || 0) < now;
+      if (subscription?.status === 'cancelled') {
+        cancelled++;
+        return;
+      }
+      if (subscription?.status === 'inactive' && !isExpired) {
+        inactive++;
+        return;
+      }
+      if (subscription?.status === 'expired' || isExpired) {
+        expired++;
+      }
+    });
+    return { inactive, expired, cancelled };
+  }, [allSubscriptions]);
+
   const getPlanPurchaseCount = (planId) =>
     planPurchaseCountMap.get(planId) || 0;
 
@@ -428,10 +472,19 @@ const SubscriptionPlansCard = ({
                     {t('无生效')}
                   </Tag>
                 )}
-                {allSubscriptions.length > activeSubscriptions.length && (
+                {subscriptionStatusCounts.inactive > 0 && (
                   <Tag color='white' size='small' shape='circle'>
-                    {allSubscriptions.length - activeSubscriptions.length}{' '}
-                    {t('个已过期')}
+                    {subscriptionStatusCounts.inactive} {t('个未激活')}
+                  </Tag>
+                )}
+                {subscriptionStatusCounts.expired > 0 && (
+                  <Tag color='white' size='small' shape='circle'>
+                    {subscriptionStatusCounts.expired} {t('个已过期')}
+                  </Tag>
+                )}
+                {subscriptionStatusCounts.cancelled > 0 && (
+                  <Tag color='white' size='small' shape='circle'>
+                    {subscriptionStatusCounts.cancelled} {t('个已作废')}
                   </Tag>
                 )}
               </div>
@@ -502,6 +555,8 @@ const SubscriptionPlansCard = ({
                     const now = Date.now() / 1000;
                     const isExpired = (subscription?.end_time || 0) < now;
                     const isCancelled = subscription?.status === 'cancelled';
+                    const isInactive =
+                      subscription?.status === 'inactive' && !isExpired;
                     const isActive =
                       subscription?.status === 'active' && !isExpired;
 
@@ -524,6 +579,10 @@ const SubscriptionPlansCard = ({
                               >
                                 {t('生效')}
                               </Tag>
+                            ) : isInactive ? (
+                              <Tag color='orange' size='small' shape='circle'>
+                                {t('未激活')}
+                              </Tag>
                             ) : isCancelled ? (
                               <Tag color='white' size='small' shape='circle'>
                                 {t('已作废')}
@@ -541,7 +600,7 @@ const SubscriptionPlansCard = ({
                           )}
                         </div>
                         <div className='text-xs text-gray-500 mb-2'>
-                          {isActive
+                          {isActive || isInactive
                             ? t('至')
                             : isCancelled
                               ? t('作废于')
@@ -550,7 +609,8 @@ const SubscriptionPlansCard = ({
                             (subscription?.end_time || 0) * 1000,
                           ).toLocaleString()}
                         </div>
-                        {isActive && subscription?.next_reset_time > 0 && (
+                        {(isActive || isInactive) &&
+                          subscription?.next_reset_time > 0 && (
                           <div className='text-xs text-gray-500 mb-2'>
                             {t('下一次重置')}:{' '}
                             {new Date(
@@ -579,6 +639,21 @@ const SubscriptionPlansCard = ({
                             </span>
                           )}
                         </div>
+                        {isInactive && (
+                          <div className='flex justify-end mb-2'>
+                            <Button
+                              size='small'
+                              theme='light'
+                              type='primary'
+                              loading={switchingSubscriptionId === subscription?.id}
+                              onClick={() =>
+                                handleSwitchSubscription(subscription?.id)
+                              }
+                            >
+                              {t('切换到此订阅')}
+                            </Button>
+                          </div>
+                        )}
                         {!isLast && <Divider margin={12} />}
                       </div>
                     );

@@ -52,10 +52,18 @@ function renderStatusTag(sub, t) {
 
   const isExpiredByTime = end > 0 && end < now;
   const isActive = status === 'active' && !isExpiredByTime;
+  const isInactive = status === 'inactive' && !isExpiredByTime;
   if (isActive) {
     return (
       <Tag color='green' shape='circle' size='small'>
         {t('生效')}
+      </Tag>
+    );
+  }
+  if (isInactive) {
+    return (
+      <Tag color='orange' shape='circle' size='small'>
+        {t('未激活')}
       </Tag>
     );
   }
