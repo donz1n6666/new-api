@@ -236,26 +236,56 @@ async function connectWalletSession(rawProvider) {
   throw new Error('WalletConnect provider does not support connect/enable');
 }
 
-function getWalletConnectAccount(rawProvider, chainId) {
-  const accounts = Array.isArray(rawProvider?.accounts)
+function normalizeWalletConnectAddress(value) {
+  const parts = String(value || '').split(':');
+  const address = (parts[parts.length - 1] || '').trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return '';
+  }
+  return address;
+}
+
+async function getWalletConnectAccount(rawProvider, browserProvider, chainId) {
+  let accounts = Array.isArray(rawProvider?.accounts)
     ? rawProvider.accounts
     : [];
-  if (accounts.length === 0) {
-    throw new Error('WalletConnect 未返回账户信息');
+  if (accounts.length === 0 && typeof rawProvider?.request === 'function') {
+    try {
+      const requestedAccounts = await rawProvider.request({
+        method: 'eth_accounts',
+      });
+      if (Array.isArray(requestedAccounts)) {
+        accounts = requestedAccounts;
+      }
+    } catch {
+      // 某些 WalletConnect provider 不支持直接从 request 读取账户，后续继续尝试 signer
+    }
   }
+
   const expectedPrefix = `eip155:${Number(chainId)}:`;
   const matched =
     accounts.find((item) => String(item || '').startsWith(expectedPrefix)) ||
     accounts.find((item) =>
       /^0x[a-fA-F0-9]{40}$/.test(String(item || '').trim()),
     );
-  const account = matched || accounts[0];
-  const parts = String(account || '').split(':');
-  const address = (parts[parts.length - 1] || '').trim();
-  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-    throw new Error('WalletConnect 返回的账户地址无效');
+  const address = normalizeWalletConnectAddress(matched || accounts[0]);
+  if (address) {
+    return address;
   }
-  return address;
+
+  try {
+    const signer = await browserProvider.getSigner();
+    const signerAddress = await signer.getAddress();
+    if (/^0x[a-fA-F0-9]{40}$/.test(String(signerAddress || '').trim())) {
+      return String(signerAddress).trim();
+    }
+  } catch {
+    // ignore
+  }
+
+  throw new Error(
+    'WalletConnect 未返回可用账户信息，请在钱包中确认授权当前账户',
+  );
 }
 
 export async function executeEthereumOrderWithAutoWallet(
@@ -300,12 +330,17 @@ export async function executeEthereumOrderWithAutoWallet(
     }
   }
 
-  const signer =
-    connection.mode === 'walletconnect'
-      ? await browserProvider.getSigner(
-          getWalletConnectAccount(rawProvider, order.chain_id),
-        )
-      : await browserProvider.getSigner();
+  let signer;
+  if (connection.mode === 'walletconnect') {
+    const account = await getWalletConnectAccount(
+      rawProvider,
+      browserProvider,
+      order.chain_id,
+    );
+    signer = await browserProvider.getSigner(account);
+  } else {
+    signer = await browserProvider.getSigner();
+  }
   const isNativeToken =
     String(order.token_address || '').toLowerCase() ===
     ZERO_ADDRESS.toLowerCase();
