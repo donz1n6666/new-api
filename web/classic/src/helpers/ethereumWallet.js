@@ -266,16 +266,22 @@ async function waitForWalletConnectAccounts(
 }
 
 async function waitForExpectedNetwork(
-  browserProvider,
+  rawProvider,
   expectedChainId,
   attempts = 10,
   intervalMs = 300,
 ) {
   let lastChainId = null;
   for (let i = 0; i < attempts; i += 1) {
-    const network = await browserProvider.getNetwork();
-    lastChainId = network.chainId;
-    if (network.chainId === expectedChainId) {
+    try {
+      const chainIdHex = await rawProvider.request({
+        method: 'eth_chainId',
+      });
+      lastChainId = BigInt(chainIdHex);
+    } catch {
+      lastChainId = null;
+    }
+    if (lastChainId === expectedChainId) {
       return;
     }
     if (i < attempts - 1) {
@@ -381,7 +387,8 @@ export async function executeEthereumOrderWithAutoWallet(
         `请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`,
       );
     }
-    await waitForExpectedNetwork(browserProvider, expectedChainId);
+    await waitForExpectedNetwork(rawProvider, expectedChainId);
+    browserProvider = new ethers.BrowserProvider(rawProvider);
   }
 
   let signer;
