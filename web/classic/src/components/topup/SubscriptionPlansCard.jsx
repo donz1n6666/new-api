@@ -30,7 +30,13 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, showInfo, renderQuota } from '../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  showInfo,
+  renderQuota,
+} from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -50,7 +56,11 @@ const { Text } = Typography;
 // 过滤易支付方式
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem' && m.type !== 'ethereum',
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      m.type !== 'ethereum',
   );
 }
 
@@ -127,6 +137,7 @@ const SubscriptionPlansCard = ({
   const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
   const [walletConnectModalOpen, setWalletConnectModalOpen] = useState(false);
   const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectStatus, setWalletConnectStatus] = useState('');
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -290,27 +301,48 @@ const SubscriptionPlansCard = ({
         getWalletConnectConfig(ethereumInfo),
         {
           onWalletConnectPending: () => {
+            setWalletConnectStatus(t('正在生成 WalletConnect 连接信息...'));
             setWalletConnectUri('');
             setWalletConnectModalOpen(true);
           },
           onWalletConnectUri: (uri) => {
+            setWalletConnectStatus(t('请使用钱包扫码并完成连接授权'));
             setWalletConnectUri(uri || '');
             setWalletConnectModalOpen(true);
           },
           onWalletConnectConnected: () => {
-            setWalletConnectModalOpen(false);
-            setWalletConnectUri('');
+            setWalletConnectStatus(t('钱包已连接，正在准备交易请求...'));
+          },
+          onWalletConnectSessionEstablished: () => {
+            setWalletConnectStatus(t('连接已建立，正在同步钱包会话...'));
+          },
+          onWalletConnectSwitchNetworkPending: () => {
+            setWalletConnectStatus(t('请在钱包中确认切换网络'));
+          },
+          onWalletConnectReadyToSign: () => {
+            setWalletConnectStatus(t('钱包已就绪，正在发起交易请求...'));
+          },
+          onWalletConnectApprovePending: () => {
+            setWalletConnectStatus(t('请在钱包中确认代币授权'));
+          },
+          onWalletConnectTransactionPending: () => {
+            setWalletConnectStatus(t('请在钱包中确认支付交易'));
           },
           onWalletConnectDisconnected: () => {
             setWalletConnectModalOpen(false);
             setWalletConnectUri('');
+            setWalletConnectStatus('');
           },
           onWalletConnectError: () => {
             setWalletConnectModalOpen(false);
             setWalletConnectUri('');
+            setWalletConnectStatus('');
           },
         },
       );
+      setWalletConnectModalOpen(false);
+      setWalletConnectUri('');
+      setWalletConnectStatus('');
       showSuccess(
         receipt?.walletName
           ? t('交易确认！额度将在几秒内到账，钱包：') + receipt.walletName
@@ -320,6 +352,7 @@ const SubscriptionPlansCard = ({
     } catch (e) {
       setWalletConnectModalOpen(false);
       setWalletConnectUri('');
+      setWalletConnectStatus('');
       if (isEthereumUserRejected(e)) {
         showError(t('用户取消了交易'));
       } else {
@@ -371,7 +404,9 @@ const SubscriptionPlansCard = ({
     let cancelled = 0;
     (allSubscriptions || []).forEach((sub) => {
       const subscription = sub?.subscription;
-      const isExpired = (subscription?.end_time || 0) > 0 && (subscription?.end_time || 0) < now;
+      const isExpired =
+        (subscription?.end_time || 0) > 0 &&
+        (subscription?.end_time || 0) < now;
       if (subscription?.status === 'cancelled') {
         cancelled++;
         return;
@@ -614,13 +649,13 @@ const SubscriptionPlansCard = ({
                         </div>
                         {(isActive || isInactive) &&
                           subscription?.next_reset_time > 0 && (
-                          <div className='text-xs text-gray-500 mb-2'>
-                            {t('下一次重置')}:{' '}
-                            {new Date(
-                              subscription.next_reset_time * 1000,
-                            ).toLocaleString()}
-                          </div>
-                        )}
+                            <div className='text-xs text-gray-500 mb-2'>
+                              {t('下一次重置')}:{' '}
+                              {new Date(
+                                subscription.next_reset_time * 1000,
+                              ).toLocaleString()}
+                            </div>
+                          )}
                         <div className='text-xs text-gray-500 mb-2'>
                           {t('总额度')}:{' '}
                           {totalAmount > 0 ? (
@@ -648,7 +683,9 @@ const SubscriptionPlansCard = ({
                               size='small'
                               theme='light'
                               type='primary'
-                              loading={switchingSubscriptionId === subscription?.id}
+                              loading={
+                                switchingSubscriptionId === subscription?.id
+                              }
                               onClick={() =>
                                 handleSwitchSubscription(subscription?.id)
                               }
@@ -707,9 +744,9 @@ const SubscriptionPlansCard = ({
                 const tierSummary = formatTiersSummary(plan?.quota_tiers, t);
                 const resetLabel = tierSummary
                   ? `${t('额度限制')}: ${tierSummary}`
-                  : (formatSubscriptionResetPeriod(plan, t) === t('不重置')
-                      ? null
-                      : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`);
+                  : formatSubscriptionResetPeriod(plan, t) === t('不重置')
+                    ? null
+                    : `${t('额度重置')}: ${formatSubscriptionResetPeriod(plan, t)}`;
                 const disableBalanceLabel = plan?.disable_balance_deduction
                   ? t('已禁用余额扣费')
                   : null;
@@ -723,7 +760,9 @@ const SubscriptionPlansCard = ({
                         label: totalLabel,
                         tooltip: `${t('原生额度')}：${totalAmount}`,
                       }
-                    : (!tierSummary ? { label: totalLabel } : null),
+                    : !tierSummary
+                      ? { label: totalLabel }
+                      : null,
                   limitLabel ? { label: limitLabel } : null,
                   globalLimitLabel ? { label: globalLimitLabel } : null,
                   globalResetLabel ? { label: globalResetLabel } : null,
@@ -899,7 +938,9 @@ const SubscriptionPlansCard = ({
             ? {
                 limit: Number(selectedPlan?.plan?.max_purchase_per_user || 0),
                 count: getPlanPurchaseCount(selectedPlan?.plan?.id),
-                global_limit: Number(selectedPlan?.plan?.max_purchase_total || 0),
+                global_limit: Number(
+                  selectedPlan?.plan?.max_purchase_total || 0,
+                ),
                 global_count: Number(selectedPlan?.plan?.purchase_count || 0),
                 global_reset_label:
                   Number(selectedPlan?.plan?.max_purchase_total || 0) > 0 &&
@@ -920,9 +961,11 @@ const SubscriptionPlansCard = ({
         t={t}
         visible={walletConnectModalOpen}
         uri={walletConnectUri}
+        statusText={walletConnectStatus}
         onCancel={() => {
           setWalletConnectModalOpen(false);
           setWalletConnectUri('');
+          setWalletConnectStatus('');
         }}
       />
     </>

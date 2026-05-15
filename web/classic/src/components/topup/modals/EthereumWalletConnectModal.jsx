@@ -39,6 +39,7 @@ const EthereumWalletConnectModal = ({
   t,
   visible,
   uri,
+  statusText,
   onCancel,
 }) => {
   const isMobile = useIsMobile();
@@ -80,7 +81,12 @@ const EthereumWalletConnectModal = ({
           <Button theme='light' onClick={onCancel}>
             {t('取消')}
           </Button>
-          <Button type='primary' theme='solid' disabled={!uri} onClick={handleCopy}>
+          <Button
+            type='primary'
+            theme='solid'
+            disabled={!uri}
+            onClick={handleCopy}
+          >
             {t('复制连接')}
           </Button>
         </Space>
@@ -92,14 +98,18 @@ const EthereumWalletConnectModal = ({
           <div className='py-8 text-center'>
             <Spin size='large' />
             <div className='mt-4 text-sm text-gray-500'>
-              {t('正在生成 WalletConnect 连接信息...')}
+              {statusText || t('正在生成 WalletConnect 连接信息...')}
             </div>
           </div>
         ) : (
           <>
             <div className='flex flex-col items-center gap-3'>
               <div className='rounded-xl border border-gray-200 bg-white p-3'>
-                <QRCodeSVG value={uri} size={isMobile ? 180 : 220} includeMargin />
+                <QRCodeSVG
+                  value={uri}
+                  size={isMobile ? 180 : 220}
+                  includeMargin
+                />
               </div>
               <Text type='secondary'>
                 {isMobile
@@ -110,6 +120,7 @@ const EthereumWalletConnectModal = ({
                       '桌面端可使用手机钱包扫描二维码，或复制连接到支持 WalletConnect 的钱包 App 中打开。',
                     )}
               </Text>
+              {statusText ? <Text type='tertiary'>{statusText}</Text> : null}
             </div>
 
             <div className='rounded-lg border border-gray-200 bg-gray-50 p-3'>

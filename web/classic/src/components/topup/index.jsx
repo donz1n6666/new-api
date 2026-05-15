@@ -114,6 +114,7 @@ const TopUp = () => {
   const [allSubscriptions, setAllSubscriptions] = useState([]);
   const [walletConnectModalOpen, setWalletConnectModalOpen] = useState(false);
   const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectStatus, setWalletConnectStatus] = useState('');
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -540,34 +541,55 @@ const TopUp = () => {
         getWalletConnectConfig(),
         {
           onWalletConnectPending: () => {
+            setWalletConnectStatus(t('正在生成 WalletConnect 连接信息...'));
             setWalletConnectUri('');
             setWalletConnectModalOpen(true);
           },
           onWalletConnectUri: (uri) => {
+            setWalletConnectStatus(t('请使用钱包扫码并完成连接授权'));
             setWalletConnectUri(uri || '');
             setWalletConnectModalOpen(true);
           },
           onWalletConnectConnected: () => {
-            setWalletConnectModalOpen(false);
-            setWalletConnectUri('');
+            setWalletConnectStatus(t('钱包已连接，正在准备交易请求...'));
+          },
+          onWalletConnectSessionEstablished: () => {
+            setWalletConnectStatus(t('连接已建立，正在同步钱包会话...'));
+          },
+          onWalletConnectSwitchNetworkPending: () => {
+            setWalletConnectStatus(t('请在钱包中确认切换网络'));
+          },
+          onWalletConnectReadyToSign: () => {
+            setWalletConnectStatus(t('钱包已就绪，正在发起交易请求...'));
+          },
+          onWalletConnectApprovePending: () => {
+            setWalletConnectStatus(t('请在钱包中确认代币授权'));
+          },
+          onWalletConnectTransactionPending: () => {
+            setWalletConnectStatus(t('请在钱包中确认支付交易'));
           },
           onWalletConnectDisconnected: () => {
             setWalletConnectModalOpen(false);
             setWalletConnectUri('');
+            setWalletConnectStatus('');
           },
           onWalletConnectError: () => {
             setWalletConnectModalOpen(false);
             setWalletConnectUri('');
+            setWalletConnectStatus('');
           },
         },
       );
 
-      showSuccess(
-        t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'),
-      );
+      setWalletConnectModalOpen(false);
+      setWalletConnectUri('');
+      setWalletConnectStatus('');
+      showSuccess(t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'));
       if (receipt?.hash) {
         showInfo(
-          t('交易哈希：') + receipt.hash.slice(0, 10) + '...' +
+          t('交易哈希：') +
+            receipt.hash.slice(0, 10) +
+            '...' +
             (receipt?.walletName ? ` (${receipt.walletName})` : ''),
         );
       } else if (receipt?.walletName) {
@@ -578,6 +600,7 @@ const TopUp = () => {
       console.error('Ethereum payment error:', e);
       setWalletConnectModalOpen(false);
       setWalletConnectUri('');
+      setWalletConnectStatus('');
       let msg = e.message || t('支付失败');
       if (isEthereumUserRejected(e)) {
         msg = t('用户拒绝了签名');
@@ -763,7 +786,7 @@ const TopUp = () => {
                 ? data.waffo_min_topup
                 : enableWaffoPancakeTopUp
                   ? data.waffo_pancake_min_topup
-                : 1;
+                  : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
@@ -1034,9 +1057,11 @@ const TopUp = () => {
         t={t}
         visible={walletConnectModalOpen}
         uri={walletConnectUri}
+        statusText={walletConnectStatus}
         onCancel={() => {
           setWalletConnectModalOpen(false);
           setWalletConnectUri('');
+          setWalletConnectStatus('');
         }}
       />
 

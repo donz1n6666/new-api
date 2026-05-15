@@ -236,6 +236,57 @@ async function connectWalletSession(rawProvider) {
   throw new Error('WalletConnect provider does not support connect/enable');
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForWalletConnectAccounts(
+  rawProvider,
+  browserProvider,
+  chainId,
+  attempts = 10,
+  intervalMs = 300,
+) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await getWalletConnectAccount(
+        rawProvider,
+        browserProvider,
+        chainId,
+      );
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) {
+        await sleep(intervalMs);
+      }
+    }
+  }
+  throw lastError || new Error('WalletConnect 未返回可用账户信息');
+}
+
+async function waitForExpectedNetwork(
+  browserProvider,
+  expectedChainId,
+  attempts = 10,
+  intervalMs = 300,
+) {
+  let lastChainId = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const network = await browserProvider.getNetwork();
+    lastChainId = network.chainId;
+    if (network.chainId === expectedChainId) {
+      return;
+    }
+    if (i < attempts - 1) {
+      await sleep(intervalMs);
+    }
+  }
+  throw new Error(
+    `请在钱包中切换到正确的网络，Chain ID: ${String(lastChainId)}`,
+  );
+}
+
 function normalizeWalletConnectAddress(value) {
   const parts = String(value || '').split(':');
   const address = (parts[parts.length - 1] || '').trim();
@@ -305,6 +356,7 @@ export async function executeEthereumOrderWithAutoWallet(
     if (connection.mode === 'walletconnect') {
       await connectWalletSession(rawProvider);
       browserProvider = new ethers.BrowserProvider(rawProvider);
+      lifecycle?.onWalletConnectSessionEstablished?.();
     } else {
       browserProvider = new ethers.BrowserProvider(rawProvider);
       await requestEthereumAccounts(browserProvider, rawProvider);
@@ -318,6 +370,7 @@ export async function executeEthereumOrderWithAutoWallet(
   const expectedChainId = BigInt(order.chain_id);
   const currentNetwork = await browserProvider.getNetwork();
   if (currentNetwork.chainId !== expectedChainId) {
+    lifecycle?.onWalletConnectSwitchNetworkPending?.();
     try {
       await rawProvider.request({
         method: 'wallet_switchEthereumChain',
@@ -328,15 +381,17 @@ export async function executeEthereumOrderWithAutoWallet(
         `请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`,
       );
     }
+    await waitForExpectedNetwork(browserProvider, expectedChainId);
   }
 
   let signer;
   if (connection.mode === 'walletconnect') {
-    const account = await getWalletConnectAccount(
+    const account = await waitForWalletConnectAccounts(
       rawProvider,
       browserProvider,
       order.chain_id,
     );
+    lifecycle?.onWalletConnectReadyToSign?.();
     signer = await browserProvider.getSigner(account);
   } else {
     signer = await browserProvider.getSigner();
@@ -356,6 +411,7 @@ export async function executeEthereumOrderWithAutoWallet(
 
   let tx;
   if (isNativeToken) {
+    lifecycle?.onWalletConnectTransactionPending?.();
     tx = await contract.payWithETH(order.order_id, {
       value: BigInt(order.pay_amount),
     });
@@ -376,6 +432,7 @@ export async function executeEthereumOrderWithAutoWallet(
     );
 
     if (currentAllowance < BigInt(order.pay_amount)) {
+      lifecycle?.onWalletConnectApprovePending?.();
       const approveTx = await tokenContract.approve(
         order.contract_address,
         BigInt(order.pay_amount),
@@ -383,6 +440,7 @@ export async function executeEthereumOrderWithAutoWallet(
       await approveTx.wait();
     }
 
+    lifecycle?.onWalletConnectTransactionPending?.();
     tx = await contract.payWithToken(
       order.order_id,
       order.token_address,
