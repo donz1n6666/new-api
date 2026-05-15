@@ -89,9 +89,11 @@ jobs:
           sbom: true
 
       - name: Install cosign
+        if: matrix.arch == 'amd64'
         uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign image with cosign
+        if: matrix.arch == 'amd64'
         run: |
           cosign sign --yes guji0823/new-api@${{ steps.build.outputs.digest }}
           cosign sign --yes ghcr.io/${{ env.GHCR_REPOSITORY }}@${{ steps.build.outputs.digest }}
