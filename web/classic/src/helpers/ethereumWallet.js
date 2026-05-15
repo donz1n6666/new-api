@@ -8,7 +8,9 @@ function getWindowEthereum() {
 }
 
 function normalizeText(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase();
 }
 
 function buildWalletName(provider, info) {
@@ -101,7 +103,9 @@ export async function discoverInjectedWallets(timeoutMs = 250) {
     appendUniqueWallet(wallets, seen, wallet.provider, wallet);
   });
 
-  return wallets.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return wallets.sort(
+    (a, b) => b.score - a.score || a.name.localeCompare(b.name),
+  );
 }
 
 function buildWalletConnectMetadata(config = {}) {
@@ -110,7 +114,8 @@ function buildWalletConnectMetadata(config = {}) {
     (typeof window !== 'undefined' && window.location?.hostname) ||
     'new-api';
   const fallbackURL =
-    (typeof window !== 'undefined' && window.location?.origin) || 'http://localhost';
+    (typeof window !== 'undefined' && window.location?.origin) ||
+    'http://localhost';
   const icon = String(config?.icon || '').trim();
 
   return {
@@ -231,6 +236,28 @@ async function connectWalletSession(rawProvider) {
   throw new Error('WalletConnect provider does not support connect/enable');
 }
 
+function getWalletConnectAccount(rawProvider, chainId) {
+  const accounts = Array.isArray(rawProvider?.accounts)
+    ? rawProvider.accounts
+    : [];
+  if (accounts.length === 0) {
+    throw new Error('WalletConnect 未返回账户信息');
+  }
+  const expectedPrefix = `eip155:${Number(chainId)}:`;
+  const matched =
+    accounts.find((item) => String(item || '').startsWith(expectedPrefix)) ||
+    accounts.find((item) =>
+      /^0x[a-fA-F0-9]{40}$/.test(String(item || '').trim()),
+    );
+  const account = matched || accounts[0];
+  const parts = String(account || '').split(':');
+  const address = (parts[parts.length - 1] || '').trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    throw new Error('WalletConnect 返回的账户地址无效');
+  }
+  return address;
+}
+
 export async function executeEthereumOrderWithAutoWallet(
   order,
   walletConnectConfig = {},
@@ -242,13 +269,14 @@ export async function executeEthereumOrderWithAutoWallet(
     lifecycle,
   );
   const rawProvider = connection.provider;
-
   const { ethers } = await import('ethers');
-  const browserProvider = new ethers.BrowserProvider(rawProvider);
+  let browserProvider;
   try {
     if (connection.mode === 'walletconnect') {
       await connectWalletSession(rawProvider);
+      browserProvider = new ethers.BrowserProvider(rawProvider);
     } else {
+      browserProvider = new ethers.BrowserProvider(rawProvider);
       await requestEthereumAccounts(browserProvider, rawProvider);
     }
     lifecycle?.onWalletConnectConnected?.();
@@ -266,18 +294,30 @@ export async function executeEthereumOrderWithAutoWallet(
         params: [{ chainId: `0x${Number(order.chain_id).toString(16)}` }],
       });
     } catch {
-      throw new Error(`请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`);
+      throw new Error(
+        `请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`,
+      );
     }
   }
 
-  const signer = await browserProvider.getSigner();
+  const signer =
+    connection.mode === 'walletconnect'
+      ? await browserProvider.getSigner(
+          getWalletConnectAccount(rawProvider, order.chain_id),
+        )
+      : await browserProvider.getSigner();
   const isNativeToken =
-    String(order.token_address || '').toLowerCase() === ZERO_ADDRESS.toLowerCase();
+    String(order.token_address || '').toLowerCase() ===
+    ZERO_ADDRESS.toLowerCase();
 
   const contractAbi = isNativeToken
     ? ['function payWithETH(bytes32 orderId) payable']
     : ['function payWithToken(bytes32 orderId, address token, uint256 amount)'];
-  const contract = new ethers.Contract(order.contract_address, contractAbi, signer);
+  const contract = new ethers.Contract(
+    order.contract_address,
+    contractAbi,
+    signer,
+  );
 
   let tx;
   if (isNativeToken) {
