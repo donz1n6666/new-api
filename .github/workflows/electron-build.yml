@@ -43,7 +43,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.12.0'
+          cache: 'npm'
+          cache-dependency-path: electron/package-lock.json
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -105,9 +107,12 @@ jobs:
           npm version $VERSION --no-git-tag-version --allow-same-version
 
       - name: Install Electron dependencies
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
         run: |
           cd electron
-          npm install
+          npm ci
 
       # - name: Build Electron app (macOS)
       #   if: runner.os == 'macOS'
