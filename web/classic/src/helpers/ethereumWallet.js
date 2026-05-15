@@ -219,6 +219,18 @@ async function requestEthereumAccounts(browserProvider, rawProvider) {
   }
 }
 
+async function connectWalletSession(rawProvider) {
+  if (typeof rawProvider?.connect === 'function') {
+    await rawProvider.connect();
+    return;
+  }
+  if (typeof rawProvider?.enable === 'function') {
+    await rawProvider.enable();
+    return;
+  }
+  throw new Error('WalletConnect provider does not support connect/enable');
+}
+
 export async function executeEthereumOrderWithAutoWallet(
   order,
   walletConnectConfig = {},
@@ -234,7 +246,11 @@ export async function executeEthereumOrderWithAutoWallet(
   const { ethers } = await import('ethers');
   const browserProvider = new ethers.BrowserProvider(rawProvider);
   try {
-    await requestEthereumAccounts(browserProvider, rawProvider);
+    if (connection.mode === 'walletconnect') {
+      await connectWalletSession(rawProvider);
+    } else {
+      await requestEthereumAccounts(browserProvider, rawProvider);
+    }
     lifecycle?.onWalletConnectConnected?.();
   } catch (error) {
     lifecycle?.onWalletConnectError?.(error);
