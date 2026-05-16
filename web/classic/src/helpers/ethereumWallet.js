@@ -1,6 +1,7 @@
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const EIP6963_ANNOUNCE_EVENT = 'eip6963:announceProvider';
 const EIP6963_REQUEST_EVENT = 'eip6963:requestProvider';
+const WALLETCONNECT_OFFICIAL_RELAY_URL = 'wss://relay.walletconnect.com';
 
 function getWindowEthereum() {
   if (typeof window === 'undefined') return undefined;
@@ -135,16 +136,20 @@ function hasWalletConnectProjectId(config = {}) {
 
 function getWalletConnectRelayUrls(config = {}) {
   if (config?.relayProxyEnabled) {
-    const proxyUrl = normalizeWalletConnectRelayUrl(
-      config?.relayProxyUrl || '/api/walletconnect/relay',
-    );
-    return proxyUrl ? [proxyUrl] : [];
+    return [WALLETCONNECT_OFFICIAL_RELAY_URL];
   }
   const urls = [
     String(config?.primaryRelayUrl || '').trim(),
     String(config?.backupRelayUrl || '').trim(),
   ].filter(Boolean);
   return [...new Set(urls)];
+}
+
+function getWalletConnectTransportProxyUrl(config = {}) {
+  if (!config?.relayProxyEnabled) return '';
+  return normalizeWalletConnectRelayUrl(
+    config?.relayProxyUrl || '/api/walletconnect/relay',
+  );
 }
 
 function normalizeWalletConnectRelayUrl(value) {
@@ -168,6 +173,51 @@ function attachWalletConnectLifecycle(provider, lifecycle = {}) {
   provider.on('disconnect', () => {
     lifecycle?.onWalletConnectDisconnected?.();
   });
+}
+
+function installWalletConnectWebSocketProxy(proxyUrl) {
+  if (
+    typeof window === 'undefined' ||
+    !proxyUrl ||
+    typeof window.WebSocket !== 'function'
+  ) {
+    return () => {};
+  }
+
+  const NativeWebSocket = window.WebSocket;
+  const shouldProxy = (target) => {
+    try {
+      const url = new URL(String(target));
+      return (
+        url.protocol === 'wss:' && url.hostname === 'relay.walletconnect.com'
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const WalletConnectProxyWebSocket = function (url, protocols) {
+    if (!shouldProxy(url)) {
+      return protocols === undefined
+        ? new NativeWebSocket(url)
+        : new NativeWebSocket(url, protocols);
+    }
+    const target = new URL(String(url));
+    const proxy = new URL(proxyUrl);
+    proxy.search = target.search;
+    return protocols === undefined
+      ? new NativeWebSocket(proxy.toString())
+      : new NativeWebSocket(proxy.toString(), protocols);
+  };
+  window.WebSocket = WalletConnectProxyWebSocket;
+  window.WebSocket.prototype = NativeWebSocket.prototype;
+  Object.setPrototypeOf(window.WebSocket, NativeWebSocket);
+
+  return () => {
+    if (window.WebSocket === WalletConnectProxyWebSocket) {
+      window.WebSocket = NativeWebSocket;
+    }
+  };
 }
 
 async function connectWalletConnectProvider(
@@ -356,6 +406,11 @@ async function waitForExpectedNetwork(
   );
 }
 
+async function getProviderChainId(rawProvider) {
+  const chainIdHex = await rawProvider.request({ method: 'eth_chainId' });
+  return BigInt(chainIdHex);
+}
+
 function normalizeWalletConnectAddress(value) {
   const parts = String(value || '').split(':');
   const address = (parts[parts.length - 1] || '').trim();
@@ -413,16 +468,19 @@ export async function executeEthereumOrderWithAutoWallet(
   walletConnectConfig = {},
   lifecycle = {},
 ) {
-  const orderChainId = Number(order?.chain_id || 0);
-  let connection = await connectEthereumWallet(
-    orderChainId,
-    walletConnectConfig,
-    lifecycle,
+  const restoreWalletConnectProxy = installWalletConnectWebSocketProxy(
+    getWalletConnectTransportProxyUrl(walletConnectConfig),
   );
-  let rawProvider = connection.provider;
-  const { ethers } = await import('ethers');
-  let browserProvider;
+  const orderChainId = Number(order?.chain_id || 0);
   try {
+    let connection = await connectEthereumWallet(
+      orderChainId,
+      walletConnectConfig,
+      lifecycle,
+    );
+    let rawProvider = connection.provider;
+    const { ethers } = await import('ethers');
+    let browserProvider;
     if (connection.mode === 'walletconnect') {
       try {
         await connectWalletSession(rawProvider);
@@ -452,101 +510,231 @@ export async function executeEthereumOrderWithAutoWallet(
       await requestEthereumAccounts(browserProvider, rawProvider);
     }
     lifecycle?.onWalletConnectConnected?.();
+
+    const expectedChainId = BigInt(order.chain_id);
+    const currentChainId =
+      connection.mode === 'walletconnect'
+        ? await getProviderChainId(rawProvider)
+        : (await browserProvider.getNetwork()).chainId;
+    if (currentChainId !== expectedChainId) {
+      lifecycle?.onWalletConnectSwitchNetworkPending?.();
+      try {
+        await rawProvider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: `0x${Number(order.chain_id).toString(16)}` }],
+        });
+      } catch {
+        throw new Error(
+          `请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`,
+        );
+      }
+      await waitForExpectedNetwork(rawProvider, expectedChainId);
+      browserProvider = new ethers.BrowserProvider(rawProvider);
+    }
+
+    let signer;
+    let walletConnectAccount = '';
+    if (connection.mode === 'walletconnect') {
+      walletConnectAccount = await waitForWalletConnectAccounts(
+        rawProvider,
+        browserProvider,
+        order.chain_id,
+      );
+      lifecycle?.onWalletConnectReadyToSign?.();
+      return await executeWalletConnectTransaction({
+        order,
+        rawProvider,
+        browserProvider,
+        account: walletConnectAccount,
+        walletName: connection.walletName,
+        lifecycle,
+        ethers,
+      });
+    } else {
+      signer = await browserProvider.getSigner();
+    }
+    const isNativeToken =
+      String(order.token_address || '').toLowerCase() ===
+      ZERO_ADDRESS.toLowerCase();
+
+    const contractAbi = isNativeToken
+      ? ['function payWithETH(bytes32 orderId) payable']
+      : [
+          'function payWithToken(bytes32 orderId, address token, uint256 amount)',
+        ];
+    const contract = new ethers.Contract(
+      order.contract_address,
+      contractAbi,
+      signer,
+    );
+
+    let tx;
+    if (isNativeToken) {
+      lifecycle?.onWalletConnectTransactionPending?.();
+      tx = await contract.payWithETH(order.order_id, {
+        value: BigInt(order.pay_amount),
+      });
+    } else {
+      const erc20Abi = [
+        'function approve(address spender, uint256 amount) returns (bool)',
+        'function allowance(address owner, address spender) view returns (uint256)',
+      ];
+      const tokenContract = new ethers.Contract(
+        order.token_address,
+        erc20Abi,
+        signer,
+      );
+      const signerAddress = await signer.getAddress();
+      const currentAllowance = await tokenContract.allowance(
+        signerAddress,
+        order.contract_address,
+      );
+
+      if (currentAllowance < BigInt(order.pay_amount)) {
+        lifecycle?.onWalletConnectApprovePending?.();
+        const approveTx = await tokenContract.approve(
+          order.contract_address,
+          BigInt(order.pay_amount),
+        );
+        await approveTx.wait();
+      }
+
+      lifecycle?.onWalletConnectTransactionPending?.();
+      tx = await contract.payWithToken(
+        order.order_id,
+        order.token_address,
+        BigInt(order.pay_amount),
+      );
+    }
+
+    const receipt = await tx.wait();
+    if (receipt?.status !== 1) {
+      throw new Error('Ethereum 交易失败');
+    }
+
+    return {
+      hash: tx.hash,
+      walletName: connection.walletName,
+      mode: connection.mode,
+    };
   } catch (error) {
     lifecycle?.onWalletConnectError?.(error);
     throw error;
+  } finally {
+    restoreWalletConnectProxy();
   }
+}
 
-  const expectedChainId = BigInt(order.chain_id);
-  const currentNetwork = await browserProvider.getNetwork();
-  if (currentNetwork.chainId !== expectedChainId) {
-    lifecycle?.onWalletConnectSwitchNetworkPending?.();
-    try {
-      await rawProvider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: `0x${Number(order.chain_id).toString(16)}` }],
-      });
-    } catch {
-      throw new Error(
-        `请在钱包中切换到正确的网络，Chain ID: ${order.chain_id}`,
-      );
-    }
-    await waitForExpectedNetwork(rawProvider, expectedChainId);
-    browserProvider = new ethers.BrowserProvider(rawProvider);
-  }
-
-  let signer;
-  if (connection.mode === 'walletconnect') {
-    const account = await waitForWalletConnectAccounts(
-      rawProvider,
-      browserProvider,
-      order.chain_id,
-    );
-    lifecycle?.onWalletConnectReadyToSign?.();
-    signer = await browserProvider.getSigner(account);
-  } else {
-    signer = await browserProvider.getSigner();
-  }
+async function executeWalletConnectTransaction({
+  order,
+  rawProvider,
+  browserProvider,
+  account,
+  walletName,
+  lifecycle,
+  ethers,
+}) {
   const isNativeToken =
     String(order.token_address || '').toLowerCase() ===
     ZERO_ADDRESS.toLowerCase();
-
-  const contractAbi = isNativeToken
-    ? ['function payWithETH(bytes32 orderId) payable']
-    : ['function payWithToken(bytes32 orderId, address token, uint256 amount)'];
-  const contract = new ethers.Contract(
-    order.contract_address,
-    contractAbi,
-    signer,
+  const contractInterface = new ethers.Interface(
+    isNativeToken
+      ? ['function payWithETH(bytes32 orderId) payable']
+      : [
+          'function payWithToken(bytes32 orderId, address token, uint256 amount)',
+        ],
   );
 
-  let tx;
+  let txHash;
   if (isNativeToken) {
     lifecycle?.onWalletConnectTransactionPending?.();
-    tx = await contract.payWithETH(order.order_id, {
-      value: BigInt(order.pay_amount),
+    txHash = await rawProvider.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: account,
+          to: order.contract_address,
+          value: ethers.toBeHex(BigInt(order.pay_amount)),
+          data: contractInterface.encodeFunctionData('payWithETH', [
+            order.order_id,
+          ]),
+        },
+      ],
     });
   } else {
-    const erc20Abi = [
+    const amount = BigInt(order.pay_amount);
+    const erc20Interface = new ethers.Interface([
       'function approve(address spender, uint256 amount) returns (bool)',
       'function allowance(address owner, address spender) view returns (uint256)',
-    ];
-    const tokenContract = new ethers.Contract(
-      order.token_address,
-      erc20Abi,
-      signer,
-    );
-    const signerAddress = await signer.getAddress();
-    const currentAllowance = await tokenContract.allowance(
-      signerAddress,
+    ]);
+    const allowanceData = erc20Interface.encodeFunctionData('allowance', [
+      account,
       order.contract_address,
-    );
-
-    if (currentAllowance < BigInt(order.pay_amount)) {
+    ]);
+    const allowanceResult = await rawProvider.request({
+      method: 'eth_call',
+      params: [
+        {
+          from: account,
+          to: order.token_address,
+          data: allowanceData,
+        },
+        'latest',
+      ],
+    });
+    const currentAllowance = hexToBigInt(allowanceResult);
+    if (currentAllowance < amount) {
       lifecycle?.onWalletConnectApprovePending?.();
-      const approveTx = await tokenContract.approve(
-        order.contract_address,
-        BigInt(order.pay_amount),
-      );
-      await approveTx.wait();
+      const approveHash = await rawProvider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: account,
+            to: order.token_address,
+            data: erc20Interface.encodeFunctionData('approve', [
+              order.contract_address,
+              amount,
+            ]),
+          },
+        ],
+      });
+      const approveReceipt =
+        await browserProvider.waitForTransaction(approveHash);
+      if (approveReceipt?.status !== 1) {
+        throw new Error('代币授权交易失败');
+      }
     }
 
     lifecycle?.onWalletConnectTransactionPending?.();
-    tx = await contract.payWithToken(
-      order.order_id,
-      order.token_address,
-      BigInt(order.pay_amount),
-    );
+    txHash = await rawProvider.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: account,
+          to: order.contract_address,
+          data: contractInterface.encodeFunctionData('payWithToken', [
+            order.order_id,
+            order.token_address,
+            amount,
+          ]),
+        },
+      ],
+    });
   }
 
-  const receipt = await tx.wait();
+  const receipt = await browserProvider.waitForTransaction(txHash);
   if (receipt?.status !== 1) {
     throw new Error('Ethereum 交易失败');
   }
-
   return {
-    hash: tx.hash,
-    walletName: connection.walletName,
-    mode: connection.mode,
+    hash: txHash,
+    walletName,
+    mode: 'walletconnect',
   };
+}
+
+function hexToBigInt(value) {
+  const hex = String(value || '').trim();
+  if (!hex || hex === '0x') return 0n;
+  return BigInt(hex);
 }
