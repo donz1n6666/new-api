@@ -40,7 +40,6 @@ import {
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
-import EthereumWalletConnectModal from './modals/EthereumWalletConnectModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
@@ -137,9 +136,6 @@ const SubscriptionPlansCard = ({
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
-  const [walletConnectModalOpen, setWalletConnectModalOpen] = useState(false);
-  const [walletConnectUri, setWalletConnectUri] = useState('');
-  const [walletConnectStatus, setWalletConnectStatus] = useState('');
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -302,49 +298,26 @@ const SubscriptionPlansCard = ({
         },
         getWalletConnectConfig(ethereumInfo),
         {
-          onWalletConnectPending: () => {
-            setWalletConnectStatus(t('正在生成 WalletConnect 连接信息...'));
-            setWalletConnectUri('');
-            setWalletConnectModalOpen(true);
-          },
-          onWalletConnectUri: (uri) => {
-            setWalletConnectStatus(t('请使用钱包扫码并完成连接授权'));
-            setWalletConnectUri(uri || '');
-            setWalletConnectModalOpen(true);
-          },
           onWalletConnectConnected: () => {
-            setWalletConnectStatus(t('钱包已连接，正在准备交易请求...'));
+            showInfo(t('钱包已连接，正在准备交易请求...'));
           },
           onWalletConnectSessionEstablished: () => {
-            setWalletConnectStatus(t('连接已建立，正在同步钱包会话...'));
+            showInfo(t('连接已建立，正在同步钱包会话...'));
           },
           onWalletConnectSwitchNetworkPending: () => {
-            setWalletConnectStatus(t('请在钱包中确认切换网络'));
+            showInfo(t('请在钱包中确认切换网络'));
           },
           onWalletConnectReadyToSign: () => {
-            setWalletConnectStatus(t('钱包已就绪，正在发起交易请求...'));
+            showInfo(t('钱包已就绪，正在发起交易请求...'));
           },
           onWalletConnectApprovePending: () => {
-            setWalletConnectStatus(t('请在钱包中确认代币授权'));
+            showInfo(t('请在钱包中确认代币授权'));
           },
           onWalletConnectTransactionPending: () => {
-            setWalletConnectStatus(t('请在钱包中确认支付交易'));
-          },
-          onWalletConnectDisconnected: () => {
-            setWalletConnectModalOpen(false);
-            setWalletConnectUri('');
-            setWalletConnectStatus('');
-          },
-          onWalletConnectError: () => {
-            setWalletConnectModalOpen(false);
-            setWalletConnectUri('');
-            setWalletConnectStatus('');
+            showInfo(t('请在钱包中确认支付交易'));
           },
         },
       );
-      setWalletConnectModalOpen(false);
-      setWalletConnectUri('');
-      setWalletConnectStatus('');
       showSuccess(
         receipt?.walletName
           ? t('交易确认！额度将在几秒内到账，钱包：') + receipt.walletName
@@ -352,9 +325,6 @@ const SubscriptionPlansCard = ({
       );
       closeBuy();
     } catch (e) {
-      setWalletConnectModalOpen(false);
-      setWalletConnectUri('');
-      setWalletConnectStatus('');
       if (isEthereumUserRejected(e)) {
         showError(t('用户取消了交易'));
       } else {
@@ -957,18 +927,6 @@ const SubscriptionPlansCard = ({
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayEthereum={payEthereum}
-      />
-
-      <EthereumWalletConnectModal
-        t={t}
-        visible={walletConnectModalOpen}
-        uri={walletConnectUri}
-        statusText={walletConnectStatus}
-        onCancel={() => {
-          setWalletConnectModalOpen(false);
-          setWalletConnectUri('');
-          setWalletConnectStatus('');
-        }}
       />
     </>
   );

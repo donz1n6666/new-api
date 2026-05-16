@@ -163,7 +163,7 @@ async function connectWalletConnectProvider(
   const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
   const initOptions = {
     projectId: String(walletConnectConfig.projectId).trim(),
-    showQrModal: false,
+    showQrModal: true,
     chains: [Number(chainId)],
     optionalChains: [Number(chainId)],
     metadata: buildWalletConnectMetadata(walletConnectConfig),
