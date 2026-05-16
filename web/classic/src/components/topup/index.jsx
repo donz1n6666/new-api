@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WalletConnectQrModal from './modals/WalletConnectQrModal';
 import {
   executeEthereumOrderWithAutoWallet,
   isEthereumUserRejected,
@@ -85,6 +86,9 @@ const TopUp = () => {
   // Ethereum 相关状态
   const [enableEthereumTopUp, setEnableEthereumTopUp] = useState(false);
   const [ethereumInfo, setEthereumInfo] = useState(null);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectModalVisible, setWalletConnectModalVisible] =
+    useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -540,10 +544,19 @@ const TopUp = () => {
         },
         getWalletConnectConfig(),
         {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalVisible(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalVisible(Boolean(uri));
+          },
           onWalletConnectConnected: () => {
             showInfo(t('钱包已连接，正在准备交易请求...'));
           },
           onWalletConnectSessionEstablished: () => {
+            setWalletConnectModalVisible(false);
             showInfo(t('连接已建立，正在同步钱包会话...'));
           },
           onWalletConnectSwitchNetworkPending: () => {
@@ -556,7 +569,11 @@ const TopUp = () => {
             showInfo(t('请在钱包中确认代币授权'));
           },
           onWalletConnectTransactionPending: () => {
+            setWalletConnectModalVisible(false);
             showInfo(t('请在钱包中确认支付交易'));
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalVisible(false);
           },
         },
       );
@@ -1025,6 +1042,13 @@ const TopUp = () => {
         visible={openHistory}
         onCancel={handleHistoryCancel}
         t={t}
+      />
+
+      <WalletConnectQrModal
+        t={t}
+        visible={walletConnectModalVisible}
+        uri={walletConnectUri}
+        onCancel={() => setWalletConnectModalVisible(false)}
       />
 
       {/* Creem 充值确认模态框 */}

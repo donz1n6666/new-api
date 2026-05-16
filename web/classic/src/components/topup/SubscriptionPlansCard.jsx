@@ -40,6 +40,7 @@ import {
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
+import WalletConnectQrModal from './modals/WalletConnectQrModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
@@ -138,6 +139,9 @@ const SubscriptionPlansCard = ({
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectModalVisible, setWalletConnectModalVisible] =
+    useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -300,10 +304,19 @@ const SubscriptionPlansCard = ({
         },
         getWalletConnectConfig(ethereumInfo),
         {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalVisible(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalVisible(Boolean(uri));
+          },
           onWalletConnectConnected: () => {
             showInfo(t('钱包已连接，正在准备交易请求...'));
           },
           onWalletConnectSessionEstablished: () => {
+            setWalletConnectModalVisible(false);
             showInfo(t('连接已建立，正在同步钱包会话...'));
           },
           onWalletConnectSwitchNetworkPending: () => {
@@ -316,7 +329,11 @@ const SubscriptionPlansCard = ({
             showInfo(t('请在钱包中确认代币授权'));
           },
           onWalletConnectTransactionPending: () => {
+            setWalletConnectModalVisible(false);
             showInfo(t('请在钱包中确认支付交易'));
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalVisible(false);
           },
         },
       );
@@ -929,6 +946,12 @@ const SubscriptionPlansCard = ({
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayEthereum={payEthereum}
+      />
+      <WalletConnectQrModal
+        t={t}
+        visible={walletConnectModalVisible}
+        uri={walletConnectUri}
+        onCancel={() => setWalletConnectModalVisible(false)}
       />
     </>
   );
