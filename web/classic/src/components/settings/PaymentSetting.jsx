@@ -73,6 +73,7 @@ const PaymentSetting = () => {
     EthereumWalletConnectAppDescription: '',
     EthereumWalletConnectAppURL: '',
     EthereumWalletConnectAppIcon: '',
+    EthereumWalletConnectRelayProxyEnabled: false,
     EthereumWalletConnectPrimaryRelayURL: '',
     EthereumWalletConnectBackupRelayURL: '',
     EthereumSupportedTokens: '[]',

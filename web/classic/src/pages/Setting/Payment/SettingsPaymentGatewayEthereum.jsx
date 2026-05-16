@@ -32,6 +32,7 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     EthereumWalletConnectAppDescription: '',
     EthereumWalletConnectAppURL: '',
     EthereumWalletConnectAppIcon: '',
+    EthereumWalletConnectRelayProxyEnabled: false,
     EthereumWalletConnectPrimaryRelayURL: '',
     EthereumWalletConnectBackupRelayURL: '',
   });
@@ -73,6 +74,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
         options.EthereumWalletConnectAppDescription || '',
       EthereumWalletConnectAppURL: options.EthereumWalletConnectAppURL || '',
       EthereumWalletConnectAppIcon: options.EthereumWalletConnectAppIcon || '',
+      EthereumWalletConnectRelayProxyEnabled:
+        options.EthereumWalletConnectRelayProxyEnabled === 'true' ||
+        options.EthereumWalletConnectRelayProxyEnabled === true,
       EthereumWalletConnectPrimaryRelayURL:
         options.EthereumWalletConnectPrimaryRelayURL || '',
       EthereumWalletConnectBackupRelayURL:
@@ -101,6 +105,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     setLoading(true);
     try {
       const formValues = formApiRef.current?.getValues?.() || inputs;
+      const relayProxyEnabled = Boolean(
+        formValues.EthereumWalletConnectRelayProxyEnabled,
+      );
       const opts = [
         {
           key: 'EthereumEnabled',
@@ -139,12 +146,20 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
           value: formValues.EthereumWalletConnectAppIcon || '',
         },
         {
+          key: 'EthereumWalletConnectRelayProxyEnabled',
+          value: relayProxyEnabled ? 'true' : 'false',
+        },
+        {
           key: 'EthereumWalletConnectPrimaryRelayURL',
-          value: formValues.EthereumWalletConnectPrimaryRelayURL || '',
+          value: relayProxyEnabled
+            ? ''
+            : formValues.EthereumWalletConnectPrimaryRelayURL || '',
         },
         {
           key: 'EthereumWalletConnectBackupRelayURL',
-          value: formValues.EthereumWalletConnectBackupRelayURL || '',
+          value: relayProxyEnabled
+            ? ''
+            : formValues.EthereumWalletConnectBackupRelayURL || '',
         },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
@@ -212,6 +227,10 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
   };
   const deleteToken = (index) =>
     setTokens(tokens.filter((_, i) => i !== index));
+
+  const relayProxyEnabled = Boolean(
+    inputs.EthereumWalletConnectRelayProxyEnabled,
+  );
 
   const tokenColumns = [
     { title: t('符号'), dataIndex: 'symbol', width: 100 },
@@ -389,6 +408,17 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 extraText={t('可选，建议使用公开可访问的 HTTPS 图片地址')}
               />
             </Col>
+            <Col xs={24} md={12}>
+              <Form.Switch
+                field='EthereumWalletConnectRelayProxyEnabled'
+                label={t('启用本站 WalletConnect Relay 代理')}
+                checkedText='|'
+                uncheckedText='O'
+                extraText={t(
+                  '开启后优先使用本站 /api/walletconnect/relay 代理官方 Relay，并忽略下方主/备用 Relay URL，避免二次代理',
+                )}
+              />
+            </Col>
           </Row>
 
           <Row gutter={24}>
@@ -397,8 +427,11 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 field='EthereumWalletConnectPrimaryRelayURL'
                 label={t('WalletConnect 主 Relay URL')}
                 placeholder='wss://relay.walletconnect.com'
+                disabled={relayProxyEnabled}
                 extraText={t(
-                  '用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay',
+                  relayProxyEnabled
+                    ? '已启用本站代理，此配置保存时会被清空'
+                    : '用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay',
                 )}
               />
             </Col>
@@ -407,7 +440,12 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 field='EthereumWalletConnectBackupRelayURL'
                 label={t('WalletConnect 备用 Relay URL')}
                 placeholder='wss://your-backup-relay.example.com'
-                extraText={t('主 Relay 初始化失败时自动尝试备用地址')}
+                disabled={relayProxyEnabled}
+                extraText={t(
+                  relayProxyEnabled
+                    ? '已启用本站代理，此配置保存时会被清空'
+                    : '主 Relay 初始化失败时自动尝试备用地址',
+                )}
               />
             </Col>
           </Row>

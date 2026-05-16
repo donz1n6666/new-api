@@ -134,11 +134,27 @@ function hasWalletConnectProjectId(config = {}) {
 }
 
 function getWalletConnectRelayUrls(config = {}) {
+  if (config?.relayProxyEnabled) {
+    const proxyUrl = normalizeWalletConnectRelayUrl(
+      config?.relayProxyUrl || '/api/walletconnect/relay',
+    );
+    return proxyUrl ? [proxyUrl] : [];
+  }
   const urls = [
     String(config?.primaryRelayUrl || '').trim(),
     String(config?.backupRelayUrl || '').trim(),
   ].filter(Boolean);
   return [...new Set(urls)];
+}
+
+function normalizeWalletConnectRelayUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^wss?:\/\//i.test(raw)) return raw;
+  if (typeof window === 'undefined' || !window.location?.origin) return raw;
+  const url = new URL(raw, window.location.origin);
+  url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
 }
 
 function attachWalletConnectLifecycle(provider, lifecycle = {}) {

@@ -556,15 +556,24 @@ func getEthereumTopUpInfo() (enabled bool, info map[string]interface{}) {
 	if !enabled {
 		return false, nil
 	}
+	relayProxyEnabled := setting.EthereumWalletConnectRelayProxyEnabled
+	primaryRelayURL := strings.TrimSpace(setting.EthereumWalletConnectPrimaryRelayURL)
+	backupRelayURL := strings.TrimSpace(setting.EthereumWalletConnectBackupRelayURL)
+	if relayProxyEnabled {
+		primaryRelayURL = ""
+		backupRelayURL = ""
+	}
 	walletConnect := map[string]interface{}{
-		"enabled":           strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
-		"project_id":        strings.TrimSpace(setting.EthereumWalletConnectProjectID),
-		"app_name":          strings.TrimSpace(setting.EthereumWalletConnectAppName),
-		"description":       strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
-		"url":               strings.TrimSpace(setting.EthereumWalletConnectAppURL),
-		"icon":              strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
-		"primary_relay_url": strings.TrimSpace(setting.EthereumWalletConnectPrimaryRelayURL),
-		"backup_relay_url":  strings.TrimSpace(setting.EthereumWalletConnectBackupRelayURL),
+		"enabled":             strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
+		"project_id":          strings.TrimSpace(setting.EthereumWalletConnectProjectID),
+		"app_name":            strings.TrimSpace(setting.EthereumWalletConnectAppName),
+		"description":         strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
+		"url":                 strings.TrimSpace(setting.EthereumWalletConnectAppURL),
+		"icon":                strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
+		"relay_proxy_enabled": relayProxyEnabled,
+		"relay_proxy_url":     "/api/walletconnect/relay",
+		"primary_relay_url":   primaryRelayURL,
+		"backup_relay_url":    backupRelayURL,
 	}
 	info = map[string]interface{}{
 		"chain_id":         setting.EthereumChainId,

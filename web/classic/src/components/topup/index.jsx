@@ -130,6 +130,8 @@ const TopUp = () => {
       description: walletConnect.description || '',
       url: walletConnect.url || '',
       icon: walletConnect.icon || '',
+      relayProxyEnabled: Boolean(walletConnect.relay_proxy_enabled),
+      relayProxyUrl: walletConnect.relay_proxy_url || '',
       primaryRelayUrl: walletConnect.primary_relay_url || '',
       backupRelayUrl: walletConnect.backup_relay_url || '',
     };

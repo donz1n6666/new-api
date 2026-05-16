@@ -128,6 +128,7 @@ func InitOptionMap() {
 	common.OptionMap["EthereumWalletConnectAppDescription"] = setting.EthereumWalletConnectAppDescription
 	common.OptionMap["EthereumWalletConnectAppURL"] = setting.EthereumWalletConnectAppURL
 	common.OptionMap["EthereumWalletConnectAppIcon"] = setting.EthereumWalletConnectAppIcon
+	common.OptionMap["EthereumWalletConnectRelayProxyEnabled"] = strconv.FormatBool(setting.EthereumWalletConnectRelayProxyEnabled)
 	common.OptionMap["EthereumWalletConnectPrimaryRelayURL"] = setting.EthereumWalletConnectPrimaryRelayURL
 	common.OptionMap["EthereumWalletConnectBackupRelayURL"] = setting.EthereumWalletConnectBackupRelayURL
 	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
@@ -492,6 +493,8 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.EthereumWalletConnectAppURL = value
 	case "EthereumWalletConnectAppIcon":
 		setting.EthereumWalletConnectAppIcon = value
+	case "EthereumWalletConnectRelayProxyEnabled":
+		setting.EthereumWalletConnectRelayProxyEnabled = value == "true"
 	case "EthereumWalletConnectPrimaryRelayURL":
 		setting.EthereumWalletConnectPrimaryRelayURL = value
 	case "EthereumWalletConnectBackupRelayURL":
