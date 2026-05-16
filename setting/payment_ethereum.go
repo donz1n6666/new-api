@@ -16,16 +16,18 @@ type EthereumToken struct {
 }
 
 var (
-	EthereumEnabled                     bool
-	EthereumChainId                     int64  = 11155111 // Sepolia testnet default
-	EthereumContractAddress             string            // deployed contract checksummed address
-	EthereumAlchemyWebhookSigningKey    string            // signing key from Alchemy dashboard
-	EthereumMinTopUp                    int    = 1
-	EthereumWalletConnectProjectID      string
-	EthereumWalletConnectAppName        string
-	EthereumWalletConnectAppDescription string
-	EthereumWalletConnectAppURL         string
-	EthereumWalletConnectAppIcon        string
+	EthereumEnabled                      bool
+	EthereumChainId                      int64  = 11155111 // Sepolia testnet default
+	EthereumContractAddress              string            // deployed contract checksummed address
+	EthereumAlchemyWebhookSigningKey     string            // signing key from Alchemy dashboard
+	EthereumMinTopUp                     int    = 1
+	EthereumWalletConnectProjectID       string
+	EthereumWalletConnectAppName         string
+	EthereumWalletConnectAppDescription  string
+	EthereumWalletConnectAppURL          string
+	EthereumWalletConnectAppIcon         string
+	EthereumWalletConnectPrimaryRelayURL string
+	EthereumWalletConnectBackupRelayURL  string
 )
 
 // DefaultEthereumTokens is the factory default (ETH only on Sepolia).

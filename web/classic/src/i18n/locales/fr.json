@@ -3655,6 +3655,10 @@
     "默认用户消息": "Bonjour",
     "默认补全倍率": "Taux de complétion par défaut",
     "阶梯计费（表达式解析失败）": "Facturation par paliers (échec de l'analyse de l'expression)",
-    "阶梯计费（未匹配到对应阶梯）": "Facturation par paliers (aucun palier correspondant)"
+    "阶梯计费（未匹配到对应阶梯）": "Facturation par paliers (aucun palier correspondant)",
+    "WalletConnect 主 Relay URL": "URL du Relay principal WalletConnect",
+    "WalletConnect 备用 Relay URL": "URL du Relay de secours WalletConnect",
+    "用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay": "Utilisé pour l’appairage par QR code et la connexion du portefeuille. Laissez vide pour utiliser le Relay par défaut de WalletConnect.",
+    "主 Relay 初始化失败时自动尝试备用地址": "Essaie automatiquement l’adresse de secours si le Relay principal ne parvient pas à s’initialiser."
   }
 }

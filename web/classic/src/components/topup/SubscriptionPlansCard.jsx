@@ -109,6 +109,8 @@ function getWalletConnectConfig(ethereumInfo) {
     description: walletConnect.description || '',
     url: walletConnect.url || '',
     icon: walletConnect.icon || '',
+    primaryRelayUrl: walletConnect.primary_relay_url || '',
+    backupRelayUrl: walletConnect.backup_relay_url || '',
   };
 }
 

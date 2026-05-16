@@ -557,12 +557,14 @@ func getEthereumTopUpInfo() (enabled bool, info map[string]interface{}) {
 		return false, nil
 	}
 	walletConnect := map[string]interface{}{
-		"enabled":     strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
-		"project_id":  strings.TrimSpace(setting.EthereumWalletConnectProjectID),
-		"app_name":    strings.TrimSpace(setting.EthereumWalletConnectAppName),
-		"description": strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
-		"url":         strings.TrimSpace(setting.EthereumWalletConnectAppURL),
-		"icon":        strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
+		"enabled":           strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
+		"project_id":        strings.TrimSpace(setting.EthereumWalletConnectProjectID),
+		"app_name":          strings.TrimSpace(setting.EthereumWalletConnectAppName),
+		"description":       strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
+		"url":               strings.TrimSpace(setting.EthereumWalletConnectAppURL),
+		"icon":              strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
+		"primary_relay_url": strings.TrimSpace(setting.EthereumWalletConnectPrimaryRelayURL),
+		"backup_relay_url":  strings.TrimSpace(setting.EthereumWalletConnectBackupRelayURL),
 	}
 	info = map[string]interface{}{
 		"chain_id":         setting.EthereumChainId,

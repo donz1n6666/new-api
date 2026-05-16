@@ -3624,6 +3624,10 @@
     "默认用户消息": "こんにちは",
     "默认补全倍率": "デフォルト補完倍率",
     "阶梯计费（表达式解析失败）": "段階課金（式の解析に失敗）",
-    "阶梯计费（未匹配到对应阶梯）": "段階課金（一致する階層なし）"
+    "阶梯计费（未匹配到对应阶梯）": "段階課金（一致する階層なし）",
+    "WalletConnect 主 Relay URL": "WalletConnect メイン Relay URL",
+    "WalletConnect 备用 Relay URL": "WalletConnect 予備 Relay URL",
+    "用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay": "QR コードのペアリングとウォレット接続に使用します。空欄の場合は WalletConnect のデフォルト Relay を使用します。",
+    "主 Relay 初始化失败时自动尝试备用地址": "メイン Relay の初期化に失敗した場合、自動的に予備アドレスを試行します。"
   }
 }

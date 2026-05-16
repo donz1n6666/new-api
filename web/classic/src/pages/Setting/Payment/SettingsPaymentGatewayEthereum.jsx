@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Banner, Button, Form, Row, Col, Typography, Spin,
-  Table, Modal, Input, Space,
+  Banner,
+  Button,
+  Form,
+  Row,
+  Col,
+  Typography,
+  Spin,
+  Table,
+  Modal,
+  Input,
+  Space,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
@@ -23,35 +32,55 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     EthereumWalletConnectAppDescription: '',
     EthereumWalletConnectAppURL: '',
     EthereumWalletConnectAppIcon: '',
+    EthereumWalletConnectPrimaryRelayURL: '',
+    EthereumWalletConnectBackupRelayURL: '',
   });
   const [tokens, setTokens] = useState([
-    { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', decimals: 18, price: '0.001' },
+    {
+      symbol: 'ETH',
+      address: '0x0000000000000000000000000000000000000000',
+      decimals: 18,
+      price: '0.001',
+    },
   ]);
   const formApiRef = useRef(null);
 
   // Token editing modal state
   const [tokenModalVisible, setTokenModalVisible] = useState(false);
   const [editingTokenIndex, setEditingTokenIndex] = useState(-1);
-  const [tokenForm, setTokenForm] = useState({ symbol: '', address: '', decimals: '18', price: '1.0' });
+  const [tokenForm, setTokenForm] = useState({
+    symbol: '',
+    address: '',
+    decimals: '18',
+    price: '1.0',
+  });
 
   // Sync from parent options prop
   useEffect(() => {
     if (!options || !formApiRef.current) return;
     const currentInputs = {
-      EthereumEnabled: options.EthereumEnabled === 'true' || options.EthereumEnabled === true,
+      EthereumEnabled:
+        options.EthereumEnabled === 'true' || options.EthereumEnabled === true,
       EthereumChainId: parseInt(options.EthereumChainId) || 11155111,
       EthereumContractAddress: options.EthereumContractAddress || '',
-      EthereumAlchemyWebhookSigningKey: options.EthereumAlchemyWebhookSigningKey || '',
+      EthereumAlchemyWebhookSigningKey:
+        options.EthereumAlchemyWebhookSigningKey || '',
       EthereumMinTopUp: parseInt(options.EthereumMinTopUp) || 1,
-      EthereumWalletConnectProjectID: options.EthereumWalletConnectProjectID || '',
+      EthereumWalletConnectProjectID:
+        options.EthereumWalletConnectProjectID || '',
       EthereumWalletConnectAppName: options.EthereumWalletConnectAppName || '',
-      EthereumWalletConnectAppDescription: options.EthereumWalletConnectAppDescription || '',
+      EthereumWalletConnectAppDescription:
+        options.EthereumWalletConnectAppDescription || '',
       EthereumWalletConnectAppURL: options.EthereumWalletConnectAppURL || '',
       EthereumWalletConnectAppIcon: options.EthereumWalletConnectAppIcon || '',
+      EthereumWalletConnectPrimaryRelayURL:
+        options.EthereumWalletConnectPrimaryRelayURL || '',
+      EthereumWalletConnectBackupRelayURL:
+        options.EthereumWalletConnectBackupRelayURL || '',
     };
     setSigningKeyConfigured(
       options.EthereumAlchemyWebhookSigningKeyConfigured === 'true' ||
-      options.EthereumAlchemyWebhookSigningKeyConfigured === true,
+        options.EthereumAlchemyWebhookSigningKeyConfigured === true,
     );
     setInputs(currentInputs);
     formApiRef.current.setValues(currentInputs);
@@ -73,15 +102,50 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     try {
       const formValues = formApiRef.current?.getValues?.() || inputs;
       const opts = [
-        { key: 'EthereumEnabled', value: formValues.EthereumEnabled ? 'true' : 'false' },
-        { key: 'EthereumChainId', value: String(formValues.EthereumChainId || 11155111) },
-        { key: 'EthereumContractAddress', value: formValues.EthereumContractAddress || '' },
-        { key: 'EthereumMinTopUp', value: String(formValues.EthereumMinTopUp || 1) },
-        { key: 'EthereumWalletConnectProjectID', value: formValues.EthereumWalletConnectProjectID || '' },
-        { key: 'EthereumWalletConnectAppName', value: formValues.EthereumWalletConnectAppName || '' },
-        { key: 'EthereumWalletConnectAppDescription', value: formValues.EthereumWalletConnectAppDescription || '' },
-        { key: 'EthereumWalletConnectAppURL', value: formValues.EthereumWalletConnectAppURL || '' },
-        { key: 'EthereumWalletConnectAppIcon', value: formValues.EthereumWalletConnectAppIcon || '' },
+        {
+          key: 'EthereumEnabled',
+          value: formValues.EthereumEnabled ? 'true' : 'false',
+        },
+        {
+          key: 'EthereumChainId',
+          value: String(formValues.EthereumChainId || 11155111),
+        },
+        {
+          key: 'EthereumContractAddress',
+          value: formValues.EthereumContractAddress || '',
+        },
+        {
+          key: 'EthereumMinTopUp',
+          value: String(formValues.EthereumMinTopUp || 1),
+        },
+        {
+          key: 'EthereumWalletConnectProjectID',
+          value: formValues.EthereumWalletConnectProjectID || '',
+        },
+        {
+          key: 'EthereumWalletConnectAppName',
+          value: formValues.EthereumWalletConnectAppName || '',
+        },
+        {
+          key: 'EthereumWalletConnectAppDescription',
+          value: formValues.EthereumWalletConnectAppDescription || '',
+        },
+        {
+          key: 'EthereumWalletConnectAppURL',
+          value: formValues.EthereumWalletConnectAppURL || '',
+        },
+        {
+          key: 'EthereumWalletConnectAppIcon',
+          value: formValues.EthereumWalletConnectAppIcon || '',
+        },
+        {
+          key: 'EthereumWalletConnectPrimaryRelayURL',
+          value: formValues.EthereumWalletConnectPrimaryRelayURL || '',
+        },
+        {
+          key: 'EthereumWalletConnectBackupRelayURL',
+          value: formValues.EthereumWalletConnectBackupRelayURL || '',
+        },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
       if ((formValues.EthereumAlchemyWebhookSigningKey || '').trim()) {
@@ -92,7 +156,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       }
 
       const results = await Promise.all(
-        opts.map((o) => API.put('/api/option/', { key: o.key, value: o.value }))
+        opts.map((o) =>
+          API.put('/api/option/', { key: o.key, value: o.value }),
+        ),
       );
 
       const errors = results.filter((r) => !r.data.success);
@@ -125,7 +191,10 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     setTokenModalVisible(true);
   };
   const handleTokenModalOk = () => {
-    if (!tokenForm.symbol.trim()) { showError(t('代币符号不能为空')); return; }
+    if (!tokenForm.symbol.trim()) {
+      showError(t('代币符号不能为空'));
+      return;
+    }
     const newToken = {
       symbol: tokenForm.symbol.trim(),
       address: tokenForm.address.trim(),
@@ -141,29 +210,48 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
     }
     setTokenModalVisible(false);
   };
-  const deleteToken = (index) => setTokens(tokens.filter((_, i) => i !== index));
+  const deleteToken = (index) =>
+    setTokens(tokens.filter((_, i) => i !== index));
 
   const tokenColumns = [
     { title: t('符号'), dataIndex: 'symbol', width: 100 },
     {
-      title: t('合约地址'), dataIndex: 'address',
-      render: (v) => v === '0x0000000000000000000000000000000000000000'
-        ? <Text type='tertiary'>{t('ETH (原生)')}</Text>
-        : <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v?.slice(0, 10)}...{v?.slice(-8)}</Text>
+      title: t('合约地址'),
+      dataIndex: 'address',
+      render: (v) =>
+        v === '0x0000000000000000000000000000000000000000' ? (
+          <Text type='tertiary'>{t('ETH (原生)')}</Text>
+        ) : (
+          <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>
+            {v?.slice(0, 10)}...{v?.slice(-8)}
+          </Text>
+        ),
     },
     { title: t('精度'), dataIndex: 'decimals', width: 80 },
     {
-      title: t('单价'), dataIndex: 'price', width: 120,
-      render: (v, record) => <Text>{v} {record.symbol}/unit</Text>
+      title: t('单价'),
+      dataIndex: 'price',
+      width: 120,
+      render: (v, record) => (
+        <Text>
+          {v} {record.symbol}/unit
+        </Text>
+      ),
     },
     {
-      title: t('操作'), key: 'action', width: 150,
+      title: t('操作'),
+      key: 'action',
+      width: 150,
       render: (_, record, index) => (
         <Space>
-          <Button size='small' onClick={() => openEditToken(record, index)}>{t('编辑')}</Button>
-          <Button size='small' type='danger' onClick={() => deleteToken(index)}>{t('删除')}</Button>
+          <Button size='small' onClick={() => openEditToken(record, index)}>
+            {t('编辑')}
+          </Button>
+          <Button size='small' type='danger' onClick={() => deleteToken(index)}>
+            {t('删除')}
+          </Button>
         </Space>
-      )
+      ),
     },
   ];
 
@@ -179,12 +267,18 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
             type='info'
             description={
               <>
-                {t('通过 MetaMask 钱包接受 ETH 及 ERC-20 代币支付。需要：1) 已部署智能合约 2) 配置 Alchemy Custom Webhook。')}
+                {t(
+                  '通过 MetaMask 钱包接受 ETH 及 ERC-20 代币支付。需要：1) 已部署智能合约 2) 配置 Alchemy Custom Webhook。',
+                )}
                 <br />
-                {t('如需支持手机钱包二维码连接，请配置 WalletConnect Project ID。')}
+                {t(
+                  '如需支持手机钱包二维码连接，请配置 WalletConnect Project ID。',
+                )}
                 <br />
                 {t('Webhook 地址：')}
-                <Text copyable code>{window.location.origin}/api/ethereum/webhook</Text>
+                <Text copyable code>
+                  {window.location.origin}/api/ethereum/webhook
+                </Text>
               </>
             }
           />
@@ -194,7 +288,8 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
               <Form.Switch
                 field='EthereumEnabled'
                 label={t('启用 Ethereum 支付')}
-                checkedText='|' uncheckedText='O'
+                checkedText='|'
+                uncheckedText='O'
               />
             </Col>
           </Row>
@@ -225,14 +320,14 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 label={t('Alchemy Webhook 签名密钥')}
                 placeholder={t('从 Alchemy 控制台复制 Signing Key')}
                 mode='password'
-                extraText={t('用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变')}
+                extraText={t(
+                  '用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变',
+                )}
               />
               <div style={{ marginTop: 6 }}>
                 <Text type={signingKeyConfigured ? 'success' : 'warning'}>
                   {t('Webhook Signing Key 状态：')}
-                  {signingKeyConfigured
-                    ? t('已配置')
-                    : t('未配置')}
+                  {signingKeyConfigured ? t('已配置') : t('未配置')}
                 </Text>
               </div>
             </Col>
@@ -252,7 +347,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
               <Form.Input
                 field='EthereumWalletConnectProjectID'
                 label={t('WalletConnect Project ID')}
-                placeholder={t('从 cloud.walletconnect.com / Reown Dashboard 获取')}
+                placeholder={t(
+                  '从 cloud.walletconnect.com / Reown Dashboard 获取',
+                )}
                 extraText={t('配置后可在无浏览器扩展时拉起二维码连接')}
               />
             </Col>
@@ -294,7 +391,32 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
             </Col>
           </Row>
 
-          <Button theme='solid' onClick={submitSettings} style={{ marginTop: 16 }}>
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectPrimaryRelayURL'
+                label={t('WalletConnect 主 Relay URL')}
+                placeholder='wss://relay.walletconnect.com'
+                extraText={t(
+                  '用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay',
+                )}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectBackupRelayURL'
+                label={t('WalletConnect 备用 Relay URL')}
+                placeholder='wss://your-backup-relay.example.com'
+                extraText={t('主 Relay 初始化失败时自动尝试备用地址')}
+              />
+            </Col>
+          </Row>
+
+          <Button
+            theme='solid'
+            onClick={submitSettings}
+            style={{ marginTop: 16 }}
+          >
             {t('保存 Ethereum 设置')}
           </Button>
         </Form.Section>
@@ -306,7 +428,9 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
           {t('接受的代币')}
         </Typography.Title>
         <Text type='secondary'>
-          {t('地址填 0x000...000 代表原生 ETH；ERC-20 填合约地址。价格 = 充值 1 单位需要多少代币。')}
+          {t(
+            '地址填 0x000...000 代表原生 ETH；ERC-20 填合约地址。价格 = 充值 1 单位需要多少代币。',
+          )}
         </Text>
         <div style={{ margin: '12px 0' }}>
           <Button onClick={openAddToken}>{t('新增代币')}</Button>
@@ -318,7 +442,11 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
           pagination={false}
           size='small'
         />
-        <Button theme='solid' onClick={submitSettings} style={{ marginTop: 12 }}>
+        <Button
+          theme='solid'
+          onClick={submitSettings}
+          style={{ marginTop: 12 }}
+        >
           {t('保存代币配置')}
         </Button>
       </div>
@@ -329,14 +457,31 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
         visible={tokenModalVisible}
         onOk={handleTokenModalOk}
         onCancel={() => setTokenModalVisible(false)}
-        okText={t('确定')} cancelText={t('取消')}
+        okText={t('确定')}
+        cancelText={t('取消')}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {[
-            { label: t('符号'), key: 'symbol', placeholder: 'ETH / USDT / USDC' },
-            { label: t('合约地址'), key: 'address', placeholder: '0x000...000 (ETH) 或 ERC-20 地址' },
-            { label: t('精度'), key: 'decimals', placeholder: '18 (ETH) / 6 (USDT)' },
-            { label: t('单价'), key: 'price', placeholder: '0.001 (每充值1单位扣多少代币)' },
+            {
+              label: t('符号'),
+              key: 'symbol',
+              placeholder: 'ETH / USDT / USDC',
+            },
+            {
+              label: t('合约地址'),
+              key: 'address',
+              placeholder: '0x000...000 (ETH) 或 ERC-20 地址',
+            },
+            {
+              label: t('精度'),
+              key: 'decimals',
+              placeholder: '18 (ETH) / 6 (USDT)',
+            },
+            {
+              label: t('单价'),
+              key: 'price',
+              placeholder: '0.001 (每充值1单位扣多少代币)',
+            },
           ].map(({ label, key, placeholder }) => (
             <div key={key}>
               <Text strong>{label}</Text>

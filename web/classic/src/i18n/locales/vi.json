@@ -4189,6 +4189,10 @@
     "默认用户消息": "Xin chào",
     "默认补全倍率": "Tỷ lệ hoàn thành mặc định",
     "阶梯计费（表达式解析失败）": "Thanh toán theo bậc (không phân tích được biểu thức)",
-    "阶梯计费（未匹配到对应阶梯）": "Thanh toán theo bậc (không tìm thấy bậc phù hợp)"
+    "阶梯计费（未匹配到对应阶梯）": "Thanh toán theo bậc (không tìm thấy bậc phù hợp)",
+    "WalletConnect 主 Relay URL": "URL Relay chính của WalletConnect",
+    "WalletConnect 备用 Relay URL": "URL Relay dự phòng của WalletConnect",
+    "用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay": "Dùng để ghép nối bằng mã QR và kết nối ví. Để trống để dùng Relay mặc định của WalletConnect.",
+    "主 Relay 初始化失败时自动尝试备用地址": "Tự động thử địa chỉ dự phòng nếu Relay chính khởi tạo thất bại."
   }
 }

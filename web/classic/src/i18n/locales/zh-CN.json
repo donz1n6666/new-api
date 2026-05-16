@@ -3784,6 +3784,10 @@
     "缓存创建-1h": "缓存创建-1h",
     "见上方动态计费详情": "见上方动态计费详情",
     "含时间条件": "含时间条件",
-    "含请求条件": "含请求条件"
+    "含请求条件": "含请求条件",
+    "WalletConnect 主 Relay URL": "WalletConnect 主 Relay URL",
+    "WalletConnect 备用 Relay URL": "WalletConnect 备用 Relay URL",
+    "用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay": "用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay",
+    "主 Relay 初始化失败时自动尝试备用地址": "主 Relay 初始化失败时自动尝试备用地址"
   }
 }

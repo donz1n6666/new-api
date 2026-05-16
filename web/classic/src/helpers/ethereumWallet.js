@@ -133,21 +133,80 @@ function hasWalletConnectProjectId(config = {}) {
   return String(config?.projectId || '').trim() !== '';
 }
 
-async function connectWalletConnectProvider(chainId, walletConnectConfig) {
+function getWalletConnectRelayUrls(config = {}) {
+  const urls = [
+    String(config?.primaryRelayUrl || '').trim(),
+    String(config?.backupRelayUrl || '').trim(),
+  ].filter(Boolean);
+  return [...new Set(urls)];
+}
+
+function attachWalletConnectLifecycle(provider, lifecycle = {}) {
+  if (typeof provider?.on !== 'function') return;
+  provider.on('display_uri', (uri) => {
+    lifecycle?.onWalletConnectUri?.(uri);
+  });
+  provider.on('connect', () => {
+    lifecycle?.onWalletConnectConnected?.();
+  });
+  provider.on('disconnect', () => {
+    lifecycle?.onWalletConnectDisconnected?.();
+  });
+}
+
+async function connectWalletConnectProvider(
+  chainId,
+  walletConnectConfig,
+  relayUrl = '',
+  relayIndex = 0,
+) {
   const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
-  const provider = await EthereumProvider.init({
+  const initOptions = {
     projectId: String(walletConnectConfig.projectId).trim(),
     showQrModal: false,
     chains: [Number(chainId)],
     optionalChains: [Number(chainId)],
     metadata: buildWalletConnectMetadata(walletConnectConfig),
-  });
+  };
+  if (relayUrl) {
+    initOptions.relayUrl = relayUrl;
+  }
+  const provider = await EthereumProvider.init(initOptions);
 
   return {
     mode: 'walletconnect',
     walletName: 'WalletConnect',
+    relayUrl,
+    relayIndex,
     provider,
   };
+}
+
+async function connectWalletConnectProviderWithFallback(
+  chainId,
+  walletConnectConfig,
+  lifecycle = {},
+  startIndex = 0,
+) {
+  const relayUrls = getWalletConnectRelayUrls(walletConnectConfig);
+  const candidates = relayUrls.length > 0 ? relayUrls : [''];
+  let lastError;
+  for (let i = startIndex; i < candidates.length; i += 1) {
+    try {
+      const connection = await connectWalletConnectProvider(
+        chainId,
+        walletConnectConfig,
+        candidates[i],
+        i,
+      );
+      connection.relayUrls = candidates;
+      attachWalletConnectLifecycle(connection.provider, lifecycle);
+      return connection;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('WalletConnect provider init failed');
 }
 
 export async function connectEthereumWallet(
@@ -167,23 +226,11 @@ export async function connectEthereumWallet(
 
   if (hasWalletConnectProjectId(walletConnectConfig)) {
     lifecycle?.onWalletConnectPending?.();
-    const connection = await connectWalletConnectProvider(
+    const connection = await connectWalletConnectProviderWithFallback(
       chainId,
       walletConnectConfig,
+      lifecycle,
     );
-    const provider = connection.provider;
-
-    if (typeof provider?.on === 'function') {
-      provider.on('display_uri', (uri) => {
-        lifecycle?.onWalletConnectUri?.(uri);
-      });
-      provider.on('connect', () => {
-        lifecycle?.onWalletConnectConnected?.();
-      });
-      provider.on('disconnect', () => {
-        lifecycle?.onWalletConnectDisconnected?.();
-      });
-    }
 
     return connection;
   }
@@ -350,17 +397,38 @@ export async function executeEthereumOrderWithAutoWallet(
   walletConnectConfig = {},
   lifecycle = {},
 ) {
-  const connection = await connectEthereumWallet(
-    Number(order?.chain_id || 0),
+  const orderChainId = Number(order?.chain_id || 0);
+  let connection = await connectEthereumWallet(
+    orderChainId,
     walletConnectConfig,
     lifecycle,
   );
-  const rawProvider = connection.provider;
+  let rawProvider = connection.provider;
   const { ethers } = await import('ethers');
   let browserProvider;
   try {
     if (connection.mode === 'walletconnect') {
-      await connectWalletSession(rawProvider);
+      try {
+        await connectWalletSession(rawProvider);
+      } catch (error) {
+        const nextRelayIndex = Number(connection.relayIndex || 0) + 1;
+        if (
+          Array.isArray(connection.relayUrls) &&
+          nextRelayIndex < connection.relayUrls.length
+        ) {
+          lifecycle?.onWalletConnectPending?.();
+          connection = await connectWalletConnectProviderWithFallback(
+            orderChainId,
+            walletConnectConfig,
+            lifecycle,
+            nextRelayIndex,
+          );
+          rawProvider = connection.provider;
+          await connectWalletSession(rawProvider);
+        } else {
+          throw error;
+        }
+      }
       browserProvider = new ethers.BrowserProvider(rawProvider);
       lifecycle?.onWalletConnectSessionEstablished?.();
     } else {

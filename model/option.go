@@ -128,6 +128,8 @@ func InitOptionMap() {
 	common.OptionMap["EthereumWalletConnectAppDescription"] = setting.EthereumWalletConnectAppDescription
 	common.OptionMap["EthereumWalletConnectAppURL"] = setting.EthereumWalletConnectAppURL
 	common.OptionMap["EthereumWalletConnectAppIcon"] = setting.EthereumWalletConnectAppIcon
+	common.OptionMap["EthereumWalletConnectPrimaryRelayURL"] = setting.EthereumWalletConnectPrimaryRelayURL
+	common.OptionMap["EthereumWalletConnectBackupRelayURL"] = setting.EthereumWalletConnectBackupRelayURL
 	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
@@ -490,6 +492,10 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.EthereumWalletConnectAppURL = value
 	case "EthereumWalletConnectAppIcon":
 		setting.EthereumWalletConnectAppIcon = value
+	case "EthereumWalletConnectPrimaryRelayURL":
+		setting.EthereumWalletConnectPrimaryRelayURL = value
+	case "EthereumWalletConnectBackupRelayURL":
+		setting.EthereumWalletConnectBackupRelayURL = value
 	case "EthereumSupportedTokens":
 		// validated lazily via GetEthereumTokens(), just store in OptionMap
 	case "TopupGroupRatio":
