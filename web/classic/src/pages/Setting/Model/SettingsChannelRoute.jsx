@@ -52,6 +52,7 @@ import {
   PathSelector,
   ChannelSelector,
   useChannelNameMap,
+  extractExactModelNames,
 } from '../../../components/common/ui/channel-route-selectors';
 
 const { Text, Title } = Typography;
@@ -317,7 +318,7 @@ function ConditionRow({ condition, onChange, onRemove }) {
 // Visual Tier Card (Semi Design)
 // ---------------------------------------------------------------------------
 
-function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition }) {
+function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition, modelNames }) {
   const { t } = useTranslation();
   const isCatchAll = tier.conditions.length === 0 && index === total - 1;
 
@@ -400,6 +401,7 @@ function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition 
           value={channelIdsToText(tier.channel_ids)}
           onChange={(text) => handleChannelIdsChange(text)}
           compact
+          modelNames={modelNames}
         />
       </div>
     </Card>
@@ -410,7 +412,7 @@ function RouteTierCard({ tier, index, total, onChange, onRemove, onAddCondition 
 // Visual Tier Editor (Semi Design)
 // ---------------------------------------------------------------------------
 
-function RouteTierEditor({ tiers, onChange }) {
+function RouteTierEditor({ tiers, onChange, modelNames }) {
   const { t } = useTranslation();
 
   const handleTierChange = useCallback((index, next) => {
@@ -460,6 +462,7 @@ function RouteTierEditor({ tiers, onChange }) {
           onChange={(next) => handleTierChange(index, next)}
           onRemove={() => handleRemoveTier(index)}
           onAddCondition={() => handleAddCondition(index)}
+          modelNames={modelNames}
         />
       ))}
       <Button
@@ -497,6 +500,11 @@ export default function SettingsChannelRoute(props) {
   const modalFormRef = useRef();
 
   const getChannelName = useChannelNameMap();
+
+  const editingModelNames = useMemo(
+    () => extractExactModelNames(selectorModelRegex),
+    [selectorModelRegex],
+  );
 
   const ruleColumns = useMemo(
     () => [
@@ -951,6 +959,7 @@ export default function SettingsChannelRoute(props) {
             <ChannelSelector
               value={selectorChannelIds}
               onChange={setSelectorChannelIds}
+              modelNames={editingModelNames}
             />
           </div>
 
@@ -960,7 +969,7 @@ export default function SettingsChannelRoute(props) {
             <Text type='tertiary' size='small' style={{ display: 'block', marginBottom: 8 }}>
               {t('每个档位可设置 0~2 个条件（对 len/p/c，AND 关系），最后一档为兜底无需条件。档位按顺序评估，首个匹配生效。')}
             </Text>
-            <RouteTierEditor tiers={editingTiers} onChange={setEditingTiers} />
+            <RouteTierEditor tiers={editingTiers} onChange={setEditingTiers} modelNames={editingModelNames} />
           </div>
 
           <Form.Switch

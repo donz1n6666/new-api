@@ -64,15 +64,30 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 		channelIDs := rule.ChannelIDs
 		matchedTier := ""
 		estimatedTokens := common.GetContextKeyInt(param.Ctx, constant.ContextKeyEstimatedTokens)
-		if len(rule.RouteTiers) > 0 && estimatedTokens > 0 {
-			for _, tier := range rule.RouteTiers {
-				if evaluateRouteTier(tier.Conditions, estimatedTokens) {
-					if len(tier.ChannelIDs) > 0 {
-						channelIDs = tier.ChannelIDs
-						matchedTier = tier.Label
-						break
+		if len(rule.RouteTiers) > 0 {
+			if estimatedTokens > 0 {
+				for _, tier := range rule.RouteTiers {
+					if evaluateRouteTier(tier.Conditions, estimatedTokens) {
+						if len(tier.ChannelIDs) > 0 {
+							channelIDs = tier.ChannelIDs
+							matchedTier = tier.Label
+							break
+						}
+						// ChannelIDs empty, continue to next tier
 					}
-					// ChannelIDs empty, continue to next tier
+				}
+			} else if len(channelIDs) == 0 {
+				// estimatedTokens unknown (Distribute phase) and Fallback Pool empty:
+				// use union of all tier channels as placeholder candidates so Distribute can
+				// pick a channel; the Relay phase will re-route precisely with real tokens.
+				seen := make(map[int]struct{})
+				for _, tier := range rule.RouteTiers {
+					for _, id := range tier.ChannelIDs {
+						if _, ok := seen[id]; !ok {
+							seen[id] = struct{}{}
+							channelIDs = append(channelIDs, id)
+						}
+					}
 				}
 			}
 		}
