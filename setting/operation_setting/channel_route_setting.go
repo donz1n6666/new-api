@@ -19,9 +19,9 @@ type ChannelRouteRule struct {
 	Name       string      `json:"name"`
 	ModelRegex []string    `json:"model_regex"`
 	PathRegex  []string    `json:"path_regex"`
-	ChannelIDs []int       `json:"channel_ids"`           // fallback pool
+	ChannelIDs []int       `json:"channel_ids,omitempty"` // Deprecated: legacy fallback pool, kept for backward compatibility. Use RouteTiers with an empty-conditions tier instead.
 	Strict     bool        `json:"strict"`
-	RouteTiers []RouteTier `json:"route_tiers,omitempty"` // tiered routing
+	RouteTiers []RouteTier `json:"route_tiers,omitempty"` // tiered routing; a tier with empty Conditions acts as the catch-all (fallback)
 }
 
 type ChannelRouteSetting struct {

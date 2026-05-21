@@ -98,6 +98,7 @@ export default function ModelPricingEditor({
   listDescription = '',
   emptyTitle = '',
   emptyDescription = '',
+  onSelectedGroupChange,
 }) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -105,7 +106,14 @@ export default function ModelPricingEditor({
   const [batchVisible, setBatchVisible] = useState(false);
   const [syncVisible, setSyncVisible] = useState(false);
   const [newModelName, setNewModelName] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState('global');
+  const [selectedGroup, setSelectedGroupState] = useState('global');
+  const setSelectedGroup = useCallback(
+    (next) => {
+      setSelectedGroupState(next);
+      onSelectedGroupChange?.(next);
+    },
+    [onSelectedGroupChange],
+  );
   const [syncTargetGroups, setSyncTargetGroups] = useState([]);
   const [syncMode, setSyncMode] = useState('selected'); // 'selected' | 'all'
 

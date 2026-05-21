@@ -147,13 +147,12 @@ const rulesExample = JSON.stringify(
       group_regex: ['^default$'],
       model_regex: ['^Qwen3\\.5-35B-A3B$'],
       path_regex: ['^/v1/messages$'],
-      channel_ids: [12],
       strict: true,
+      route_tiers: [{ label: '兜底', conditions: [], channel_ids: [12] }],
     },
     {
       name: 'GPT-4o 多档位渠道路由',
       model_regex: ['^gpt-4o$'],
-      channel_ids: [5, 6, 7, 8],
       route_tiers: [
         {
           label: '短请求',
@@ -200,27 +199,43 @@ const stringifyPretty = (value) => JSON.stringify(value, null, 2);
 const stringifyCompact = (value) => JSON.stringify(value);
 
 const migrateOldFormat = (rule) => {
-  if (rule.route_tiers) return rule;
-  const threshold = rule.token_threshold;
-  const shortIds = rule.short_channel_ids;
-  const longIds = rule.long_channel_ids;
-  if (threshold && threshold > 0) {
-    const tiers = [];
-    if (shortIds && shortIds.length > 0) {
-      tiers.push({
-        label: '短请求',
-        conditions: [{ var: 'len', op: '<', value: threshold }],
-        channel_ids: shortIds,
-      });
+  // Legacy: token_threshold / short_channel_ids / long_channel_ids
+  if (!rule.route_tiers) {
+    const threshold = rule.token_threshold;
+    const shortIds = rule.short_channel_ids;
+    const longIds = rule.long_channel_ids;
+    if (threshold && threshold > 0) {
+      const tiers = [];
+      if (shortIds && shortIds.length > 0) {
+        tiers.push({
+          label: '短请求',
+          conditions: [{ var: 'len', op: '<', value: threshold }],
+          channel_ids: shortIds,
+        });
+      }
+      if (longIds && longIds.length > 0) {
+        tiers.push({ label: '长请求', conditions: [], channel_ids: longIds });
+      }
+      if (tiers.length > 0) rule.route_tiers = tiers;
     }
-    if (longIds && longIds.length > 0) {
-      tiers.push({ label: '长请求', conditions: [], channel_ids: longIds });
-    }
-    if (tiers.length > 0) rule.route_tiers = tiers;
   }
   delete rule.token_threshold;
   delete rule.short_channel_ids;
   delete rule.long_channel_ids;
+
+  // Legacy: standalone channel_ids (fallback pool). Convert to a catch-all
+  // tier appended after any existing tiers, then drop the field.
+  if (Array.isArray(rule.channel_ids) && rule.channel_ids.length > 0) {
+    const tiers = Array.isArray(rule.route_tiers) ? [...rule.route_tiers] : [];
+    const hasCatchAll = tiers.some(
+      (t) => !t.conditions || t.conditions.length === 0,
+    );
+    if (!hasCatchAll) {
+      tiers.push({ label: '兜底', conditions: [], channel_ids: rule.channel_ids });
+    }
+    rule.route_tiers = tiers;
+  }
+  delete rule.channel_ids;
   return rule;
 };
 
@@ -495,7 +510,6 @@ export default function SettingsChannelRoute(props) {
   const [selectorGroupRegex, setSelectorGroupRegex] = useState('');
   const [selectorModelRegex, setSelectorModelRegex] = useState('');
   const [selectorPathRegex, setSelectorPathRegex] = useState('');
-  const [selectorChannelIds, setSelectorChannelIds] = useState('');
   const refForm = useRef();
   const modalFormRef = useRef();
 
@@ -545,18 +559,6 @@ export default function SettingsChannelRoute(props) {
             ? (list || []).slice(0, 2).map((item, index) => (
                 <Tag key={`${item}-${index}`} style={{ marginRight: 4 }}>
                   {item}
-                </Tag>
-              ))
-            : <Text type='tertiary'>-</Text>,
-      },
-      {
-        title: t('兜底渠道池'),
-        dataIndex: 'channel_ids',
-        render: (list) =>
-          (list || []).length > 0
-            ? (list || []).map((item) => (
-                <Tag key={item} color='orange' style={{ marginRight: 4 }}>
-                  {getChannelName(item)}
                 </Tag>
               ))
             : <Text type='tertiary'>-</Text>,
@@ -637,7 +639,7 @@ export default function SettingsChannelRoute(props) {
   const openAddModal = () => {
     const nextRule = {
       name: '', group_regex: [], model_regex: [], path_regex: [],
-      channel_ids: [], strict: true,
+      strict: true,
     };
     setEditingRule(nextRule);
     setIsEdit(false);
@@ -645,7 +647,6 @@ export default function SettingsChannelRoute(props) {
     setSelectorGroupRegex('');
     setSelectorModelRegex('');
     setSelectorPathRegex('');
-    setSelectorChannelIds('');
     setModalVisible(true);
   };
 
@@ -656,7 +657,6 @@ export default function SettingsChannelRoute(props) {
     setSelectorGroupRegex((nextRule.group_regex || []).join('\n'));
     setSelectorModelRegex((nextRule.model_regex || []).join('\n'));
     setSelectorPathRegex((nextRule.path_regex || []).join('\n'));
-    setSelectorChannelIds((nextRule.channel_ids || []).join('\n'));
     setEditingTiers(
       nextRule.route_tiers?.length
         ? nextRule.route_tiers.map((t) => ({
@@ -684,17 +684,10 @@ export default function SettingsChannelRoute(props) {
         return showError(t('模型正则不能为空'));
       }
 
-      // Validate tiers first
+      // Validate tiers: must have at least one tier with channel IDs
       const validTiers = editingTiers.filter((tier) => tier.channel_ids.length > 0);
-      const hasTiers = validTiers.length > 0;
-      if (editingTiers.length > 0 && !hasTiers) {
+      if (validTiers.length === 0) {
         return showError(t('至少一个档位必须填写渠道 ID'));
-      }
-
-      // Channel IDs are required only when no tiers are configured
-      const channelIds = normalizeChannelIds(selectorChannelIds);
-      if (!hasTiers && (!channelIds || channelIds.length === 0)) {
-        return showError(t('渠道 ID 必须是正整数，支持换行或逗号分隔'));
       }
 
       // Validate tier configuration (overlaps, dead tiers, catch-all position)
@@ -707,7 +700,7 @@ export default function SettingsChannelRoute(props) {
 
       // Auto-generate labels for tiers without labels
       const tiersWithLabels = validTiers.map((tier) => ({
-        label: tier.label || autoTierLabel(tier.conditions),
+        label: tier.label || autoTierLabel(tier.conditions) || (tier.conditions.length === 0 ? '兜底' : ''),
         conditions: tier.conditions,
         channel_ids: tier.channel_ids,
       }));
@@ -718,14 +711,11 @@ export default function SettingsChannelRoute(props) {
         group_regex: normalizeStringList(selectorGroupRegex),
         model_regex: modelRegex,
         path_regex: normalizeStringList(selectorPathRegex),
-        channel_ids: channelIds || [],
         strict: !!values.strict,
+        route_tiers: tiersWithLabels,
       };
       if (!rulePayload.name) {
         return showError(t('名称不能为空'));
-      }
-      if (tiersWithLabels.length > 0) {
-        rulePayload.route_tiers = tiersWithLabels;
       }
 
       const nextRules = [...(rules || [])];
@@ -889,7 +879,7 @@ export default function SettingsChannelRoute(props) {
                     rows={18}
                     placeholder={rulesExample}
                     rules={[{ validator: (rule, value) => verifyJSON(value || '[]'), message: t('不是合法的 JSON 字符串') }]}
-                    extraText={t('字段支持：name、group_regex、model_regex、path_regex、channel_ids、strict、route_tiers。')}
+                    extraText={t('字段支持：name、group_regex、model_regex、path_regex、route_tiers、strict。')}
                     onChange={(value) => setInputs({ ...inputs, [KEY_RULES]: value })}
                   />
                 </Col>
@@ -919,7 +909,6 @@ export default function SettingsChannelRoute(props) {
                   group_regex_text: (editingRule.group_regex || []).join('\n'),
                   model_regex_text: (editingRule.model_regex || []).join('\n'),
                   path_regex_text: (editingRule.path_regex || []).join('\n'),
-                  channel_ids_text: (editingRule.channel_ids || []).join('\n'),
                   strict: editingRule.strict ?? true,
                 }
               : {}
@@ -954,20 +943,12 @@ export default function SettingsChannelRoute(props) {
               onChange={setSelectorPathRegex}
             />
           </div>
-          <div style={{ marginBottom: 12 }}>
-            <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{t('兜底渠道池')}</Text>
-            <ChannelSelector
-              value={selectorChannelIds}
-              onChange={setSelectorChannelIds}
-              modelNames={editingModelNames}
-            />
-          </div>
 
           {/* Visual Tier Editor */}
           <div style={{ marginBottom: 12 }}>
-            <Text strong style={{ display: 'block', marginBottom: 4 }}>{t('渠道路由档位（可选）')}</Text>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>{t('渠道路由档位')}</Text>
             <Text type='tertiary' size='small' style={{ display: 'block', marginBottom: 8 }}>
-              {t('每个档位可设置 0~2 个条件（对 len/p/c，AND 关系），最后一档为兜底无需条件。档位按顺序评估，首个匹配生效。')}
+              {t('每个档位可设置 0~2 个条件（对 len/p/c，AND 关系）。不加条件的档位即为兜底，档位按顺序评估，首个匹配生效。')}
             </Text>
             <RouteTierEditor tiers={editingTiers} onChange={setEditingTiers} modelNames={editingModelNames} />
           </div>

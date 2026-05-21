@@ -269,8 +269,8 @@ func SyncUpstreamModels(c *gin.Context) {
 	var req syncRequest
 	// 允许空体
 	_ = c.ShouldBindJSON(&req)
-	// 1) 获取未配置模型列表
-	missing, err := model.GetMissingModels()
+	// 1) 获取未配置模型列表（同步上游始终覆盖全部分组下的缺失模型）
+	missing, err := model.GetMissingModels("")
 	if err != nil {
 		common.SysError("failed to get missing models: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取模型列表失败，请稍后重试"})
@@ -567,8 +567,8 @@ func SyncUpstreamPreview(c *gin.Context) {
 		}
 	}
 
-	// 3) 缺失且上游存在的模型
-	missingList, _ := model.GetMissingModels()
+	// 3) 缺失且上游存在的模型（同步上游始终覆盖全局视图）
+	missingList, _ := model.GetMissingModels("")
 	var missing []string
 	for _, name := range missingList {
 		if _, ok := modelByName[name]; ok {

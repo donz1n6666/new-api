@@ -26,6 +26,7 @@ import {
   Typography,
   Empty,
   Input,
+  Select,
 } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
@@ -36,17 +37,37 @@ import { API, showError } from '../../../../helpers';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
+const GLOBAL_GROUP = 'global';
+
 const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
   const [loading, setLoading] = useState(false);
   const [missingModels, setMissingModels] = useState([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(GLOBAL_GROUP);
   const isMobile = useIsMobile();
 
-  const fetchMissing = async () => {
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      const data = res.data?.data;
+      if (Array.isArray(data)) {
+        setGroups(data.filter((g) => g && g !== GLOBAL_GROUP));
+      }
+    } catch (_) {
+      // 分组拉取失败不致命：保留仅全局选项
+    }
+  };
+
+  const fetchMissing = async (group) => {
     setLoading(true);
     try {
-      const res = await API.get('/api/models/missing');
+      const url =
+        !group || group === GLOBAL_GROUP
+          ? '/api/models/missing'
+          : `/api/models/missing?group=${encodeURIComponent(group)}`;
+      const res = await API.get(url);
       if (res.data.success) {
         setMissingModels(res.data.data || []);
       } else {
@@ -60,13 +81,22 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
 
   useEffect(() => {
     if (visible) {
-      fetchMissing();
       setSearchKeyword('');
       setCurrentPage(1);
+      setSelectedGroup(GLOBAL_GROUP);
+      fetchGroups();
+      fetchMissing(GLOBAL_GROUP);
     } else {
       setMissingModels([]);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (visible) {
+      fetchMissing(selectedGroup);
+      setCurrentPage(1);
+    }
+  }, [selectedGroup]);
 
   // 过滤和分页逻辑
   const filteredModels = missingModels.filter((model) =>
@@ -133,63 +163,77 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
       className='!rounded-lg'
     >
       <Spin spinning={loading}>
-        {missingModels.length === 0 && !loading ? (
-          <Empty
-            image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-            darkModeImage={
-              <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
-            }
-            description={t('暂无缺失模型')}
-            style={{ padding: 30 }}
-          />
-        ) : (
-          <div className='missing-models-content'>
-            {/* 搜索框 */}
-            <div className='flex items-center justify-end gap-2 w-full mb-4'>
-              <Input
-                placeholder={t('搜索模型...')}
-                value={searchKeyword}
-                onChange={(v) => {
-                  setSearchKeyword(v);
-                  setCurrentPage(1);
-                }}
-                className='!w-full'
-                prefix={<IconSearch />}
-                showClear
-              />
-            </div>
-
-            {/* 表格 */}
-            {filteredModels.length > 0 ? (
-              <Table
-                columns={columns}
-                dataSource={dataSource}
-                pagination={{
-                  currentPage: currentPage,
-                  pageSize: MODEL_TABLE_PAGE_SIZE,
-                  total: filteredModels.length,
-                  showSizeChanger: false,
-                  onPageChange: (page) => setCurrentPage(page),
-                }}
-              />
-            ) : (
-              <Empty
-                image={
-                  <IllustrationNoResult style={{ width: 100, height: 100 }} />
-                }
-                darkModeImage={
-                  <IllustrationNoResultDark
-                    style={{ width: 100, height: 100 }}
-                  />
-                }
-                description={
-                  searchKeyword ? t('未找到匹配的模型') : t('暂无缺失模型')
-                }
-                style={{ padding: 20 }}
-              />
-            )}
+        <div className='missing-models-content'>
+          {/* 分组选择与搜索 */}
+          <div className='flex flex-wrap items-center justify-between gap-2 w-full mb-4'>
+            <Select
+              value={selectedGroup}
+              onChange={setSelectedGroup}
+              style={{ width: isMobile ? '100%' : 220 }}
+              placeholder={t('选择分组')}
+            >
+              <Select.Option value={GLOBAL_GROUP}>
+                {t('全局（所有分组）')}
+              </Select.Option>
+              {groups.map((group) => (
+                <Select.Option key={group} value={group}>
+                  {group} {t('分组')}
+                </Select.Option>
+              ))}
+            </Select>
+            <Input
+              placeholder={t('搜索模型...')}
+              value={searchKeyword}
+              onChange={(v) => {
+                setSearchKeyword(v);
+                setCurrentPage(1);
+              }}
+              style={{ width: isMobile ? '100%' : 260 }}
+              prefix={<IconSearch />}
+              showClear
+            />
           </div>
-        )}
+
+          {missingModels.length === 0 && !loading ? (
+            <Empty
+              image={
+                <IllustrationNoResult style={{ width: 150, height: 150 }} />
+              }
+              darkModeImage={
+                <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
+              }
+              description={t('暂无缺失模型')}
+              style={{ padding: 30 }}
+            />
+          ) : filteredModels.length > 0 ? (
+            <Table
+              columns={columns}
+              dataSource={dataSource}
+              pagination={{
+                currentPage: currentPage,
+                pageSize: MODEL_TABLE_PAGE_SIZE,
+                total: filteredModels.length,
+                showSizeChanger: false,
+                onPageChange: (page) => setCurrentPage(page),
+              }}
+            />
+          ) : (
+            <Empty
+              image={
+                <IllustrationNoResult style={{ width: 100, height: 100 }} />
+              }
+              darkModeImage={
+                <IllustrationNoResultDark
+                  style={{ width: 100, height: 100 }}
+                />
+              }
+              description={
+                searchKeyword ? t('未找到匹配的模型') : t('暂无缺失模型')
+              }
+              style={{ padding: 20 }}
+            />
+          )}
+        </div>
       </Spin>
     </Modal>
   );

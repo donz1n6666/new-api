@@ -60,13 +60,16 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 		result.Strict = rule.Strict
 		result.RuleName = strings.TrimSpace(rule.Name)
 
-		// Tiered channel routing
-		channelIDs := rule.ChannelIDs
+		// Tiered channel routing. Old configurations stored a separate
+		// rule.ChannelIDs fallback pool; we surface that as an implicit
+		// catch-all tier so legacy data keeps working without a UI for it.
+		tiers := resolveRouteTiers(rule)
+		var channelIDs []int
 		matchedTier := ""
 		estimatedTokens := common.GetContextKeyInt(param.Ctx, constant.ContextKeyEstimatedTokens)
-		if len(rule.RouteTiers) > 0 {
+		if len(tiers) > 0 {
 			if estimatedTokens > 0 {
-				for _, tier := range rule.RouteTiers {
+				for _, tier := range tiers {
 					if evaluateRouteTier(tier.Conditions, estimatedTokens) {
 						if len(tier.ChannelIDs) > 0 {
 							channelIDs = tier.ChannelIDs
@@ -76,12 +79,13 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 						// ChannelIDs empty, continue to next tier
 					}
 				}
-			} else if len(channelIDs) == 0 {
-				// estimatedTokens unknown (Distribute phase) and Fallback Pool empty:
-				// use union of all tier channels as placeholder candidates so Distribute can
-				// pick a channel; the Relay phase will re-route precisely with real tokens.
+			} else {
+				// estimatedTokens unknown (Distribute phase): use union of all
+				// tier channels as placeholder candidates so Distribute can
+				// pick a channel; the Relay phase re-routes precisely with
+				// real tokens.
 				seen := make(map[int]struct{})
-				for _, tier := range rule.RouteTiers {
+				for _, tier := range tiers {
 					for _, id := range tier.ChannelIDs {
 						if _, ok := seen[id]; !ok {
 							seen[id] = struct{}{}
@@ -101,14 +105,37 @@ func GetChannelByRoute(param *RetryParam) (*ChannelRouteMatch, error) {
 		result.Exhausted = exhausted
 
 		if channel != nil {
-			markChannelRouteUsed(param.Ctx, rule, param.ModelName, param.TokenGroup, selectGroup, channel.Id, path, estimatedTokens, matchedTier)
+			markChannelRouteUsed(param.Ctx, rule, channelIDs, param.ModelName, param.TokenGroup, selectGroup, channel.Id, path, estimatedTokens, matchedTier, len(tiers))
 		} else {
-			markChannelRouteExhausted(param.Ctx, rule, param.ModelName, param.TokenGroup, path, estimatedTokens, matchedTier)
+			markChannelRouteExhausted(param.Ctx, rule, channelIDs, param.ModelName, param.TokenGroup, path, estimatedTokens, matchedTier, len(tiers))
 		}
 		return result, nil
 	}
 
 	return result, nil
+}
+
+// resolveRouteTiers returns the rule's tier list, transparently appending an
+// implicit catch-all tier built from the deprecated rule.ChannelIDs field when
+// the rule has no existing catch-all. This lets older stored configurations
+// (which relied on a separate fallback pool) keep working after the UI was
+// simplified to expose only tiers.
+func resolveRouteTiers(rule operation_setting.ChannelRouteRule) []operation_setting.RouteTier {
+	if len(rule.ChannelIDs) == 0 {
+		return rule.RouteTiers
+	}
+	for _, tier := range rule.RouteTiers {
+		if len(tier.Conditions) == 0 {
+			// already has a catch-all; ignore legacy ChannelIDs
+			return rule.RouteTiers
+		}
+	}
+	tiers := make([]operation_setting.RouteTier, 0, len(rule.RouteTiers)+1)
+	tiers = append(tiers, rule.RouteTiers...)
+	tiers = append(tiers, operation_setting.RouteTier{
+		ChannelIDs: rule.ChannelIDs,
+	})
+	return tiers
 }
 
 func evaluateRouteTier(conditions []operation_setting.RouteTierCondition, estimatedTokens int) bool {
@@ -345,7 +372,7 @@ func channelRouteMatchAnyRegex(patterns []string, value string) bool {
 	return false
 }
 
-func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, selectedGroup string, channelID int, requestPath string, estimatedTokens int, matchedTier string) {
+func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRule, channelIDs []int, modelName string, usingGroup string, selectedGroup string, channelID int, requestPath string, estimatedTokens int, matchedTier string, tierCount int) {
 	if c == nil {
 		return
 	}
@@ -355,21 +382,21 @@ func markChannelRouteUsed(c *gin.Context, rule operation_setting.ChannelRouteRul
 		"request_path":   requestPath,
 		"using_group":    usingGroup,
 		"selected_group": selectedGroup,
-		"channel_ids":    rule.ChannelIDs,
+		"channel_ids":    channelIDs,
 		"channel_id":     channelID,
 		"strict":         rule.Strict,
 	}
 	if matchedTier != "" {
 		logInfo["matched_tier"] = matchedTier
 	}
-	if len(rule.RouteTiers) > 0 {
+	if tierCount > 0 {
 		logInfo["estimated_tokens"] = estimatedTokens
-		logInfo["route_tiers"] = len(rule.RouteTiers)
+		logInfo["route_tiers"] = tierCount
 	}
 	c.Set(ginKeyChannelRouteLogInfo, logInfo)
 }
 
-func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRouteRule, modelName string, usingGroup string, requestPath string, estimatedTokens int, matchedTier string) {
+func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRouteRule, channelIDs []int, modelName string, usingGroup string, requestPath string, estimatedTokens int, matchedTier string, tierCount int) {
 	if c == nil {
 		return
 	}
@@ -378,16 +405,16 @@ func markChannelRouteExhausted(c *gin.Context, rule operation_setting.ChannelRou
 		"model":        modelName,
 		"request_path": requestPath,
 		"using_group":  usingGroup,
-		"channel_ids":  rule.ChannelIDs,
+		"channel_ids":  channelIDs,
 		"strict":       rule.Strict,
 		"exhausted":    true,
 	}
 	if matchedTier != "" {
 		logInfo["matched_tier"] = matchedTier
 	}
-	if len(rule.RouteTiers) > 0 {
+	if tierCount > 0 {
 		logInfo["estimated_tokens"] = estimatedTokens
-		logInfo["route_tiers"] = len(rule.RouteTiers)
+		logInfo["route_tiers"] = tierCount
 	}
 	c.Set(ginKeyChannelRouteLogInfo, logInfo)
 }

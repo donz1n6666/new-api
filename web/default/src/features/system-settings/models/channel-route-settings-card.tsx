@@ -68,7 +68,6 @@ type ChannelRouteRule = {
   group_regex: string[]
   model_regex: string[]
   path_regex: string[]
-  channel_ids: number[]
   strict: boolean
   route_tiers?: RouteTier[]
 }
@@ -124,13 +123,12 @@ const rulesExample = JSON.stringify(
       group_regex: ['^default$'],
       model_regex: ['^Qwen3\\.5-35B-A3B$'],
       path_regex: ['^/v1/messages$'],
-      channel_ids: [12],
       strict: true,
+      route_tiers: [{ label: 'catch-all', conditions: [], channel_ids: [12] }],
     },
     {
       name: 'GPT-4o tiered routing',
       model_regex: ['^gpt-4o$'],
-      channel_ids: [5, 6, 7, 8],
       route_tiers: [
         {
           label: 'short',
@@ -305,27 +303,50 @@ function normalizeJson(value: string) {
 }
 
 function migrateOldFormat(rule: Record<string, unknown>): Record<string, unknown> {
-  if (rule.route_tiers) return rule
-  const threshold = rule.token_threshold as number | undefined
-  const shortIds = rule.short_channel_ids as number[] | undefined
-  const longIds = rule.long_channel_ids as number[] | undefined
-  if (threshold && threshold > 0) {
-    const tiers: RouteTier[] = []
-    if (shortIds && shortIds.length > 0) {
-      tiers.push({
-        label: 'short',
-        conditions: [{ var: 'len', op: '<', value: threshold }],
-        channel_ids: shortIds,
-      })
+  // Legacy: token_threshold / short_channel_ids / long_channel_ids
+  if (!rule.route_tiers) {
+    const threshold = rule.token_threshold as number | undefined
+    const shortIds = rule.short_channel_ids as number[] | undefined
+    const longIds = rule.long_channel_ids as number[] | undefined
+    if (threshold && threshold > 0) {
+      const tiers: RouteTier[] = []
+      if (shortIds && shortIds.length > 0) {
+        tiers.push({
+          label: 'short',
+          conditions: [{ var: 'len', op: '<', value: threshold }],
+          channel_ids: shortIds,
+        })
+      }
+      if (longIds && longIds.length > 0) {
+        tiers.push({ label: 'long', conditions: [], channel_ids: longIds })
+      }
+      if (tiers.length > 0) rule.route_tiers = tiers
     }
-    if (longIds && longIds.length > 0) {
-      tiers.push({ label: 'long', conditions: [], channel_ids: longIds })
-    }
-    if (tiers.length > 0) rule.route_tiers = tiers
   }
   delete rule.token_threshold
   delete rule.short_channel_ids
   delete rule.long_channel_ids
+
+  // Legacy: standalone channel_ids (fallback pool). Convert to a catch-all
+  // tier appended after any existing tiers, then drop the field.
+  const legacyChannelIds = rule.channel_ids as number[] | undefined
+  if (Array.isArray(legacyChannelIds) && legacyChannelIds.length > 0) {
+    const tiers = Array.isArray(rule.route_tiers)
+      ? [...(rule.route_tiers as RouteTier[])]
+      : []
+    const hasCatchAll = tiers.some(
+      (t) => !t.conditions || t.conditions.length === 0,
+    )
+    if (!hasCatchAll) {
+      tiers.push({
+        label: 'catch-all',
+        conditions: [],
+        channel_ids: legacyChannelIds,
+      })
+    }
+    rule.route_tiers = tiers
+  }
+  delete rule.channel_ids
   return rule
 }
 
@@ -692,7 +713,6 @@ export function ChannelRouteSettingsCard({
   const [dlgGroupRegex, setDlgGroupRegex] = useState('')
   const [dlgModelRegex, setDlgModelRegex] = useState('')
   const [dlgPathRegex, setDlgPathRegex] = useState('')
-  const [dlgChannelIds, setDlgChannelIds] = useState('')
   const [dlgStrict, setDlgStrict] = useState(true)
 
   const openCreateDialog = () => {
@@ -701,7 +721,6 @@ export function ChannelRouteSettingsCard({
     setDlgGroupRegex('')
     setDlgModelRegex('')
     setDlgPathRegex('')
-    setDlgChannelIds('')
     setDlgStrict(true)
     setEditingTiers([emptyTier()])
     setDialogOpen(true)
@@ -713,7 +732,6 @@ export function ChannelRouteSettingsCard({
     setDlgGroupRegex((rule.group_regex || []).join('\n'))
     setDlgModelRegex((rule.model_regex || []).join('\n'))
     setDlgPathRegex((rule.path_regex || []).join('\n'))
-    setDlgChannelIds((rule.channel_ids || []).join('\n'))
     setDlgStrict(rule.strict ?? true)
     setEditingTiers(
       rule.route_tiers?.length
@@ -740,27 +758,17 @@ export function ChannelRouteSettingsCard({
       return
     }
 
-    // Validate tiers first
-    const validTiers = editingTiers.filter(
-      (tier) => tier.channel_ids.length > 0
-    )
-    const hasTiers = validTiers.length > 0
-
-    // Channel IDs are required only when no tiers are configured
-    const channelIds = normalizeChannelIds(dlgChannelIds)
-    if (!hasTiers && (!channelIds || channelIds.length === 0)) {
-      toast.error(t('Channel IDs must be positive integers'))
-      return
-    }
-
     const modelRegex = normalizeStringList(dlgModelRegex)
     if (modelRegex.length === 0) {
       toast.error(t('Model regex is required'))
       return
     }
 
-    // Check that at least one tier has a non-empty pool if tiers are configured
-    if (editingTiers.length > 0 && validTiers.length === 0) {
+    // Validate tiers: must have at least one tier with channel IDs
+    const validTiers = editingTiers.filter(
+      (tier) => tier.channel_ids.length > 0
+    )
+    if (validTiers.length === 0) {
       toast.error(t('At least one tier must have channel IDs'))
       return
     }
@@ -776,7 +784,10 @@ export function ChannelRouteSettingsCard({
 
     // Auto-generate labels for tiers without labels
     const tiersWithLabels = validTiers.map((tier) => ({
-      label: tier.label || autoTierLabel(tier.conditions),
+      label:
+        tier.label ||
+        autoTierLabel(tier.conditions) ||
+        (tier.conditions.length === 0 ? 'catch-all' : ''),
       conditions: tier.conditions,
       channel_ids: tier.channel_ids,
     }))
@@ -787,13 +798,8 @@ export function ChannelRouteSettingsCard({
       group_regex: normalizeStringList(dlgGroupRegex),
       model_regex: modelRegex,
       path_regex: normalizeStringList(dlgPathRegex),
-      channel_ids: channelIds || [],
       strict: dlgStrict,
-    }
-
-    // Only include tiers if there are valid ones
-    if (tiersWithLabels.length > 0) {
-      nextRule.route_tiers = tiersWithLabels
+      route_tiers: tiersWithLabels,
     }
 
     if (editingRule) {
@@ -951,14 +957,6 @@ export function ChannelRouteSettingsCard({
                                 </span>{' '}
                                 {(rule.path_regex || []).join(', ') || '-'}
                               </div>
-                              <div>
-                                <span className='font-medium text-foreground'>
-                                  {t('Fallback Pool')}:
-                                </span>{' '}
-                                {(rule.channel_ids || [])
-                                  .map((id) => getChannelName(id))
-                                  .join(', ') || '-'}
-                              </div>
                             </div>
                             {rule.route_tiers && rule.route_tiers.length > 0 && (
                               <div className='mt-2 space-y-1'>
@@ -1042,7 +1040,7 @@ export function ChannelRouteSettingsCard({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Fields: name, group_regex, model_regex, path_regex, channel_ids, strict, route_tiers.'
+                        'Fields: name, group_regex, model_regex, path_regex, route_tiers, strict.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -1104,19 +1102,14 @@ export function ChannelRouteSettingsCard({
               />
             </div>
 
-            <ChannelSelector
-              value={dlgChannelIds}
-              onChange={setDlgChannelIds}
-            />
-
             {/* Visual tier editor */}
             <div className='space-y-2'>
               <Label className='text-sm font-medium'>
-                {t('Route Tiers (Optional)')}
+                {t('Route Tiers')}
               </Label>
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Each tier supports 0~2 conditions on len/p/c (AND logic). The last tier is the catch-all without conditions.'
+                  'Each tier supports 0~2 conditions on len/p/c (AND logic). A tier with no conditions acts as the catch-all (fallback).'
                 )}
               </p>
               <RouteTierEditor
