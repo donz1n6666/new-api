@@ -48,9 +48,18 @@ export function getLogTypeConfig(type: number) {
 }
 
 /**
- * Check if log uses per-call billing
+ * Check if log uses per-call billing.
+ *
+ * 历史日志在某段时间内（修复前的 ModelPriceHelper per-token 分支变量名错位 bug）
+ * 会同时记录 model_price 与 model_ratio 为同一个倍率值（实际是按量计费）。
+ * 单看 model_price>0 会把这类日志误判为按次，所以补一个 model_ratio 判定：
+ * 只要存在 model_ratio>0，就必然是按量计费——按次场景下 ModelRatio 永远为 0。
  */
-export function isPerCallBilling(modelPrice?: number): boolean {
+export function isPerCallBilling(
+  modelPrice?: number,
+  modelRatio?: number
+): boolean {
+  if ((modelRatio ?? 0) > 0) return false
   return (modelPrice ?? 0) > 0
 }
 

@@ -97,13 +97,12 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			// 表达式计费，不需要价格
 			usePrice = false
 		default: // per-token
-			if hasGroupRatio {
-				modelPrice = groupModelRatio
-				usePrice = false
-			} else {
-				// 回退到全局
-				modelPrice, usePrice = ratio_setting.GetModelPrice(info.OriginModelName, false)
-			}
+			// 按量计费：不应触碰 modelPrice 字段。
+			// 倍率会在下方 if !usePrice 分支统一从 groupModelRatio 或全局 GetModelRatio 取，
+			// 这里保持 modelPrice=-1 以遵守"非按次时 ModelPrice <= 0"的全局约定，
+			// 避免污染 PriceData.ModelPrice 导致日志被误判为按次计费。
+			modelPrice = -1
+			usePrice = false
 		}
 	} else {
 		// 分组没有独立配置，使用全局配置
