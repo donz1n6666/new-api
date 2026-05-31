@@ -46,6 +46,7 @@ export default function SettingsLog(props) {
   const [loadingCleanHistoryLog, setLoadingCleanHistoryLog] = useState(false);
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
+    GlobalRecordIpLogEnabled: false,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -212,6 +213,24 @@ export default function SettingsLog(props) {
                     setInputs({
                       ...inputs,
                       LogConsumeEnabled: value,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'GlobalRecordIpLogEnabled'}
+                  label={t('全局记录消费与错误日志IP')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  extraText={t(
+                    '开启后，所有用户的消费和错误日志都会记录客户端IP，无需用户单独开启个人设置',
+                  )}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      GlobalRecordIpLogEnabled: value,
                     });
                   }}
                 />

@@ -143,19 +143,21 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	}
 }
 
+func shouldRecordRequestLogIp(userId int) bool {
+	if common.IsGlobalRecordIpLogEnabled() {
+		return true
+	}
+	settingMap, err := GetUserSetting(userId, false)
+	return err == nil && settingMap.RecordIpLog
+}
+
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := shouldRecordRequestLogIp(userId)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -210,13 +212,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := shouldRecordRequestLogIp(userId)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -542,12 +538,12 @@ const (
 )
 
 type ModelAvailability struct {
-	ModelName   string  `json:"model_name"`
-	TotalCount  int     `json:"total_count"`
-	SuccessCount int    `json:"success_count"`
-	ErrorCount  int     `json:"error_count"`
-	SuccessRate float64 `json:"success_rate"`
-	Status      string  `json:"status"`
+	ModelName    string  `json:"model_name"`
+	TotalCount   int     `json:"total_count"`
+	SuccessCount int     `json:"success_count"`
+	ErrorCount   int     `json:"error_count"`
+	SuccessRate  float64 `json:"success_rate"`
+	Status       string  `json:"status"`
 }
 
 // GetModelAvailabilityByGroup 统计指定分组在指定小时内的模型可用性
@@ -656,12 +652,12 @@ func GetUserModelAvailability(userId int, hours int) ([]ModelAvailability, error
 			result = append(result, stat)
 		} else {
 			result = append(result, ModelAvailability{
-				ModelName:   modelName,
-				TotalCount:  0,
+				ModelName:    modelName,
+				TotalCount:   0,
 				SuccessCount: 0,
-				ErrorCount:  0,
-				SuccessRate: 0,
-				Status:      ModelAvailabilityStatusNoData,
+				ErrorCount:   0,
+				SuccessRate:  0,
+				Status:       ModelAvailabilityStatusNoData,
 			})
 		}
 	}
