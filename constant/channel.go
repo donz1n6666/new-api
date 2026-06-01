@@ -29,6 +29,7 @@ const (
 	ChannelTypeMoonshot       = 25
 	ChannelTypeZhipu_v4       = 26
 	ChannelTypePerplexity     = 27
+	ChannelTypeAgnes          = 28
 	ChannelTypeLingYiWanWu    = 31
 	ChannelTypeAws            = 33
 	ChannelTypeCohere         = 34
@@ -89,7 +90,7 @@ var ChannelBaseURLs = []string{
 	"https://api.moonshot.cn",                   //25
 	"https://open.bigmodel.cn",                  //26
 	"https://api.perplexity.ai",                 //27
-	"",                                          //28
+	"",                                          //28 Agnes (用户自定义)
 	"",                                          //29
 	"",                                          //30
 	"https://api.lingyiwanwu.com",               //31
@@ -151,6 +152,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeMoonshot:       "Moonshot",
 	ChannelTypeZhipu_v4:       "ZhipuV4",
 	ChannelTypePerplexity:     "Perplexity",
+	ChannelTypeAgnes:          "Agnes",
 	ChannelTypeLingYiWanWu:    "LingYiWanWu",
 	ChannelTypeAws:            "AWS",
 	ChannelTypeCohere:         "Cohere",
