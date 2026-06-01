@@ -94,6 +94,11 @@ export const CHANNEL_OPTIONS = [
     label: 'Perplexity',
   },
   {
+    value: 28,
+    color: 'blue',
+    label: 'Agnes',
+  },
+  {
     value: 24,
     color: 'orange',
     label: 'Google Gemini',

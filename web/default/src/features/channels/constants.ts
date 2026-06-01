@@ -32,6 +32,7 @@ export const CHANNEL_TYPES = {
   25: 'Moonshot',
   26: 'Zhipu V4',
   27: 'Perplexity',
+  28: 'Agnes',
   31: 'LingYiWanWu',
   33: 'AWS',
   34: 'Cohere',
