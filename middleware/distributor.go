@@ -53,9 +53,9 @@ func Distribute() func(c *gin.Context) {
 			}
 		} else {
 			// Select a channel for the user
-			// check token model mapping
+			// check token model mapping (only when selecting a channel, not for task fetch)
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable {
+			if modelLimitEnable && shouldSelectChannel {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
