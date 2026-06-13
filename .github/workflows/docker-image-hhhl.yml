@@ -1,0 +1,179 @@
+name: Publish Docker image (hhhl)
+
+on:
+  push:
+    branches:
+      - hhhl
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "reason"
+        required: false
+
+jobs:
+  build_single_arch:
+    name: Build & push (${{ matrix.arch }}) [native]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Determine hhhl version
+        id: version
+        run: |
+          VERSION="hhhl-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          echo "$VERSION" > VERSION
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Publishing version: $VERSION for ${{ matrix.arch }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normalize GHCR repository
+        run: echo "GHCR_REPOSITORY=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+      - name: Extract metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            guji0823/new-api
+            ghcr.io/${{ env.GHCR_REPOSITORY }}
+
+      - name: Build & push single-arch (to both registries)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            guji0823/new-api:hhhl-${{ matrix.arch }}
+            guji0823/new-api:${{ steps.version.outputs.value }}-${{ matrix.arch }}
+            ghcr.io/${{ env.GHCR_REPOSITORY }}:hhhl-${{ matrix.arch }}
+            ghcr.io/${{ env.GHCR_REPOSITORY }}:${{ steps.version.outputs.value }}-${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign
+        run: |
+          cosign sign --yes guji0823/new-api@${{ steps.build.outputs.digest }}
+          cosign sign --yes ghcr.io/${{ env.GHCR_REPOSITORY }}@${{ steps.build.outputs.digest }}
+
+      - name: Output digest
+        run: |
+          echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "guji0823/new-api:hhhl-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/${{ env.GHCR_REPOSITORY }}:hhhl-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  create_manifests:
+    name: Create multi-arch manifests (Docker Hub + GHCR)
+    needs: [build_single_arch]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out (shallow)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Normalize GHCR repository
+        run: echo "GHCR_REPOSITORY=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+      - name: Determine hhhl version
+        id: version
+        run: |
+          VERSION="hhhl-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create & push manifest (Docker Hub - hhhl)
+        run: |
+          docker buildx imagetools create \
+            -t guji0823/new-api:hhhl \
+            guji0823/new-api:hhhl-amd64 \
+            guji0823/new-api:hhhl-arm64
+
+      - name: Create & push manifest (Docker Hub - versioned hhhl)
+        run: |
+          docker buildx imagetools create \
+            -t guji0823/new-api:${VERSION} \
+            guji0823/new-api:${VERSION}-amd64 \
+            guji0823/new-api:${VERSION}-arm64
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create & push manifest (GHCR - hhhl)
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${GHCR_REPOSITORY}:hhhl \
+            ghcr.io/${GHCR_REPOSITORY}:hhhl-amd64 \
+            ghcr.io/${GHCR_REPOSITORY}:hhhl-arm64
+
+      - name: Create & push manifest (GHCR - versioned hhhl)
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${GHCR_REPOSITORY}:${VERSION} \
+            ghcr.io/${GHCR_REPOSITORY}:${VERSION}-amd64 \
+            ghcr.io/${GHCR_REPOSITORY}:${VERSION}-arm64
+
+      - name: Output manifest digest
+        run: |
+          echo "### Multi-arch Manifest Digests" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect guji0823/new-api:hhhl >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect ghcr.io/${GHCR_REPOSITORY}:hhhl >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

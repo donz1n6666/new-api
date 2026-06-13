@@ -29,7 +29,7 @@ import {
   EyeOff,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { SiGithub, SiDiscord } from 'react-icons/si'
+import { SiGithub, SiDiscord, SiMisskey } from 'react-icons/si'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -78,6 +78,7 @@ interface StatusInfo {
   wechat_login?: boolean
   telegram_oauth?: boolean
   linuxdo_oauth?: boolean
+  misskey_oauth?: boolean
   custom_oauth_providers?: Array<{
     id: string
     name: string
@@ -140,6 +141,13 @@ const BUILTIN_BINDINGS: ReadonlyArray<{
     label: 'LinuxDO',
     icon: <Globe className='h-4 w-4' />,
     statusKey: 'linuxdo_oauth',
+  },
+  {
+    key: 'misskey_id',
+    field: 'misskey_id',
+    label: 'Misskey',
+    icon: <SiMisskey className='h-4 w-4' />,
+    statusKey: 'misskey_oauth',
   },
 ]
 

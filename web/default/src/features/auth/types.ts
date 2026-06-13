@@ -102,6 +102,10 @@ export interface SystemStatus {
     linuxdo_oauth?: boolean
     linuxdo_client_id?: string
     telegram_oauth?: boolean
+    misskey_oauth?: boolean
+    misskey_instance_url?: string
+    misskey_instance_name?: string
+    misskey_instance_icon?: string
     passkey_login?: boolean
     wechat_login?: boolean
     wechat_qrcode?: string
@@ -145,6 +149,11 @@ export interface SystemStatus {
   linuxdo_oauth?: boolean
   linuxdo_client_id?: string
   telegram_oauth?: boolean
+  misskey_oauth?: boolean
+  misskey_instance_url?: string
+  misskey_instance_name?: string
+  misskey_instance_icon?: string
+  server_address?: string
   passkey_login?: boolean
   wechat_login?: boolean
   wechat_qrcode?: string
@@ -181,7 +190,14 @@ export interface SystemStatus {
 
 export interface OAuthProvider {
   name: string
-  type: 'github' | 'discord' | 'oidc' | 'linuxdo' | 'telegram' | 'wechat'
+  type:
+    | 'github'
+    | 'discord'
+    | 'oidc'
+    | 'linuxdo'
+    | 'telegram'
+    | 'wechat'
+    | 'misskey'
   enabled: boolean
   clientId?: string
   authEndpoint?: string

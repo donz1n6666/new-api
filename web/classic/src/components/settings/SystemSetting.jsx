@@ -100,6 +100,10 @@ const SystemSetting = () => {
     LinuxDOClientId: '',
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
+    MisskeyOAuthEnabled: '',
+    MisskeyInstanceUrl: '',
+    MisskeyInstanceName: '',
+    MisskeyInstanceIcon: '',
     ServerAddress: '',
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
@@ -120,6 +124,7 @@ const SystemSetting = () => {
   const [showPasswordLoginConfirmModal, setShowPasswordLoginConfirmModal] =
     useState(false);
   const [linuxDOOAuthEnabled, setLinuxDOOAuthEnabled] = useState(false);
+  const [misskeyOAuthEnabled, setMisskeyOAuthEnabled] = useState(false);
   const [emailToAdd, setEmailToAdd] = useState('');
   const [domainFilterMode, setDomainFilterMode] = useState(true);
   const [ipFilterMode, setIpFilterMode] = useState(true);
@@ -185,6 +190,7 @@ const SystemSetting = () => {
           case 'SMTPSSLEnabled':
           case 'SMTPForceAuthLogin':
           case 'LinuxDOOAuthEnabled':
+          case 'MisskeyOAuthEnabled':
           case 'discord.enabled':
           case 'oidc.enabled':
           case 'passkey.enabled':
@@ -639,6 +645,24 @@ const SystemSetting = () => {
     }
   };
 
+  const submitMisskeyOAuth = async () => {
+    const options = [];
+
+    if (originInputs['MisskeyInstanceUrl'] !== inputs.MisskeyInstanceUrl) {
+      options.push({ key: 'MisskeyInstanceUrl', value: inputs.MisskeyInstanceUrl });
+    }
+    if (originInputs['MisskeyInstanceName'] !== inputs.MisskeyInstanceName) {
+      options.push({ key: 'MisskeyInstanceName', value: inputs.MisskeyInstanceName });
+    }
+    if (originInputs['MisskeyInstanceIcon'] !== inputs.MisskeyInstanceIcon) {
+      options.push({ key: 'MisskeyInstanceIcon', value: inputs.MisskeyInstanceIcon });
+    }
+
+    if (options.length > 0) {
+      await updateOptions(options);
+    }
+  };
+
   const submitPasskeySettings = async () => {
     // 使用formApi直接获取当前表单值
     const formValues = formApiRef.current?.getValues() || {};
@@ -688,6 +712,9 @@ const SystemSetting = () => {
     }
     if (optionKey === 'LinuxDOOAuthEnabled') {
       setLinuxDOOAuthEnabled(value);
+    }
+    if (optionKey === 'MisskeyOAuthEnabled') {
+      setMisskeyOAuthEnabled(value);
     }
   };
 
@@ -1542,6 +1569,49 @@ const SystemSetting = () => {
                   </Row>
                   <Button onClick={submitLinuxDOOAuth}>
                     {t('保存 Linux DO OAuth 设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+
+              <Card>
+                <Form.Section text={t('配置 Misskey OAuth')}>
+                  <Text>{t('用以支持通过 Misskey/Sharkey 进行登录注册（MiAuth 协议）')}</Text>
+                  <Form.Checkbox
+                    field='MisskeyOAuthEnabled'
+                    noLabel
+                    onChange={(e) =>
+                      handleCheckboxChange('MisskeyOAuthEnabled', e)
+                    }
+                  >
+                    {t('启用 Misskey OAuth')}
+                  </Form.Checkbox>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='MisskeyInstanceUrl'
+                        label={t('Misskey 实例地址')}
+                        placeholder='https://dc.hhhl.cc'
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='MisskeyInstanceName'
+                        label={t('显示名称')}
+                        placeholder='Universe Federation'
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='MisskeyInstanceIcon'
+                        label={t('图标地址')}
+                        placeholder='https://dc.hhhl.cc/client-assets/about-icon.png?v=uf3'
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitMisskeyOAuth}>
+                    {t('保存 Misskey OAuth 设置')}
                   </Button>
                 </Form.Section>
               </Card>

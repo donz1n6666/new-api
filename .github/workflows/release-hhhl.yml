@@ -1,0 +1,215 @@
+name: Release hhhl (Linux, macOS, Windows)
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - hhhl
+    paths-ignore:
+      - '*.md'
+      - '.github/workflows/**'
+      - '!.github/workflows/release-hhhl.yml'
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'reason'
+        required: false
+
+jobs:
+  linux:
+    name: Linux Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine Version
+        id: version
+        run: |
+          VERSION="hhhl-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "$VERSION" > VERSION
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Build Frontend (default)
+        env:
+          CI: ""
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd default
+          DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Build Frontend (classic)
+        env:
+          CI: ""
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd classic
+          VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.1'
+      - name: Build Backend (amd64)
+        run: |
+          go mod download
+          go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION' -extldflags '-static'" -o new-api-$VERSION
+      - name: Build Backend (arm64)
+        run: |
+          sudo apt-get update
+          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gcc-aarch64-linux-gnu
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION' -extldflags '-static'" -o new-api-arm64-$VERSION
+      - name: Generate checksums
+        run: sha256sum new-api-* > checksums-linux.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            new-api-*
+            checksums-linux.txt
+
+  macos:
+    name: macOS Release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine Version
+        run: |
+          VERSION="hhhl-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Build Frontend (default)
+        env:
+          CI: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd default
+          DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Build Frontend (classic)
+        env:
+          CI: ""
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd classic
+          VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.1'
+      - name: Build Backend
+        run: |
+          go mod download
+          go build -ldflags "-X 'new-api/common.Version=$VERSION'" -o new-api-macos-$VERSION
+      - name: Generate checksums
+        run: shasum -a 256 new-api-macos-* > checksums-macos.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            new-api-macos-*
+            checksums-macos.txt
+
+  windows:
+    name: Windows Release
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine Version
+        run: |
+          VERSION="hhhl-$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Build Frontend (default)
+        env:
+          CI: ""
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd default
+          DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Build Frontend (classic)
+        env:
+          CI: ""
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          cd classic
+          VITE_REACT_APP_VERSION=$VERSION bun run build
+          cd ../..
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.1'
+      - name: Build Backend
+        run: |
+          go mod download
+          go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION'" -o new-api-$VERSION.exe
+      - name: Generate checksums
+        run: sha256sum new-api-*.exe > checksums-windows.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            new-api-*.exe
+            checksums-windows.txt
+
+  release:
+    name: Create GitHub Release
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version from linux job
+        run: echo "VERSION=${{ needs.linux.outputs.version }}" >> $GITHUB_ENV
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "hhhl ${{ env.VERSION }}"
+          tag_name: "${{ env.VERSION }}"
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/linux-artifacts/*
+            artifacts/macos-artifacts/*
+            artifacts/windows-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

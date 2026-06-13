@@ -50,6 +50,16 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/oauth/wechat/bind", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.WeChatBind)
 		apiRouter.GET("/oauth/telegram/login", middleware.CriticalRateLimit(), controller.TelegramLogin)
 		apiRouter.GET("/oauth/telegram/bind", middleware.CriticalRateLimit(), controller.TelegramBind)
+		// Misskey OAuth 2.0 (native provider: MiAuth protocol)
+		apiRouter.GET("/oauth/misskey/authorize", middleware.CriticalRateLimit(), controller.MisskeyAuthorize)
+		// MiAuth login endpoint: called by frontend after receiving MiAuth callback.
+		// Reads ?session= (MiAuth token) and ?state= (CSRF), exchanges for token,
+		// creates/finds user, sets up session cookie, returns JSON.
+		apiRouter.GET("/oauth/misskey/login", middleware.CriticalRateLimit(), controller.MisskeyMiAuthLogin)
+		// Client metadata page (served for IndieAuth discoverability).
+		apiRouter.GET("/oauth/misskey/app", controller.MisskeyClientMetadata)
+		// MiAuth callback (direct browser redirect target — legacy, not used in main flow)
+		apiRouter.GET("/oauth/misskey/miauth/callback", middleware.CriticalRateLimit(), controller.MisskeyMiAuthCallback)
 		// Standard OAuth providers (GitHub, Discord, OIDC, LinuxDO) - unified route
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)

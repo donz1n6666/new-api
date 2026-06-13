@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { SiMisskey } from 'react-icons/si'
 import {
   IconDiscord,
   IconGithub,
@@ -62,6 +63,7 @@ export function OAuthProviders({
     handleOIDCLogin,
     handleLinuxDOLogin,
     handleTelegramLogin,
+    handleMisskeyLogin,
     handleCustomOAuthLogin,
   } = useOAuthLogin(status)
 
@@ -118,6 +120,25 @@ export function OAuthProviders({
       key: 'telegram',
       label: t('Continue with Telegram'),
       onClick: handleTelegramLogin,
+    })
+  }
+
+  if (status?.misskey_oauth) {
+    providerButtons.push({
+      key: 'misskey',
+      label: status?.misskey_instance_name
+        ? t('Continue with {{name}}', { name: status.misskey_instance_name })
+        : t('Continue with Misskey'),
+      onClick: handleMisskeyLogin,
+      icon: status?.misskey_instance_icon ? (
+        <img
+          src={status.misskey_instance_icon}
+          alt=''
+          className='h-4 w-4 rounded-sm object-contain'
+        />
+      ) : (
+        <SiMisskey className='h-4 w-4' />
+      ),
     })
   }
 

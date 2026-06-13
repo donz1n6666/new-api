@@ -142,3 +142,12 @@ export async function handleLinuxDOOAuth(clientId: string): Promise<void> {
   const url = buildLinuxDOOAuthUrl(clientId, state)
   window.open(url, '_blank')
 }
+
+/**
+ * Handle Misskey OAuth binding/login.
+ * State and the PKCE verifier are generated server-side by the authorize
+ * endpoint, so no client-side state bootstrap is needed.
+ */
+export function handleMisskeyOAuth(): void {
+  window.open('/api/oauth/misskey/authorize', '_blank')
+}

@@ -73,6 +73,10 @@ const AUTH_SECTIONS = [
           WeChatServerAddress: settings.WeChatServerAddress,
           WeChatServerToken: settings.WeChatServerToken,
           WeChatAccountQRCodeImageURL: settings.WeChatAccountQRCodeImageURL,
+          MisskeyOAuthEnabled: settings.MisskeyOAuthEnabled,
+          MisskeyInstanceUrl: settings.MisskeyInstanceUrl,
+          MisskeyInstanceName: settings.MisskeyInstanceName,
+          MisskeyInstanceIcon: settings.MisskeyInstanceIcon,
         }}
       />
     ),

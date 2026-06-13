@@ -88,6 +88,7 @@ var GitHubOAuthEnabled = false
 var LinuxDOOAuthEnabled = false
 var WeChatAuthEnabled = false
 var TelegramOAuthEnabled = false
+var MisskeyOAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
 
@@ -134,6 +135,10 @@ var LinuxDOMinimumTrustLevel = 0
 var WeChatServerAddress = ""
 var WeChatServerToken = ""
 var WeChatAccountQRCodeImageURL = ""
+
+var MisskeyInstanceUrl = "https://dc.hhhl.cc" // Misskey/Sharkey instance URL
+var MisskeyInstanceName = "Universe Federation" // display name shown on login button
+var MisskeyInstanceIcon = "https://dc.hhhl.cc/client-assets/about-icon.png?v=uf3" // icon shown on login button
 
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""

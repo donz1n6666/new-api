@@ -84,6 +84,14 @@ export function getAvailableOAuthProviders(
     })
   }
 
+  if (status.misskey_oauth) {
+    providers.push({
+      name: 'Misskey',
+      type: 'misskey',
+      enabled: true,
+    })
+  }
+
   return providers
 }
 
@@ -98,6 +106,7 @@ export function hasOAuthProviders(status: SystemStatus | null): boolean {
     status.oidc_enabled ||
     status.linuxdo_oauth ||
     status.telegram_oauth ||
+    status.misskey_oauth ||
     status.wechat_login
   )
 }

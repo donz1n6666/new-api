@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Mail, Shield, Send, Link2, Unlink } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { SiGithub, SiWechat, SiLinux } from 'react-icons/si'
+import { SiGithub, SiWechat, SiLinux, SiMisskey } from 'react-icons/si'
 import { toast } from 'sonner'
 import { IconDiscord } from '@/assets/brand-icons'
 import {
@@ -27,6 +27,7 @@ import {
   handleOIDCOAuth,
   handleDiscordOAuth,
   handleLinuxDOOAuth,
+  handleMisskeyOAuth,
 } from '@/lib/oauth'
 import { useDialogs } from '@/hooks/use-dialog'
 import { useStatus } from '@/hooks/use-status'
@@ -253,6 +254,21 @@ export function AccountBindingsTab({
           if (status?.linuxdo_client_id) {
             handleLinuxDOOAuth(status.linuxdo_client_id)
           }
+        },
+      },
+      {
+        id: 'misskey',
+        label: t('Misskey'),
+        icon: SiMisskey as React.ComponentType<{ className?: string }>,
+        value: (profile as unknown as Record<string, unknown>).misskey_id as
+          | string
+          | undefined,
+        isBound: Boolean(
+          (profile as unknown as Record<string, unknown>).misskey_id
+        ),
+        isEnabled: status?.misskey_oauth || false,
+        onBind: () => {
+          handleMisskeyOAuth()
         },
       },
     ].filter((binding) => binding.isEnabled)

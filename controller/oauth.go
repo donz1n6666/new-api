@@ -313,6 +313,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				"linux_do_id": user.LinuxDOId,
 				"wechat_id":   user.WeChatId,
 				"telegram_id": user.TelegramId,
+				"misskey_id":  user.MisskeyId,
 			}).Error; err != nil {
 				return err
 			}

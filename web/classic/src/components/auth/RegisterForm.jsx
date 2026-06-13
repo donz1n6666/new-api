@@ -54,6 +54,7 @@ import {
 import {
   onGitHubOAuthClicked,
   onLinuxDOOAuthClicked,
+  onMisskeyOAuthClicked,
   onOIDCClicked,
 } from '../../helpers';
 import OIDCIcon from '../common/logo/OIDCIcon';
@@ -94,6 +95,7 @@ const RegisterForm = () => {
   const [discordLoading, setDiscordLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
   const [linuxdoLoading, setLinuxdoLoading] = useState(false);
+  const [misskeyLoading, setMisskeyLoading] = useState(false);
   const [emailRegisterLoading, setEmailRegisterLoading] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [verificationCodeLoading, setVerificationCodeLoading] = useState(false);
@@ -138,6 +140,7 @@ const RegisterForm = () => {
       status.wechat_login ||
       status.linuxdo_oauth ||
       status.telegram_oauth ||
+      status.misskey_oauth ||
       hasCustomOAuthProviders,
   );
 
@@ -333,6 +336,15 @@ const RegisterForm = () => {
     }
   };
 
+  const handleMisskeyClick = () => {
+    setMisskeyLoading(true);
+    try {
+      onMisskeyOAuthClicked({ shouldLogout: true });
+    } finally {
+      setTimeout(() => setMisskeyLoading(false), 3000);
+    }
+  };
+
   const handleCustomOAuthClick = (provider) => {
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
     try {
@@ -491,6 +503,31 @@ const RegisterForm = () => {
                     loading={linuxdoLoading}
                   >
                     <span className='ml-3'>{t('使用 LinuxDO 继续')}</span>
+                  </Button>
+                )}
+
+                {status.misskey_oauth && (
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={
+                      status.misskey_instance_icon ? (
+                        <Icon
+                          svg={
+                            <img
+                              src={status.misskey_instance_icon}
+                              alt=''
+                              style={{ width: '20px', height: '20px', borderRadius: '4px', objectFit: 'contain' }}
+                            />
+                          }
+                        />
+                      ) : undefined
+                    }
+                    onClick={handleMisskeyClick}
+                    loading={misskeyLoading}
+                  >
+                    <span className='ml-3'>{status.misskey_instance_name ? t('使用 {{name}} 继续', { name: status.misskey_instance_name }) : t('使用 Misskey 继续')}</span>
                   </Button>
                 )}
 

@@ -42,11 +42,29 @@ const OAuth2Callback = (props) => {
   // 最大重试次数
   const MAX_RETRIES = 3;
 
-  const sendCode = async (code, state, retry = 0) => {
+  const sendOAuthCallback = async (params, retry = 0) => {
     try {
-      const { data: resData } = await API.get(
-        `/api/oauth/${props.type}?code=${code}&state=${state}`,
-      );
+      const { code, state, session, sid } = params;
+      const isMisskeyMiAuth = props.type === 'misskey';
+      const apiPath = isMisskeyMiAuth
+        ? '/api/oauth/misskey/login'
+        : `/api/oauth/${props.type}`;
+      const requestParams = {
+        state: state || '',
+      };
+
+      if (isMisskeyMiAuth) {
+        requestParams.session = session || code;
+        if (sid) {
+          requestParams.sid = sid;
+        }
+      } else {
+        requestParams.code = code;
+      }
+
+      const { data: resData } = await API.get(apiPath, {
+        params: requestParams,
+      });
 
       const { success, message, data } = resData;
 
@@ -60,9 +78,24 @@ const OAuth2Callback = (props) => {
         showSuccess(t('绑定成功！'));
         navigate('/console/personal');
       } else {
-        userDispatch({ type: 'login', payload: data });
-        localStorage.setItem('user', JSON.stringify(data));
-        setUserData(data);
+        // setupLogin returns minimal data; fetch full user to get binding IDs
+        try {
+          const selfRes = await API.get('/api/user/self');
+          if (selfRes.data?.success && selfRes.data.data) {
+            const fullUser = selfRes.data.data;
+            userDispatch({ type: 'login', payload: fullUser });
+            localStorage.setItem('user', JSON.stringify(fullUser));
+            setUserData(fullUser);
+          } else {
+            userDispatch({ type: 'login', payload: data });
+            localStorage.setItem('user', JSON.stringify(data));
+            setUserData(data);
+          }
+        } catch {
+          userDispatch({ type: 'login', payload: data });
+          localStorage.setItem('user', JSON.stringify(data));
+          setUserData(data);
+        }
         updateAPI();
         showSuccess(t('登录成功！'));
         navigate('/console/token');
@@ -72,7 +105,7 @@ const OAuth2Callback = (props) => {
       if (retry < MAX_RETRIES) {
         // 递增的退避等待
         await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 2000));
-        return sendCode(code, state, retry + 1);
+        return sendOAuthCallback(params, retry + 1);
       }
 
       // 重试次数耗尽，提示错误并返回设置页面
@@ -90,15 +123,18 @@ const OAuth2Callback = (props) => {
 
     const code = searchParams.get('code');
     const state = searchParams.get('state');
+    const session = searchParams.get('session');
+    const sid = searchParams.get('sid');
+    const isMisskeyMiAuth = props.type === 'misskey';
 
     // 参数缺失直接返回
-    if (!code) {
+    if ((!isMisskeyMiAuth && !code) || (isMisskeyMiAuth && !code && !session)) {
       showError(t('未获取到授权码'));
       navigate('/console/personal');
       return;
     }
 
-    sendCode(code, state);
+    sendOAuthCallback({ code, state, session, sid });
   }, []);
 
   return <Loading />;

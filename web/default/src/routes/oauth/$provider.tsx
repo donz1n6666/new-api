@@ -44,6 +44,8 @@ function OAuthCallback() {
     code?: string
     state?: string
     redirect?: string
+    session?: string
+    sid?: string
   }
   const [mode, setMode] = useState<'login' | 'bind'>(() => {
     if (typeof window === 'undefined') return 'login'
@@ -77,7 +79,12 @@ function OAuthCallback() {
         }
       }
 
-      if (!search?.code) {
+      const isMisskey = provider === 'misskey'
+      const misskeySession = search?.session ?? search?.code
+
+      // Standard OAuth providers pass ?code=, Misskey MiAuth passes ?session=.
+      // Some MiAuth callbacks may be normalized through ?code=, so accept both.
+      if ((!isMisskey && !search?.code) || (isMisskey && !misskeySession)) {
         toast.error(i18next.t('Missing code'))
         safeNavigate('/sign-in')
         return
@@ -163,16 +170,35 @@ function OAuthCallback() {
       }
 
       try {
+        // Misskey MiAuth callback uses ?session= (UUID) instead of ?code=.
+        // Forward it to /api/oauth/misskey/login which handles the MiAuth exchange.
+        const isMiAuth = provider === 'misskey'
+        const apiPath = isMiAuth
+          ? `/api/oauth/misskey/login`
+          : `/api/oauth/${provider}`
+        const params: Record<string, string> = { state: search.state ?? '' }
+        if (isMiAuth) {
+          params.session = misskeySession!
+          if (search.sid) {
+            params.sid = search.sid
+          }
+        } else if (search.code) {
+          params.code = search.code
+        }
         const config: OAuthRequestConfig = {
-          params: { code: search.code, state: search.state },
+          params,
           skipBusinessError: true,
         }
-        const res = await api.get(`/api/oauth/${provider}`, config)
+        const res = await api.get(apiPath, config)
         if (res?.data?.success) {
           const { message } = res.data
           const loginUser = (res.data?.data ?? null) as AuthUser | null
+          const action =
+            loginUser && typeof loginUser === 'object' && 'action' in loginUser
+              ? (loginUser as { action?: string }).action
+              : undefined
           // Check if this is a bind operation
-          if (message === 'bind') {
+          if (message === 'bind' || action === 'bind') {
             toast.success(i18next.t('Binding successful!'))
             notifyBindingResult('success')
             if (isBindingFlow) {
@@ -185,13 +211,15 @@ function OAuthCallback() {
           }
           // Otherwise it's a login, use payload user if available
           if (loginUser) {
-            useAuthStore.getState().auth.setUser(loginUser)
-            try {
-              if (typeof window !== 'undefined' && loginUser.id != null) {
-                window.localStorage.setItem('uid', String(loginUser.id))
-              }
-            } catch (_error) {
-              void _error
+            // setupLogin returns minimal data; fetch full user for binding IDs
+            const fullUser = await finalizeLogin()
+            if (!fullUser) {
+              useAuthStore.getState().auth.setUser(loginUser)
+              try {
+                if (typeof window !== 'undefined' && loginUser.id != null) {
+                  window.localStorage.setItem('uid', String(loginUser.id))
+                }
+              } catch (_error) { void _error }
             }
             redirectAfterLogin()
             return

@@ -215,6 +215,14 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "MisskeyOAuthEnabled":
+		if option.Value == "true" && common.MisskeyInstanceUrl == "" {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无法启用 Misskey OAuth，请先填入 Misskey 实例地址！",
+			})
+			return
+		}
 	case "theme.frontend":
 		if option.Value != "default" && option.Value != "classic" {
 			c.JSON(http.StatusOK, gin.H{

@@ -35,6 +35,7 @@ type User struct {
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
 	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
 	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
+	MisskeyId        string         `json:"misskey_id" gorm:"column:misskey_id;index"`
 	VerificationCode string         `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken      *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int            `json:"quota" gorm:"type:int;default:0"`
@@ -547,14 +548,24 @@ func (user *User) ClearBinding(bindingType string) error {
 		return errors.New("user id is empty")
 	}
 
+	// Accept both the short form ("github") and the column form ("github_id")
+	// because the admin binding dialog sends the latter.
 	bindingColumnMap := map[string]string{
-		"email":    "email",
-		"github":   "github_id",
-		"discord":  "discord_id",
-		"oidc":     "oidc_id",
-		"wechat":   "wechat_id",
-		"telegram": "telegram_id",
-		"linuxdo":  "linux_do_id",
+		"email":       "email",
+		"github":      "github_id",
+		"github_id":   "github_id",
+		"discord":     "discord_id",
+		"discord_id":  "discord_id",
+		"oidc":        "oidc_id",
+		"oidc_id":     "oidc_id",
+		"wechat":      "wechat_id",
+		"wechat_id":   "wechat_id",
+		"telegram":    "telegram_id",
+		"telegram_id": "telegram_id",
+		"linuxdo":     "linux_do_id",
+		"linux_do_id": "linux_do_id",
+		"misskey":     "misskey_id",
+		"misskey_id":  "misskey_id",
 	}
 
 	column, ok := bindingColumnMap[bindingType]
@@ -707,6 +718,18 @@ func IsOidcIdAlreadyTaken(oidcId string) bool {
 
 func IsTelegramIdAlreadyTaken(telegramId string) bool {
 	return DB.Unscoped().Where("telegram_id = ?", telegramId).Find(&User{}).RowsAffected == 1
+}
+
+func (user *User) FillUserByMisskeyId() error {
+	if user.MisskeyId == "" {
+		return errors.New("Misskey id 为空！")
+	}
+	DB.Where(User{MisskeyId: user.MisskeyId}).First(user)
+	return nil
+}
+
+func IsMisskeyIdAlreadyTaken(misskeyId string) bool {
+	return DB.Unscoped().Where("misskey_id = ?", misskeyId).Find(&User{}).RowsAffected == 1
 }
 
 func ResetUserPasswordByEmail(email string, password string) error {

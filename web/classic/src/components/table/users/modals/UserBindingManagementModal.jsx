@@ -40,7 +40,7 @@ import {
   IconDelete,
   IconGithubLogo,
 } from '@douyinfe/semi-icons';
-import { SiDiscord, SiTelegram, SiWechat, SiLinux } from 'react-icons/si';
+import { SiDiscord, SiTelegram, SiWechat, SiLinux, SiMisskey } from 'react-icons/si';
 
 const { Text } = Typography;
 
@@ -92,6 +92,7 @@ const UserBindingManagementModal = ({
           wechat_id: userData.wechat_id || '',
           telegram_id: userData.telegram_id || '',
           linux_do_id: userData.linux_do_id || '',
+          misskey_id: userData.misskey_id || '',
         });
       } else {
         showError(userRes.data?.message || t('操作失败'));
@@ -271,6 +272,14 @@ const UserBindingManagementModal = ({
       icon: (
         <SiLinux size={20} className='text-slate-600 dark:text-slate-300' />
       ),
+    },
+    {
+      key: 'misskey',
+      field: 'misskey_id',
+      name: 'Misskey',
+      enabled: Boolean(statusInfo.misskey_oauth),
+      value: getBuiltInBindingValue('misskey_id'),
+      icon: <SiMisskey size={20} className='text-slate-600 dark:text-slate-300' />,
     },
   ];
 

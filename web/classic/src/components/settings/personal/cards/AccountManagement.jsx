@@ -27,6 +27,7 @@ import {
   Avatar,
   Tabs,
   TabPane,
+  Tag,
   Popover,
   Modal,
 } from '@douyinfe/semi-ui';
@@ -48,6 +49,7 @@ import {
   onGitHubOAuthClicked,
   onOIDCClicked,
   onLinuxDOOAuthClicked,
+  onMisskeyOAuthClicked,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
   getOAuthProviderIcon,
@@ -512,6 +514,47 @@ const AccountManagement = ({
                       }
                     >
                       {status.linuxdo_oauth ? t('绑定') : t('未启用')}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Misskey 绑定 */}
+              <Card className='!rounded-xl'>
+                <div className='flex items-center justify-between gap-3'>
+                  <div className='flex items-center flex-1 min-w-0'>
+                    <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
+                      {status.misskey_instance_icon ? (
+                        <img
+                          src={status.misskey_instance_icon}
+                          alt=''
+                          style={{ width: '20px', height: '20px', borderRadius: '4px', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: '16px', fontWeight: 600 }}>M</span>
+                      )}
+                    </div>
+                    <div className='flex-1 min-w-0'>
+                      <div className='font-medium text-gray-900'>
+                        {status.misskey_instance_name || 'Misskey'}
+                      </div>
+                      <div className='text-sm text-gray-500 truncate'>
+                        {renderAccountInfo(userState.user?.misskey_id, t('Misskey ID'))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className='flex-shrink-0'>
+                    <Button
+                      type='primary'
+                      theme='outline'
+                      size='small'
+                      onClick={() => onMisskeyOAuthClicked()}
+                      disabled={
+                        isBound(userState.user?.misskey_id) ||
+                        !status.misskey_oauth
+                      }
+                    >
+                      {status.misskey_oauth ? t('绑定') : t('未启用')}
                     </Button>
                   </div>
                 </div>

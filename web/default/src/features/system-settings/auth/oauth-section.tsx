@@ -81,6 +81,10 @@ const oauthSchema = z.object({
   WeChatServerAddress: z.string(),
   WeChatServerToken: z.string(),
   WeChatAccountQRCodeImageURL: z.string(),
+  MisskeyOAuthEnabled: z.boolean(),
+  MisskeyInstanceUrl: z.string(),
+  MisskeyInstanceName: z.string(),
+  MisskeyInstanceIcon: z.string(),
 })
 
 type OAuthFormValues = z.infer<typeof oauthSchema>
@@ -110,6 +114,10 @@ type FlatOAuthDefaults = {
   WeChatServerAddress: string
   WeChatServerToken: string
   WeChatAccountQRCodeImageURL: string
+  MisskeyOAuthEnabled: boolean
+  MisskeyInstanceUrl: string
+  MisskeyInstanceName: string
+  MisskeyInstanceIcon: string
 }
 
 const oauthTabContentClassName =
@@ -144,6 +152,10 @@ const buildFormDefaults = (defaults: FlatOAuthDefaults): OAuthFormValues => ({
   WeChatServerAddress: defaults.WeChatServerAddress ?? '',
   WeChatServerToken: defaults.WeChatServerToken ?? '',
   WeChatAccountQRCodeImageURL: defaults.WeChatAccountQRCodeImageURL ?? '',
+  MisskeyOAuthEnabled: defaults.MisskeyOAuthEnabled,
+  MisskeyInstanceUrl: defaults.MisskeyInstanceUrl ?? '',
+  MisskeyInstanceName: defaults.MisskeyInstanceName ?? '',
+  MisskeyInstanceIcon: defaults.MisskeyInstanceIcon ?? '',
 })
 
 const normalizeFormValues = (values: OAuthFormValues): FlatOAuthDefaults => ({
@@ -171,6 +183,10 @@ const normalizeFormValues = (values: OAuthFormValues): FlatOAuthDefaults => ({
   WeChatServerAddress: values.WeChatServerAddress,
   WeChatServerToken: values.WeChatServerToken,
   WeChatAccountQRCodeImageURL: values.WeChatAccountQRCodeImageURL,
+  MisskeyOAuthEnabled: values.MisskeyOAuthEnabled,
+  MisskeyInstanceUrl: values.MisskeyInstanceUrl,
+  MisskeyInstanceName: values.MisskeyInstanceName,
+  MisskeyInstanceIcon: values.MisskeyInstanceIcon,
 })
 
 type OAuthSectionProps = {
@@ -294,13 +310,14 @@ export function OAuthSection(props: OAuthSectionProps) {
             <FormDirtyIndicator isDirty={form.formState.isDirty} />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className='grid w-full grid-cols-6'>
+              <TabsList className='grid w-full grid-cols-7'>
                 <TabsTrigger value='github'>{t('GitHub')}</TabsTrigger>
                 <TabsTrigger value='discord'>{t('Discord')}</TabsTrigger>
                 <TabsTrigger value='oidc'>{t('OIDC')}</TabsTrigger>
                 <TabsTrigger value='telegram'>{t('Telegram')}</TabsTrigger>
                 <TabsTrigger value='linuxdo'>{t('LinuxDO')}</TabsTrigger>
                 <TabsTrigger value='wechat'>{t('WeChat')}</TabsTrigger>
+                <TabsTrigger value='misskey'>{t('Misskey')}</TabsTrigger>
               </TabsList>
 
               <TabsContent value='github' className={oauthTabContentClassName}>
@@ -888,6 +905,109 @@ export function OAuthSection(props: OAuthSectionProps) {
                           ref={field.ref}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </TabsContent>
+
+              <TabsContent value='misskey' className={oauthTabContentClassName}>
+                <FormField
+                  control={form.control}
+                  name='MisskeyOAuthEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem>
+                      <SettingsSwitchContent>
+                        <FormLabel>{t('Enable Misskey OAuth')}</FormLabel>
+                        <FormDescription>
+                          {t(
+                            'Allow users to sign in with Misskey/Sharkey via MiAuth protocol'
+                          )}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='MisskeyInstanceUrl'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Misskey Instance URL')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='https://dc.hhhl.cc'
+                          autoComplete='off'
+                          value={field.value ?? ''}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='MisskeyInstanceName'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Display Name')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='Universe Federation'
+                          autoComplete='off'
+                          value={field.value ?? ''}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Display name shown on the login button, defaults to Misskey')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='MisskeyInstanceIcon'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Icon URL')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder='https://example.com/icon.png'
+                          autoComplete='off'
+                          value={field.value ?? ''}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Icon URL shown on the login button, leave empty for default icon')}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

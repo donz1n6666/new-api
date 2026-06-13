@@ -315,6 +315,25 @@ export async function onLinuxDOOAuthClicked(
   );
 }
 
+export async function onMisskeyOAuthClicked(options = { shouldLogout: false }) {
+  // Misskey OAuth state and PKCE verifier are generated server-side
+  // by the authorize endpoint; only the affiliate code needs forwarding.
+  const { shouldLogout = false } = options;
+  if (shouldLogout) {
+    try {
+      await API.get('/api/user/logout', { skipErrorHandler: true });
+    } catch (err) {}
+    localStorage.removeItem('user');
+    updateAPI();
+  }
+  let path = '/api/oauth/misskey/authorize';
+  const affCode = localStorage.getItem('aff');
+  if (affCode && affCode.length > 0) {
+    path += `?aff=${encodeURIComponent(affCode)}`;
+  }
+  redirectToOAuthUrl(path);
+}
+
 /**
  * Initiate custom OAuth login
  * @param {Object} provider - Custom OAuth provider config from status API

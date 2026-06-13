@@ -35,6 +35,7 @@ import {
   onDiscordOAuthClicked,
   onOIDCClicked,
   onLinuxDOOAuthClicked,
+  onMisskeyOAuthClicked,
   onCustomOAuthClicked,
   prepareCredentialRequestOptions,
   buildAssertionResult,
@@ -95,6 +96,7 @@ const LoginForm = () => {
   const [discordLoading, setDiscordLoading] = useState(false);
   const [oidcLoading, setOidcLoading] = useState(false);
   const [linuxdoLoading, setLinuxdoLoading] = useState(false);
+  const [misskeyLoading, setMisskeyLoading] = useState(false);
   const [emailLoginLoading, setEmailLoginLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
@@ -140,6 +142,7 @@ const LoginForm = () => {
       status.wechat_login ||
       status.linuxdo_oauth ||
       status.telegram_oauth ||
+      status.misskey_oauth ||
       hasCustomOAuthProviders,
   );
 
@@ -387,6 +390,19 @@ const LoginForm = () => {
     }
   };
 
+  const handleMisskeyClick = () => {
+    if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
+      showInfo(t('请先阅读并同意用户协议和隐私政策'));
+      return;
+    }
+    setMisskeyLoading(true);
+    try {
+      onMisskeyOAuthClicked({ shouldLogout: true });
+    } finally {
+      setTimeout(() => setMisskeyLoading(false), 3000);
+    }
+  };
+
   // 包装的自定义OAuth登录点击处理
   const handleCustomOAuthClick = (provider) => {
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
@@ -600,6 +616,31 @@ const LoginForm = () => {
                     loading={linuxdoLoading}
                   >
                     <span className='ml-3'>{t('使用 LinuxDO 继续')}</span>
+                  </Button>
+                )}
+
+                {status.misskey_oauth && (
+                  <Button
+                    theme='outline'
+                    className='w-full h-12 flex items-center justify-center !rounded-full border border-gray-200 hover:bg-gray-50 transition-colors'
+                    type='tertiary'
+                    icon={
+                      status.misskey_instance_icon ? (
+                        <Icon
+                          svg={
+                            <img
+                              src={status.misskey_instance_icon}
+                              alt=''
+                              style={{ width: '20px', height: '20px', borderRadius: '4px', objectFit: 'contain' }}
+                            />
+                          }
+                        />
+                      ) : undefined
+                    }
+                    onClick={handleMisskeyClick}
+                    loading={misskeyLoading}
+                  >
+                    <span className='ml-3'>{status.misskey_instance_name ? t('使用 {{name}} 继续', { name: status.misskey_instance_name }) : t('使用 Misskey 继续')}</span>
                   </Button>
                 )}
 
