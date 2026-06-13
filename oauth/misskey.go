@@ -84,9 +84,14 @@ func GenerateMiAuthSessionId() string {
 
 // BuildMiAuthUrl returns the MiAuth authorization URL.
 func BuildMiAuthUrl(sessionId string, callbackUrl string) string {
-	return fmt.Sprintf("%s/miauth/%s?name=NewAPI&callback=%s&permission=read:account",
+	appName := "NewAPI"
+	if common.SystemName != "" {
+		appName = common.SystemName
+	}
+	return fmt.Sprintf("%s/miauth/%s?name=%s&callback=%s&permission=read:account",
 		GetMisskeyInstanceUrl(),
 		sessionId,
+		url.QueryEscape(appName),
 		url.QueryEscape(callbackUrl),
 	)
 }

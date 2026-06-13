@@ -769,6 +769,7 @@
     "Client header value": "客户端请求头值",
     "Client ID": "Client ID",
     "Client Secret": "Client Secret",
+    "Client ID and Secret must be provided together or both left empty": "Client ID 和 Secret 必须同时填写或同时留空",
     "Close": "关闭",
     "Close dialog": "关闭对话框",
     "Close menu": "关闭菜单",

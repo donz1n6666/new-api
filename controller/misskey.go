@@ -58,9 +58,11 @@ func MisskeyAuthorize(c *gin.Context) {
 // The CSRF state and original sessionId are passed via URL query params
 // because SameSite=Strict cookies are lost on cross-origin redirects.
 func MisskeyMiAuthCallback(c *gin.Context) {
-	// Validate CSRF state from URL param
+	sess := sessions.Default(c)
+
+	// Validate CSRF state from URL param against session cookie
 	state := c.Query("state")
-	if state == "" {
+	if state == "" || sess.Get("oauth_state") == nil || state != sess.Get("oauth_state").(string) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
@@ -85,7 +87,6 @@ func MisskeyMiAuthCallback(c *gin.Context) {
 	}
 
 	// Check if user is already logged in (bind flow)
-	sess := sessions.Default(c)
 	username := sess.Get("username")
 	if username != nil {
 		misskeyMiAuthBind(c, sessionId)
@@ -135,9 +136,18 @@ func MisskeyMiAuthCallback(c *gin.Context) {
 // ?state= (CSRF), exchanges for token, creates/finds user, sets up session.
 // This is the frontend-facing counterpart to MisskeyMiAuthCallback.
 func MisskeyMiAuthLogin(c *gin.Context) {
-	// Validate CSRF state
+	// Check provider is enabled before doing anything
+	provider := oauth.GetProvider("misskey")
+	if provider == nil || !provider.IsEnabled() {
+		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams("Misskey"))
+		return
+	}
+
+	sess := sessions.Default(c)
+
+	// Validate CSRF state from URL param against session cookie
 	state := c.Query("state")
-	if state == "" {
+	if state == "" || sess.Get("oauth_state") == nil || state != sess.Get("oauth_state").(string) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
@@ -163,8 +173,6 @@ func MisskeyMiAuthLogin(c *gin.Context) {
 		return
 	}
 
-	sess := sessions.Default(c)
-
 	// Check if user is already logged in (bind flow)
 	username := sess.Get("username")
 	if username != nil {
@@ -180,7 +188,6 @@ func MisskeyMiAuthLogin(c *gin.Context) {
 	}
 
 	// Get user info
-	provider := oauth.GetProvider("misskey")
 	oauthUser, err := provider.GetUserInfo(c.Request.Context(), token)
 	if err != nil {
 		handleOAuthError(c, err)

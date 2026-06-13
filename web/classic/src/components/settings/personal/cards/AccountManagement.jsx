@@ -27,7 +27,6 @@ import {
   Avatar,
   Tabs,
   TabPane,
-  Tag,
   Popover,
   Modal,
 } from '@douyinfe/semi-ui';
