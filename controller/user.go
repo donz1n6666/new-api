@@ -103,6 +103,10 @@ func loginMethodFromContext(c *gin.Context) string {
 		return "wechat"
 	case "/api/oauth/telegram/login":
 		return "telegram"
+	case "/api/oauth/misskey/login":
+		return "oauth:misskey"
+	case "/api/oauth/misskey/miauth/callback":
+		return "oauth:misskey"
 	case "/api/oauth/:provider":
 		if provider := c.Param("provider"); provider != "" {
 			return "oauth:" + provider
