@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { API, showError } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import ModelPricingEditor from './components/ModelPricingEditor';
@@ -25,26 +25,34 @@ import ModelPricingEditor from './components/ModelPricingEditor';
 export default function ModelRatioNotSetEditor(props) {
   const { t } = useTranslation();
   const [enabledModels, setEnabledModels] = useState([]);
+  const [currentGroup, setCurrentGroup] = useState('global');
 
-  const getAllEnabledModels = async () => {
-    try {
-      const res = await API.get('/api/channel/models_enabled');
-      const { success, message, data } = res.data;
-      if (success) {
-        setEnabledModels(data);
-      } else {
-        showError(message);
+  const getAllEnabledModels = useCallback(
+    async (group) => {
+      try {
+        const url =
+          !group || group === 'global'
+            ? '/api/channel/models_enabled'
+            : `/api/channel/models_enabled?group=${encodeURIComponent(group)}`;
+        const res = await API.get(url);
+        const { success, message, data } = res.data;
+        if (success) {
+          setEnabledModels(Array.isArray(data) ? data : []);
+        } else {
+          showError(message);
+        }
+      } catch (error) {
+        console.error(t('获取启用模型失败:'), error);
+        showError(t('获取启用模型失败'));
       }
-    } catch (error) {
-      console.error(t('获取启用模型失败:'), error);
-      showError(t('获取启用模型失败'));
-    }
-  };
+    },
+    [t],
+  );
 
   useEffect(() => {
-    // 获取所有启用的模型
-    getAllEnabledModels();
-  }, []);
+    getAllEnabledModels(currentGroup);
+  }, [currentGroup, getAllEnabledModels]);
+
   return (
     <ModelPricingEditor
       options={props.options}
@@ -59,6 +67,7 @@ export default function ModelRatioNotSetEditor(props) {
       )}
       emptyTitle={t('没有未设置定价的模型')}
       emptyDescription={t('当前没有未设置定价的模型')}
+      onSelectedGroupChange={setCurrentGroup}
     />
   );
 }

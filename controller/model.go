@@ -331,9 +331,16 @@ func DashboardListModels(c *gin.Context) {
 }
 
 func EnabledListModels(c *gin.Context) {
+	group := c.Query("group")
+	var models []string
+	if group == "" || group == "global" {
+		models = model.GetEnabledModels()
+	} else {
+		models = model.GetGroupEnabledModels(group)
+	}
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    model.GetEnabledModels(),
+		"data":    models,
 	})
 }
 

@@ -117,6 +117,10 @@ export interface CreateUserSubscriptionRequest {
   plan_id: number
 }
 
+export interface SwitchSelfSubscriptionRequest {
+  subscription_id: number
+}
+
 // ============================================================================
 // Self Subscription Data (user-facing)
 // ============================================================================

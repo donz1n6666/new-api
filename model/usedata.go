@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -141,10 +142,14 @@ func increaseQuotaData(quotaData *QuotaData) {
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
 	// 如果提供了 channel 参数，从 logs 表实时聚合数据
 	if channel != "" {
+		channelId, convErr := strconv.Atoi(channel)
+		if convErr != nil {
+			return nil, fmt.Errorf("invalid channel id: %s", channel)
+		}
 		var quotaDatas []*QuotaData
 		err = DB.Table("logs").
 			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
-			Where("type = ? and username = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, username, startTime, endTime, channel).
+			Where("type = ? and username = ? and created_at >= ? and created_at <= ? and channel_id = ?", LogTypeConsume, username, startTime, endTime, channelId).
 			Group("model_name, created_at").
 			Find(&quotaDatas).Error
 		return quotaDatas, err
@@ -163,10 +168,14 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64, cha
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
 	// 如果提供了 channel 参数，从 logs 表实时聚合数据
 	if channel != "" {
+		channelId, convErr := strconv.Atoi(channel)
+		if convErr != nil {
+			return nil, fmt.Errorf("invalid channel id: %s", channel)
+		}
 		var quotaDatas []*QuotaData
 		err = DB.Table("logs").
 			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
-			Where("type = ? and user_id = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, userId, startTime, endTime, channel).
+			Where("type = ? and user_id = ? and created_at >= ? and created_at <= ? and channel_id = ?", LogTypeConsume, userId, startTime, endTime, channelId).
 			Group("model_name, created_at").
 			Find(&quotaDatas).Error
 		return quotaDatas, err
@@ -185,10 +194,14 @@ func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, channel st
 func GetQuotaDataGroupByUser(startTime int64, endTime int64, channel string) (quotaData []*QuotaData, err error) {
 	// 如果提供了 channel 参数，从 logs 表实时聚合数据
 	if channel != "" {
+		channelId, convErr := strconv.Atoi(channel)
+		if convErr != nil {
+			return nil, fmt.Errorf("invalid channel id: %s", channel)
+		}
 		var quotaDatas []*QuotaData
 		err = DB.Table("logs").
 			Select("username, created_at - (created_at % 3600) as created_at, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used").
-			Where("type = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, startTime, endTime, channel).
+			Where("type = ? and created_at >= ? and created_at <= ? and channel_id = ?", LogTypeConsume, startTime, endTime, channelId).
 			Group("username, created_at").
 			Find(&quotaDatas).Error
 		return quotaDatas, err
@@ -206,10 +219,14 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64, channel string) (qu
 func GetAllQuotaDates(startTime int64, endTime int64, username string, channel string) (quotaData []*QuotaData, err error) {
 	// 如果提供了 channel 参数，从 logs 表实时聚合数据
 	if channel != "" {
+		channelId, convErr := strconv.Atoi(channel)
+		if convErr != nil {
+			return nil, fmt.Errorf("invalid channel id: %s", channel)
+		}
 		var quotaDatas []*QuotaData
 		err = DB.Table("logs").
 			Select("model_name, count(*) as count, sum(quota) as quota, sum(prompt_tokens + completion_tokens) as token_used, created_at - (created_at % 3600) as created_at").
-			Where("type = ? and created_at >= ? and created_at <= ? and channel = ?", LogTypeConsume, startTime, endTime, channel).
+			Where("type = ? and created_at >= ? and created_at <= ? and channel_id = ?", LogTypeConsume, startTime, endTime, channelId).
 			Group("model_name, created_at").
 			Find(&quotaDatas).Error
 		return quotaDatas, err

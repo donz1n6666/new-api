@@ -3877,6 +3877,14 @@
     "Webhook Signing Key 状态：": "Webhook Signing Key Status: ",
     "用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变": "Used to verify Alchemy webhook signatures; leave empty to keep the existing key unchanged",
     "已创建订单并打开支付页面，可在账单继续支付": "Order created and payment page opened, you can continue payment from the billing page",
-    "已创建订单并发起支付，可在账单继续支付": "Order created and payment initiated, you can continue payment from the billing page"
+    "已创建订单并发起支付，可在账单继续支付": "Order created and payment initiated, you can continue payment from the billing page",
+    "已作废": "Invalidated",
+    "未激活": "Inactive",
+    "切换成功": "Switched successfully",
+    "切换失败": "Switch failed",
+    "个未激活": "inactive",
+    "个已作废": "cancelled",
+    "切换中...": "Switching...",
+    "切换": "Switch"
   }
 }

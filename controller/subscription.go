@@ -26,6 +26,10 @@ type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+type SwitchSelfSubscriptionRequest struct {
+	SubscriptionId int `json:"subscription_id"`
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
@@ -81,6 +85,17 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
+	if pref == "wallet_only" || pref == "wallet_first" {
+		noFallback, err := model.HasGlobalDisableBalanceDeductionSubscription(userId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if noFallback {
+			common.ApiErrorMsg(c, "当前订阅不允许使用余额扣费")
+			return
+		}
+	}
 
 	user, err := model.GetUserById(userId, true)
 	if err != nil {
@@ -95,6 +110,29 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"billing_preference": pref})
+}
+
+func SwitchSelfSubscription(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req SwitchSelfSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.SubscriptionId <= 0 {
+		common.ApiErrorMsg(c, "订阅ID无效")
+		return
+	}
+	msg, err := model.SwitchUserActiveSubscription(userId, req.SubscriptionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if strings.TrimSpace(msg) == "" {
+		common.ApiSuccess(c, gin.H{})
+		return
+	}
+	common.ApiSuccess(c, gin.H{"message": msg})
 }
 
 func SubscriptionRequestBalancePay(c *gin.Context) {

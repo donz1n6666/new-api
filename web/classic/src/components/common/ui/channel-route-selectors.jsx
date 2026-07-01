@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox, Col, Input, Row, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconPlus, IconSearch } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-import { API, showError, showSuccess } from '../../../helpers';
+import { API, showError } from '../../../helpers';
 
 const { Text } = Typography;
 
@@ -55,6 +55,24 @@ function nameRuleToRegex(name, rule) {
     case 3: return `${escaped}$`;
     default: return `^${escaped}$`;
   }
+}
+
+// Extract plain model names (exact-match entries only) from a multi-line
+// model_regex text. Only `^name$` style entries can be queried via the
+// /api/channel/bound API which does an exact IN match on abilities.model.
+export function extractExactModelNames(modelRegexText) {
+  const out = [];
+  const seen = new Set();
+  for (const line of (modelRegexText || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (!(trimmed.startsWith('^') && trimmed.endsWith('$'))) continue;
+    const name = trimmed.slice(1, -1).replace(/\\([.*+?^${}()|[\]\\])/g, '$1');
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,15 +267,14 @@ export function PathSelector({ value, onChange }) {
 // ChannelSelector
 // ---------------------------------------------------------------------------
 
-export function ChannelSelector({ value, onChange, compact = false }) {
+export function ChannelSelector({ value, onChange, compact = false, modelNames }) {
   const { t } = useTranslation();
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showList, setShowList] = useState(false);
-  const [autoFillModel, setAutoFillModel] = useState('');
-  const [autoFilling, setAutoFilling] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loadedAll, setLoadedAll] = useState(false);
+  const [boundLoaded, setBoundLoaded] = useState(false);
 
   const selectedIds = useMemo(() => {
     const ids = [];
@@ -269,14 +286,62 @@ export function ChannelSelector({ value, onChange, compact = false }) {
 
   const channelMap = useMemo(() => { const m = new Map(); for (const ch of channels) m.set(ch.id, ch); return m; }, [channels]);
 
-  const loadChannels = useCallback(() => {
-    if (loaded) return;
+  // modelNames is an array of exact model names extracted from the upstream
+  // ModelNameMatcher. Stringify it to use as a stable dependency / cache key.
+  const normalizedModels = useMemo(() => {
+    if (!Array.isArray(modelNames)) return [];
+    return [...new Set(modelNames.map((s) => String(s || '').trim()).filter(Boolean))].sort();
+  }, [modelNames]);
+  const modelKey = normalizedModels.join(',');
+
+  // Auto-load channels bound to the upstream model names whenever they change.
+  // Uses /api/channel/bound which already filters by abilities.enabled=true and
+  // channels.status=1 (i.e. enabled channels that actually serve the model).
+  useEffect(() => {
+    if (!modelKey) {
+      setChannels([]);
+      setBoundLoaded(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setBoundLoaded(false);
+    API.get(`/api/channel/bound?model=${encodeURIComponent(modelKey)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const { success, data, message } = res.data;
+        if (success && Array.isArray(data)) {
+          setChannels(data.map((ch) => ({ id: ch.id, name: ch.name, type: ch.type, status: 1 })));
+        } else if (!success) {
+          showError(message || t('查询绑定渠道失败'));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+        setBoundLoaded(true);
+        setLoadedAll(false);
+      });
+    return () => { cancelled = true; };
+  }, [modelKey, t]);
+
+  // Fallback: when there are no exact model names to query (e.g. user only
+  // configured prefix / contains / suffix matches), allow the user to load the
+  // full channel list on demand by expanding the picker.
+  const loadAllChannels = useCallback(() => {
+    if (loadedAll || modelKey) return;
     setLoading(true);
     API.get('/api/channel/?p=0&page_size=500&id_sort=true')
-      .then((res) => { const { success, data } = res.data; if (success && data?.items) setChannels(data.items.map((ch) => ({ id: ch.id, name: ch.name, type: ch.type, status: ch.status }))); })
+      .then((res) => {
+        const { success, data } = res.data;
+        if (success && data?.items) {
+          setChannels(data.items.map((ch) => ({ id: ch.id, name: ch.name, type: ch.type, status: ch.status })));
+        }
+      })
       .catch(() => {})
-      .finally(() => { setLoading(false); setLoaded(true); });
-  }, [loaded]);
+      .finally(() => { setLoading(false); setLoadedAll(true); });
+  }, [loadedAll, modelKey]);
 
   const filteredChannels = useMemo(() => {
     if (!search) return channels;
@@ -289,38 +354,19 @@ export function ChannelSelector({ value, onChange, compact = false }) {
     onChange(next.join('\n'));
   };
 
-  const handleAutoFill = async () => {
-    const model = autoFillModel.trim();
-    if (!model) return;
-    setAutoFilling(true);
-    try {
-      const res = await API.get(`/api/channel/bound?model=${encodeURIComponent(model)}`);
-      const { success, data, message } = res.data;
-      if (success && Array.isArray(data)) {
-        if (data.length === 0) { showError(t('未找到该模型的绑定渠道')); return; }
-        const existing = new Set(selectedIds);
-        const newIds = data.map((ch) => ch.id).filter((id) => !existing.has(id));
-        onChange([...selectedIds, ...newIds].join('\n'));
-        setChannels((prev) => { const e = new Set(prev.map((c) => c.id)); return [...prev, ...data.filter((ch) => !e.has(ch.id)).map((ch) => ({ id: ch.id, name: ch.name, type: ch.type, status: 1 }))]; });
-        showSuccess(t(`已添加 ${newIds.length} 个渠道`));
-      } else { showError(message || t('查询失败')); }
-    } catch { showError(t('查询绑定渠道失败')); } finally { setAutoFilling(false); }
-  };
-
   const selectedDisplay = useMemo(() => selectedIds.map((id) => { const ch = channelMap.get(id); return { id, name: ch?.name || `#${id}`, type: ch?.type }; }), [selectedIds, channelMap]);
+
+  const hintText = modelKey
+    ? boundLoaded && channels.length === 0
+      ? t('未找到该模型的启用渠道')
+      : t(`匹配模型：${modelKey}`)
+    : t('请先在上方"模型匹配"中添加精确匹配的模型名以自动筛选渠道');
 
   return (
     <div>
       <Text size='small' strong style={{ display: 'block', marginBottom: 4 }}>{compact ? t('渠道池') : t('兜底渠道池')}</Text>
-      <Row gutter={8} style={{ marginBottom: 8 }}>
-        <Col span={16}>
-          <Input value={autoFillModel} onChange={(v) => setAutoFillModel(v)} onPressEnter={handleAutoFill} placeholder={t('输入模型名自动填充渠道...')} prefix={<IconSearch size='small' />} />
-        </Col>
-        <Col span={8}>
-          <Button onClick={handleAutoFill} loading={autoFilling} disabled={!autoFillModel.trim()} style={{ width: '100%' }}>{t('自动填充')}</Button>
-        </Col>
-      </Row>
-      <div onClick={() => { loadChannels(); setShowList(!showList); }} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 4, padding: '8px 12px', cursor: 'pointer', minHeight: 32 }}>
+      <Text type='tertiary' size='small' style={{ display: 'block', marginBottom: 8 }}>{hintText}</Text>
+      <div onClick={() => { setShowList(!showList); if (!modelKey) loadAllChannels(); }} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 4, padding: '8px 12px', cursor: 'pointer', minHeight: 32 }}>
         {selectedIds.length > 0 ? <Text>{t(`已选择 ${selectedIds.length} 个渠道`)}</Text> : <Text type='tertiary'>{t('点击选择渠道...')}</Text>}
       </div>
       {showList && (
@@ -328,7 +374,7 @@ export function ChannelSelector({ value, onChange, compact = false }) {
           <Input value={search} onChange={(v) => setSearch(v)} placeholder={t('搜索渠道...')} prefix={<IconSearch size='small' />} showClear style={{ marginBottom: 8 }} />
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {loading ? <div style={{ textAlign: 'center', padding: 16 }}><Spin size='small' /></div>
-            : filteredChannels.length === 0 ? <Text type='tertiary' size='small' style={{ display: 'block', textAlign: 'center', padding: 16 }}>{t('无匹配渠道')}</Text>
+            : filteredChannels.length === 0 ? <Text type='tertiary' size='small' style={{ display: 'block', textAlign: 'center', padding: 16 }}>{modelKey ? t('未找到该模型的启用渠道') : t('无匹配渠道')}</Text>
             : filteredChannels.map((ch) => (
               <div key={ch.id} style={{ padding: '4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Checkbox checked={selectedIds.includes(ch.id)} onChange={() => handleToggle(ch.id)}><span>{ch.name}</span></Checkbox>

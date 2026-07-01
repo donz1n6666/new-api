@@ -1,14 +1,23 @@
 package model
 
-// GetMissingModels returns model names that are referenced in the system
-func GetMissingModels() ([]string, error) {
-	// 1. 获取所有已启用模型（去重）
-	models := GetEnabledModels()
+// GetMissingModels returns model names that are referenced in the system but
+// do not yet have a corresponding entry in the models meta table.
+//
+// When group is empty the lookup spans every enabled ability (global view).
+// When group is provided (and not the synthetic "global" alias) only models
+// enabled for that group are considered, so callers can ask "which models are
+// missing for group X" without leaking models exposed under other groups.
+func GetMissingModels(group string) ([]string, error) {
+	var models []string
+	if group == "" || group == "global" {
+		models = GetEnabledModels()
+	} else {
+		models = GetGroupEnabledModels(group)
+	}
 	if len(models) == 0 {
 		return []string{}, nil
 	}
 
-	// 2. 查询已有的元数据模型名
 	var existing []string
 	if err := DB.Model(&Model{}).Where("model_name IN ?", models).Pluck("model_name", &existing).Error; err != nil {
 		return nil, err
@@ -19,8 +28,7 @@ func GetMissingModels() ([]string, error) {
 		existingSet[e] = struct{}{}
 	}
 
-	// 3. 收集缺失模型
-	var missing []string
+	missing := make([]string, 0)
 	for _, name := range models {
 		if _, ok := existingSet[name]; !ok {
 			missing = append(missing, name)

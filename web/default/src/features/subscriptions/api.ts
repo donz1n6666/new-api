@@ -208,6 +208,15 @@ export async function updateBillingPreference(
   return res.data
 }
 
+export async function switchSelfSubscription(
+  subscriptionId: number
+): Promise<ApiResponse<{ message?: string }>> {
+  const res = await api.post('/api/subscription/self/switch', {
+    subscription_id: subscriptionId,
+  })
+  return res.data
+}
+
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
   return res.data

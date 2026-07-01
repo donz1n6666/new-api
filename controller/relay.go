@@ -155,6 +155,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	relayInfo.SetEstimatePromptTokens(tokens)
+	common.SetContextKey(c, constant.ContextKeyEstimatedTokens, tokens)
+
+	// Re-route after estimating tokens. During the Distribute middleware phase,
+	// estimatedTokens is 0 so tier routing cannot evaluate and only the Fallback
+	// Pool is used. Now that real tokens are known, evaluate the route again so
+	// the precise tier is picked. The first getChannel() in the retry loop will
+	// short-circuit on info.ChannelMeta==nil and return whatever channel_id sits
+	// in the context, so updating the context here is enough.
+	if reRouteErr := rerouteByEstimatedTokens(c, relayInfo); reRouteErr != nil {
+		newAPIError = reRouteErr
+		return
+	}
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {
@@ -326,6 +338,51 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, newAPIError
 	}
 	return channel, nil
+}
+
+// rerouteByEstimatedTokens re-evaluates the channel route after the prompt-token
+// estimation step. During the Distribute middleware estimatedTokens is 0 so the
+// route never enters the tier loop. Calling GetChannelByRoute here gives the
+// tier logic the real token count and lets it pick the correct tier channel.
+// If the routing rule does not match, no channel is picked, or the picked
+// channel is the same as Distribute already chose, the context is left alone.
+func rerouteByEstimatedTokens(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	routeMatch, err := service.GetChannelByRoute(&service.RetryParam{
+		Ctx:        c,
+		TokenGroup: info.TokenGroup,
+		ModelName:  info.OriginModelName,
+		Retry:      common.GetPointer(0),
+	})
+	if err != nil {
+		return types.NewError(
+			fmt.Errorf("重新路由失败: %s", err.Error()),
+			types.ErrorCodeGetChannelFailed,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	if !routeMatch.Matched {
+		return nil
+	}
+	if routeMatch.Channel == nil {
+		if routeMatch.Strict && routeMatch.Exhausted {
+			return types.NewError(
+				fmt.Errorf("静态渠道路由规则 %s 命中，但未找到可用渠道", routeMatch.RuleName),
+				types.ErrorCodeGetChannelFailed,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		return nil
+	}
+	if routeMatch.Channel.Id == common.GetContextKeyInt(c, constant.ContextKeyChannelId) {
+		return nil
+	}
+	if apiErr := middleware.SetupContextForSelectedChannel(c, routeMatch.Channel, info.OriginModelName); apiErr != nil {
+		return apiErr
+	}
+	if info.TokenGroup == "auto" && routeMatch.SelectGroup != "" {
+		common.SetContextKey(c, constant.ContextKeyAutoGroup, routeMatch.SelectGroup)
+	}
+	return nil
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {

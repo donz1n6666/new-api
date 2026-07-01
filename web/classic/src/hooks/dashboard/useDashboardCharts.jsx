@@ -22,6 +22,7 @@ import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   modelColorMap,
   renderNumber,
+  renderTokenNumber,
   renderQuota,
   modelToColor,
   getQuotaWithUnit,
@@ -306,7 +307,7 @@ export const useDashboardCharts = (
       mark: {
         content: [{
           key: (datum) => datum['Model'],
-          value: (datum) => renderNumber(datum['Tokens'] || 0),
+          value: (datum) => renderTokenNumber(datum['Tokens'] || 0),
         }],
       },
     },
@@ -333,7 +334,7 @@ export const useDashboardCharts = (
     label: {
       visible: true,
       position: 'outside',
-      formatMethod: (value, datum) => renderNumber(datum['rawTokens'] || 0),
+      formatMethod: (value, datum) => renderTokenNumber(datum['rawTokens'] || 0),
     },
     axes: [{
       orient: 'left',
@@ -348,7 +349,7 @@ export const useDashboardCharts = (
       mark: {
         content: [{
           key: (datum) => datum['User'],
-          value: (datum) => renderNumber(datum['rawTokens'] || 0),
+          value: (datum) => renderTokenNumber(datum['rawTokens'] || 0),
         }],
       },
     },
@@ -638,7 +639,7 @@ export const useDashboardCharts = (
       updateChartSpec(
         setSpecTokenRankBar,
         tokenRankData,
-        `${t('总计')}：${renderNumber(totalTokens)}`,
+        `${t('总计')}：${renderTokenNumber(totalTokens)}`,
         newModelColors,
         'tokenRankData',
       );
@@ -718,7 +719,7 @@ export const useDashboardCharts = (
         data: [{ id: 'userTokenRankData', values: userTokenRankValues }],
         title: {
           ...prev.title,
-          subtext: `${t('总计')}：${renderNumber(totalUserTokens)}`,
+          subtext: `${t('总计')}：${renderTokenNumber(totalUserTokens)}`,
         },
       }));
     },
