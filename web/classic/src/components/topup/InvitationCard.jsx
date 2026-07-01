@@ -52,7 +52,15 @@ const STATUS_MAP = {
   3: { text: '已禁用', color: 'red' },
 };
 
-const InvitationCard = ({ t }) => {
+const InvitationCard = ({
+  t,
+  userState,
+  renderQuota,
+  setOpenTransfer,
+  affLink,
+  handleAffLinkClick,
+  complianceConfirmed = true,
+}) => {
   const [statusState] = useContext(StatusContext);
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
@@ -387,7 +395,6 @@ const InvitationCard = ({ t }) => {
   if (!invitationCodeEnabled) {
     return null;
   }
-
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       <div className='flex items-center mb-4'>
@@ -402,8 +409,59 @@ const InvitationCard = ({ t }) => {
         </div>
       </div>
 
-      <Space vertical style={{ width: '100%' }} size='large'>
-        <Card className='!rounded-xl w-full'>
+      {/* 收益展示区域 */}
+      <Space vertical style={{ width: '100%' }}>
+        {/* 统计数据统一卡片 */}
+        <Card
+          className='!rounded-xl w-full'
+          cover={
+            userState ? (
+              <div
+                className='relative h-30'
+                style={{
+                  '--palette-primary-darkerChannel': '0 75 80',
+                  backgroundImage: `linear-gradient(0deg, rgba(var(--palette-primary-darkerChannel) / 80%), rgba(var(--palette-primary-darkerChannel) / 80%)), url('/cover-4.webp')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              >
+                {/* 标题和按钮 */}
+                <div className='relative z-10 h-full flex flex-col justify-between p-4'>
+                  <div className='flex justify-between items-center'>
+                    <Text strong style={{ color: 'white', fontSize: '16px' }}>
+                      {t('收益统计')}
+                    </Text>
+                    <Button
+                      type='primary'
+                      theme='solid'
+                      size='small'
+                      disabled={
+                        !complianceConfirmed ||
+                        !userState?.user?.aff_quota ||
+                        userState?.user?.aff_quota <= 0
+                      }
+                      onClick={() => setOpenTransfer(true)}
+                      className='!rounded-lg'
+                    >
+                      {t('划转到余额')}
+                    </Button>
+                  </div>
+                  {!complianceConfirmed && (
+                    <Text
+                      style={{
+                        color: 'rgba(255,255,255,0.8)',
+                        fontSize: 12,
+                      }}
+                    >
+                      {t('邀请奖励划转已禁用，管理员需先确认合规声明。')}
+                    </Text>
+                  )}
+                </div>
+              </div>
+            ) : null
+          }
+        >
           <div className='flex flex-col gap-4'>
             <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
               <div className='flex flex-wrap gap-2'>

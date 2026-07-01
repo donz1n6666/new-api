@@ -51,6 +51,11 @@ export type WaffoPancakePaymentResponse = ApiResponse<
       session_id?: string
       expires_at?: number | string
       order_id?: string
+      // Self-service session token + expiry — surfaced by the backend so
+      // future flows (refund / cancel from new-api's own UI) can use them
+      // without re-issuing checkout. Not consumed by the current handler.
+      token?: string
+      token_expires_at?: number | string
     }
   | string
 >
@@ -117,11 +122,11 @@ export interface PaymentMethod {
   type: string
   /** Optional token or channel address */
   address?: string
-  /** Optional color for UI display */
+  /** Legacy optional color for UI display */
   color?: string
   /** Minimum topup amount for this payment method */
   min_topup?: number
-  /** Optional icon URL provided by backend (preferred over built-in icons) */
+  /** Optional react-icons component name or safe icon URL */
   icon?: string
 }
 
@@ -179,6 +184,12 @@ export interface TopupInfo {
   ethereum_min_topup?: number
   /** Ethereum topup details */
   ethereum_info?: EthereumTopupInfo
+  /** Whether redemption code usage is enabled */
+  enable_redemption?: boolean
+  /** Whether compliance confirmation has been completed */
+  payment_compliance_confirmed?: boolean
+  /** Current compliance terms version */
+  payment_compliance_terms_version?: string
 }
 
 /**

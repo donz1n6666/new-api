@@ -144,6 +144,7 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       other: 'Configure independent OpenAI / Claude base URLs below',
     },
   },
+  },
 }
 
 /**
