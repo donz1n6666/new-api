@@ -1198,7 +1198,6 @@ func equalStringPtr(a, b *string) bool {
 	}
 	return *a == *b
 }
-}
 
 func FetchModels(c *gin.Context) {
 	var req struct {

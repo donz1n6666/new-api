@@ -163,11 +163,8 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
-<<<<<<< HEAD
-			subscriptionRoute.POST("/ethereum/pay", middleware.CriticalRateLimit(), controller.RequestEthereumSubscriptionPay)
-=======
-			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
->>>>>>> new-api
+		subscriptionRoute.POST("/ethereum/pay", middleware.CriticalRateLimit(), controller.RequestEthereumSubscriptionPay)
+		subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.AdminAuth())
@@ -186,11 +183,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Subscription payment callbacks (no auth)
-<<<<<<< HEAD
-		apiRouter.POST("/subscription/epay/notify", controller.EpayUnifiedNotify)
+		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.EpayUnifiedNotify)
 		apiRouter.GET("/subscription/epay/notify", controller.EpayUnifiedNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
-		apiRouter.POST("/subscription/epay/return", controller.SubscriptionEpayReturn)
+		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
 		// Invitation code routes
 		invitationCodeRoute := apiRouter.Group("/invitation_code")
 		{
@@ -215,13 +211,6 @@ func SetApiRouter(router *gin.Engine) {
 				adminInvRoute.POST("/delete_used", controller.DeleteUsedInvitationCodes)
 			}
 		}
-
-=======
-		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
-		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
->>>>>>> new-api
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
