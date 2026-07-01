@@ -291,8 +291,10 @@ func migrateDB() error {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
+		&UserSubscriptionTierUsage{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
+		&InvitationCode{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -312,6 +314,8 @@ func migrateDB() error {
 			return err
 		}
 	}
+	// Migrate existing single-tier plans to QuotaTiers format
+	MigrateExistingPlansToTiers()
 	return nil
 }
 

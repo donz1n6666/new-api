@@ -334,6 +334,19 @@ func (s *BillingSession) syncRelayInfo() {
 	}
 }
 
+func resolveBillingUsingGroup(relayInfo *relaycommon.RelayInfo) string {
+	if relayInfo == nil {
+		return ""
+	}
+	if group := strings.TrimSpace(relayInfo.UsingGroup); group != "" {
+		return group
+	}
+	if group := strings.TrimSpace(relayInfo.TokenGroup); group != "" && group != "auto" {
+		return group
+	}
+	return strings.TrimSpace(relayInfo.UserGroup)
+}
+
 // ---------------------------------------------------------------------------
 // NewBillingSession 工厂 — 根据计费偏好创建会话并处理回退
 // ---------------------------------------------------------------------------
@@ -377,6 +390,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
+		usingGroup := resolveBillingUsingGroup(relayInfo)
 		subConsume := int64(preConsumedQuota)
 		if subConsume <= 0 {
 			subConsume = 1
@@ -384,10 +398,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				modelName:  relayInfo.OriginModelName,
+				usingGroup: usingGroup,
+				amount:     subConsume,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
