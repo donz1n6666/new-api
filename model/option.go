@@ -48,6 +48,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
+	common.OptionMap["GlobalRecordIpLogEnabled"] = strconv.FormatBool(common.IsGlobalRecordIpLogEnabled())
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -121,6 +122,14 @@ func InitOptionMap() {
 	common.OptionMap["EthereumContractAddress"] = setting.EthereumContractAddress
 	common.OptionMap["EthereumAlchemyWebhookSigningKey"] = setting.EthereumAlchemyWebhookSigningKey
 	common.OptionMap["EthereumMinTopUp"] = strconv.Itoa(setting.EthereumMinTopUp)
+	common.OptionMap["EthereumWalletConnectProjectID"] = setting.EthereumWalletConnectProjectID
+	common.OptionMap["EthereumWalletConnectAppName"] = setting.EthereumWalletConnectAppName
+	common.OptionMap["EthereumWalletConnectAppDescription"] = setting.EthereumWalletConnectAppDescription
+	common.OptionMap["EthereumWalletConnectAppURL"] = setting.EthereumWalletConnectAppURL
+	common.OptionMap["EthereumWalletConnectAppIcon"] = setting.EthereumWalletConnectAppIcon
+	common.OptionMap["EthereumWalletConnectRelayProxyEnabled"] = strconv.FormatBool(setting.EthereumWalletConnectRelayProxyEnabled)
+	common.OptionMap["EthereumWalletConnectPrimaryRelayURL"] = setting.EthereumWalletConnectPrimaryRelayURL
+	common.OptionMap["EthereumWalletConnectBackupRelayURL"] = setting.EthereumWalletConnectBackupRelayURL
 	common.OptionMap["EthereumSupportedTokens"] = setting.EthereumTokens2JsonString()
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
@@ -317,6 +326,9 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticEnableChannelEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
+		case "GlobalRecordIpLogEnabled":
+			common.GlobalRecordIpLogEnabled = boolValue
+			common.OptionMap[key] = strconv.FormatBool(common.IsGlobalRecordIpLogEnabled())
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）
 			// true -> USD, false -> TOKENS
@@ -489,6 +501,22 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.EthereumAlchemyWebhookSigningKey = value
 	case "EthereumMinTopUp":
 		setting.EthereumMinTopUp, _ = strconv.Atoi(value)
+	case "EthereumWalletConnectProjectID":
+		setting.EthereumWalletConnectProjectID = value
+	case "EthereumWalletConnectAppName":
+		setting.EthereumWalletConnectAppName = value
+	case "EthereumWalletConnectAppDescription":
+		setting.EthereumWalletConnectAppDescription = value
+	case "EthereumWalletConnectAppURL":
+		setting.EthereumWalletConnectAppURL = value
+	case "EthereumWalletConnectAppIcon":
+		setting.EthereumWalletConnectAppIcon = value
+	case "EthereumWalletConnectRelayProxyEnabled":
+		setting.EthereumWalletConnectRelayProxyEnabled = value == "true"
+	case "EthereumWalletConnectPrimaryRelayURL":
+		setting.EthereumWalletConnectPrimaryRelayURL = value
+	case "EthereumWalletConnectBackupRelayURL":
+		setting.EthereumWalletConnectBackupRelayURL = value
 	case "EthereumSupportedTokens":
 		// validated lazily via GetEthereumTokens(), just store in OptionMap
 	case "TopupGroupRatio":

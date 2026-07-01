@@ -30,21 +30,30 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, renderQuota } from '../../helpers';
+import { API, showError, showSuccess, showInfo, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
+import WalletConnectQrModal from './modals/WalletConnectQrModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
 } from '../../helpers/subscriptionFormat';
+import {
+  executeEthereumOrderWithAutoWallet,
+  isEthereumUserRejected,
+} from '../../helpers/ethereumWallet';
 
 const { Text } = Typography;
 
 // 过滤易支付方式
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      m.type !== 'ethereum',
   );
 }
 
@@ -69,6 +78,21 @@ function submitEpayForm({ url, params }) {
   document.body.removeChild(form);
 }
 
+function getWalletConnectConfig(ethereumInfo) {
+  const walletConnect = ethereumInfo?.wallet_connect || {};
+  return {
+    projectId: walletConnect.project_id || '',
+    appName: walletConnect.app_name || '',
+    description: walletConnect.description || '',
+    url: walletConnect.url || '',
+    icon: walletConnect.icon || '',
+    relayProxyEnabled: Boolean(walletConnect.relay_proxy_enabled),
+    relayProxyUrl: walletConnect.relay_proxy_url || '',
+    primaryRelayUrl: walletConnect.primary_relay_url || '',
+    backupRelayUrl: walletConnect.backup_relay_url || '',
+  };
+}
+
 const SubscriptionPlansCard = ({
   t,
   loading = false,
@@ -83,12 +107,19 @@ const SubscriptionPlansCard = ({
   allSubscriptions = [],
   reloadSubscriptionSelf,
   withCard = true,
+  enableEthereumTopUp = false,
+  ethereumInfo = null,
+  onPayEthereum,
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [switchingSubscriptionId, setSwitchingSubscriptionId] = useState(null);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectModalVisible, setWalletConnectModalVisible] =
+    useState(false);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -193,6 +224,89 @@ const SubscriptionPlansCard = ({
       }
     } catch (e) {
       showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const payEthereum = async (tokenAddress) => {
+    if (!selectedPlan?.plan?.id) return;
+    setPaying(true);
+    try {
+      // 1. Create pending subscription order on backend
+      const res = await API.post('/api/subscription/ethereum/pay', {
+        plan_id: selectedPlan.plan.id,
+        token_address: tokenAddress,
+      });
+      if (!res?.data || res.data.message !== 'success') {
+        showError(res?.data?.data || t('创建订单失败'));
+        return;
+      }
+      const {
+        order_id,
+        contract_address,
+        chain_id,
+        token_address: respTokenAddr,
+        pay_amount,
+      } = res.data.data;
+      showInfo(
+        t('正在连接钱包，如未检测到浏览器钱包将显示 WalletConnect 连接信息...'),
+      );
+      const receipt = await executeEthereumOrderWithAutoWallet(
+        {
+          order_id,
+          contract_address,
+          chain_id,
+          token_address: respTokenAddr,
+          pay_amount,
+        },
+        getWalletConnectConfig(ethereumInfo),
+        {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalVisible(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalVisible(Boolean(uri));
+          },
+          onWalletConnectConnected: () => {
+            showInfo(t('钱包已连接，正在准备交易请求...'));
+          },
+          onWalletConnectSessionEstablished: () => {
+            setWalletConnectModalVisible(false);
+            showInfo(t('连接已建立，正在同步钱包会话...'));
+          },
+          onWalletConnectSwitchNetworkPending: () => {
+            showInfo(t('请在钱包中确认切换网络'));
+          },
+          onWalletConnectReadyToSign: () => {
+            showInfo(t('钱包已就绪，正在发起交易请求...'));
+          },
+          onWalletConnectApprovePending: () => {
+            showInfo(t('请在钱包中确认代币授权'));
+          },
+          onWalletConnectTransactionPending: () => {
+            setWalletConnectModalVisible(false);
+            showInfo(t('请在钱包中确认支付交易'));
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalVisible(false);
+          },
+        },
+      );
+      showSuccess(
+        receipt?.walletName
+          ? t('交易确认！额度将在几秒内到账，钱包：') + receipt.walletName
+          : t('交易确认！额度将在几秒内到账'),
+      );
+      closeBuy();
+    } catch (e) {
+      if (isEthereumUserRejected(e)) {
+        showError(t('用户取消了交易'));
+      } else {
+        showError(e?.reason || e?.message || t('交易失败'));
+      }
     } finally {
       setPaying(false);
     }
@@ -684,6 +798,13 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        onPayEthereum={payEthereum}
+      />
+      <WalletConnectQrModal
+        t={t}
+        visible={walletConnectModalVisible}
+        uri={walletConnectUri}
+        onCancel={() => setWalletConnectModalVisible(false)}
       />
     </>
   );

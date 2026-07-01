@@ -134,6 +134,17 @@ export const UPTIME_STATUS_MAP = {
   3: { color: '#3b82f6', label: '维护中', text: '维护中' }, // MAINTENANCE
 };
 
+// ========== 模型可用性状态映射 ==========
+export const MODEL_AVAILABILITY_STATUS_MAP = {
+  normal: { color: '#10b981', label: '正常', text: '成功率 ≥ 95%' },
+  warning: { color: '#f59e0b', label: '警告', text: '成功率 80-95%' },
+  error: { color: '#ef4444', label: '异常', text: '成功率 < 80%' },
+  no_data: { color: '#8b9aa7', label: '无数据', text: '暂无调用记录' },
+};
+
+// ========== 模型可用性特殊 Tab 键名 ==========
+export const MODEL_AVAILABILITY_TAB_KEY = '__model_availability__';
+
 // ========== 本地存储键名 ==========
 export const STORAGE_KEYS = {
   DATA_EXPORT_DEFAULT_TIME: 'data_export_default_time',

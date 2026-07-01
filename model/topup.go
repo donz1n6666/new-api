@@ -38,6 +38,7 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderEthereum     = "ethereum"
 	PaymentProviderBalance      = "balance"
 )
 

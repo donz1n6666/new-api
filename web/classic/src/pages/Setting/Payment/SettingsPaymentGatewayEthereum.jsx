@@ -11,12 +11,21 @@ const { Text } = Typography;
 export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [signingKeyConfigured, setSigningKeyConfigured] = useState(false);
   const [inputs, setInputs] = useState({
     EthereumEnabled: false,
     EthereumChainId: 11155111,
     EthereumContractAddress: '',
     EthereumAlchemyWebhookSigningKey: '',
     EthereumMinTopUp: 1,
+    EthereumWalletConnectProjectID: '',
+    EthereumWalletConnectAppName: '',
+    EthereumWalletConnectAppDescription: '',
+    EthereumWalletConnectAppURL: '',
+    EthereumWalletConnectAppIcon: '',
+    EthereumWalletConnectRelayProxyEnabled: false,
+    EthereumWalletConnectPrimaryRelayURL: '',
+    EthereumWalletConnectBackupRelayURL: '',
   });
   const [tokens, setTokens] = useState([
     { symbol: 'ETH', address: '0x0000000000000000000000000000000000000000', decimals: 18, price: '0.001' },
@@ -37,7 +46,21 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
       EthereumContractAddress: options.EthereumContractAddress || '',
       EthereumAlchemyWebhookSigningKey: options.EthereumAlchemyWebhookSigningKey || '',
       EthereumMinTopUp: parseInt(options.EthereumMinTopUp) || 1,
+      EthereumWalletConnectProjectID: options.EthereumWalletConnectProjectID || '',
+      EthereumWalletConnectAppName: options.EthereumWalletConnectAppName || '',
+      EthereumWalletConnectAppDescription: options.EthereumWalletConnectAppDescription || '',
+      EthereumWalletConnectAppURL: options.EthereumWalletConnectAppURL || '',
+      EthereumWalletConnectAppIcon: options.EthereumWalletConnectAppIcon || '',
+      EthereumWalletConnectRelayProxyEnabled:
+        options.EthereumWalletConnectRelayProxyEnabled === 'true' ||
+        options.EthereumWalletConnectRelayProxyEnabled === true,
+      EthereumWalletConnectPrimaryRelayURL: options.EthereumWalletConnectPrimaryRelayURL || '',
+      EthereumWalletConnectBackupRelayURL: options.EthereumWalletConnectBackupRelayURL || '',
     };
+    setSigningKeyConfigured(
+      options.EthereumAlchemyWebhookSigningKeyConfigured === 'true' ||
+        options.EthereumAlchemyWebhookSigningKeyConfigured === true,
+    );
     setInputs(currentInputs);
     formApiRef.current.setValues(currentInputs);
 
@@ -56,17 +79,34 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
   const submitSettings = async () => {
     setLoading(true);
     try {
+      const formValues = formApiRef.current?.getValues?.() || inputs;
+      const relayProxyEnabled = Boolean(formValues.EthereumWalletConnectRelayProxyEnabled);
       const opts = [
-        { key: 'EthereumEnabled', value: inputs.EthereumEnabled ? 'true' : 'false' },
-        { key: 'EthereumChainId', value: String(inputs.EthereumChainId || 11155111) },
-        { key: 'EthereumContractAddress', value: inputs.EthereumContractAddress || '' },
-        { key: 'EthereumAlchemyWebhookSigningKey', value: inputs.EthereumAlchemyWebhookSigningKey || '' },
-        { key: 'EthereumMinTopUp', value: String(inputs.EthereumMinTopUp || 1) },
+        { key: 'EthereumEnabled', value: formValues.EthereumEnabled ? 'true' : 'false' },
+        { key: 'EthereumChainId', value: String(formValues.EthereumChainId || 11155111) },
+        { key: 'EthereumContractAddress', value: formValues.EthereumContractAddress || '' },
+        { key: 'EthereumMinTopUp', value: String(formValues.EthereumMinTopUp || 1) },
+        { key: 'EthereumWalletConnectProjectID', value: formValues.EthereumWalletConnectProjectID || '' },
+        { key: 'EthereumWalletConnectAppName', value: formValues.EthereumWalletConnectAppName || '' },
+        { key: 'EthereumWalletConnectAppDescription', value: formValues.EthereumWalletConnectAppDescription || '' },
+        { key: 'EthereumWalletConnectAppURL', value: formValues.EthereumWalletConnectAppURL || '' },
+        { key: 'EthereumWalletConnectAppIcon', value: formValues.EthereumWalletConnectAppIcon || '' },
+        { key: 'EthereumWalletConnectRelayProxyEnabled', value: relayProxyEnabled ? 'true' : 'false' },
+        { key: 'EthereumWalletConnectPrimaryRelayURL', value: relayProxyEnabled ? '' : formValues.EthereumWalletConnectPrimaryRelayURL || '' },
+        { key: 'EthereumWalletConnectBackupRelayURL', value: relayProxyEnabled ? '' : formValues.EthereumWalletConnectBackupRelayURL || '' },
         { key: 'EthereumSupportedTokens', value: JSON.stringify(tokens) },
       ];
+      if ((formValues.EthereumAlchemyWebhookSigningKey || '').trim()) {
+        opts.push({
+          key: 'EthereumAlchemyWebhookSigningKey',
+          value: formValues.EthereumAlchemyWebhookSigningKey.trim(),
+        });
+      }
 
       const results = await Promise.all(
-        opts.map((o) => API.put('/api/option/', { key: o.key, value: o.value }))
+        opts.map((o) =>
+          API.put('/api/option/', { key: o.key, value: o.value }),
+        ),
       );
 
       const errors = results.filter((r) => !r.data.success);
@@ -155,6 +195,8 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
               <>
                 {t('通过 MetaMask 钱包接受 ETH 及 ERC-20 代币支付。需要：1) 已部署智能合约 2) 配置 Alchemy Custom Webhook。')}
                 <br />
+                {t('如需支持手机钱包二维码连接，请配置 WalletConnect Project ID。')}
+                <br />
                 {t('Webhook 地址：')}
                 <Text copyable code>{window.location.origin}/api/ethereum/webhook</Text>
               </>
@@ -197,8 +239,14 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 label={t('Alchemy Webhook 签名密钥')}
                 placeholder={t('从 Alchemy 控制台复制 Signing Key')}
                 mode='password'
-                extraText={t('用于验证 Alchemy 发来的 webhook 签名')}
+                extraText={t('用于验证 Alchemy 发来的 webhook 签名；留空表示保持现有密钥不变')}
               />
+              <div style={{ marginTop: 6 }}>
+                <Text type={signingKeyConfigured ? 'success' : 'warning'}>
+                  {t('Webhook Signing Key 状态：')}
+                  {signingKeyConfigured ? t('已配置') : t('未配置')}
+                </Text>
+              </div>
             </Col>
             <Col xs={24} md={8}>
               <Form.InputNumber
@@ -207,6 +255,91 @@ export default function SettingsPaymentGatewayEthereum({ options, refresh }) {
                 min={1}
                 step={1}
                 placeholder='1'
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectProjectID'
+                label={t('WalletConnect Project ID')}
+                placeholder={t('从 cloud.walletconnect.com / Reown Dashboard 获取')}
+                extraText={t('配置后可在无浏览器扩展时拉起二维码连接')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppName'
+                label={t('WalletConnect 应用名称')}
+                placeholder={t('默认使用当前站点名称')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppDescription'
+                label={t('WalletConnect 应用描述')}
+                placeholder={t('可选')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppURL'
+                label={t('WalletConnect 应用地址')}
+                placeholder='https://your-domain.com'
+                extraText={t('留空则默认使用当前站点地址')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectAppIcon'
+                label={t('WalletConnect 图标地址')}
+                placeholder='https://your-domain.com/icon.png'
+                extraText={t('可选，建议使用公开可访问的 HTTPS 图片地址')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Switch
+                field='EthereumWalletConnectRelayProxyEnabled'
+                label={t('启用本站 WalletConnect Relay 代理')}
+                checkedText='|'
+                uncheckedText='O'
+                extraText={t('开启后优先使用本站 /api/walletconnect/relay 代理官方 Relay，并忽略下方主/备用 Relay URL，避免二次代理')}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectPrimaryRelayURL'
+                label={t('WalletConnect 主 Relay URL')}
+                placeholder='wss://relay.walletconnect.com'
+                disabled={Boolean(inputs.EthereumWalletConnectRelayProxyEnabled)}
+                extraText={t(
+                  inputs.EthereumWalletConnectRelayProxyEnabled
+                    ? '已启用本站代理，此配置保存时会被清空'
+                    : '用于二维码配对和钱包连接；留空则使用 WalletConnect 默认 Relay',
+                )}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Input
+                field='EthereumWalletConnectBackupRelayURL'
+                label={t('WalletConnect 备用 Relay URL')}
+                placeholder='wss://your-backup-relay.example.com'
+                disabled={Boolean(inputs.EthereumWalletConnectRelayProxyEnabled)}
+                extraText={t(
+                  inputs.EthereumWalletConnectRelayProxyEnabled
+                    ? '已启用本站代理，此配置保存时会被清空'
+                    : '主 Relay 初始化失败时自动尝试备用地址',
+                )}
               />
             </Col>
           </Row>

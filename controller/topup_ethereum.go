@@ -150,13 +150,14 @@ func RequestEthereumPay(c *gin.Context) {
 
 	// Persist pending order
 	topUp := &model.TopUp{
-		UserId:        userId,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: "ethereum",
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          userId,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   "ethereum",
+		PaymentProvider: model.PaymentProviderEthereum,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
 		common.SysLog(fmt.Sprintf("Ethereum: 创建本地订单失败: %v", err))
@@ -278,7 +279,7 @@ func handlePaymentReceivedLog(entry alchemyLog, callerIp string) {
 	var err error
 	if strings.HasPrefix(tradeNo, "ETHSUB-") {
 		// Subscription purchase order
-		err = model.CompleteSubscriptionOrder(tradeNo, "", "", "")
+		err = model.CompleteSubscriptionOrder(tradeNo, "", model.PaymentProviderEthereum, "ethereum")
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Ethereum Webhook: 订阅订单完成失败 - tradeNo=%s, err=%v", tradeNo, err))
 		} else {
@@ -379,13 +380,14 @@ func RequestEthereumSubscriptionPay(c *gin.Context) {
 
 	// Create pending subscription order
 	order := &model.SubscriptionOrder{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
-		TradeNo:       tradeNo,
-		PaymentMethod: "ethereum",
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          userId,
+		PlanId:          plan.Id,
+		Money:           plan.PriceAmount,
+		TradeNo:         tradeNo,
+		PaymentMethod:   "ethereum",
+		PaymentProvider: model.PaymentProviderEthereum,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
 		common.SysLog(fmt.Sprintf("Ethereum: 创建订阅订单失败: %v", err))
@@ -510,11 +512,31 @@ func getEthereumTopUpInfo() (enabled bool, info map[string]interface{}) {
 	if !enabled {
 		return false, nil
 	}
+	relayProxyEnabled := setting.EthereumWalletConnectRelayProxyEnabled
+	primaryRelayURL := strings.TrimSpace(setting.EthereumWalletConnectPrimaryRelayURL)
+	backupRelayURL := strings.TrimSpace(setting.EthereumWalletConnectBackupRelayURL)
+	if relayProxyEnabled {
+		primaryRelayURL = ""
+		backupRelayURL = ""
+	}
+	walletConnect := map[string]interface{}{
+		"enabled":             strings.TrimSpace(setting.EthereumWalletConnectProjectID) != "",
+		"project_id":          strings.TrimSpace(setting.EthereumWalletConnectProjectID),
+		"app_name":            strings.TrimSpace(setting.EthereumWalletConnectAppName),
+		"description":         strings.TrimSpace(setting.EthereumWalletConnectAppDescription),
+		"url":                 strings.TrimSpace(setting.EthereumWalletConnectAppURL),
+		"icon":                strings.TrimSpace(setting.EthereumWalletConnectAppIcon),
+		"relay_proxy_enabled": relayProxyEnabled,
+		"relay_proxy_url":     "/api/walletconnect/relay",
+		"primary_relay_url":   primaryRelayURL,
+		"backup_relay_url":    backupRelayURL,
+	}
 	info = map[string]interface{}{
 		"chain_id":         setting.EthereumChainId,
 		"contract_address": setting.EthereumContractAddress,
 		"min_topup":        setting.EthereumMinTopUp,
 		"tokens":           setting.GetEthereumTokens(),
+		"wallet_connect":   walletConnect,
 	}
 	return true, info
 }

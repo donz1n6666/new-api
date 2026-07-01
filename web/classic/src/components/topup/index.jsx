@@ -39,6 +39,11 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WalletConnectQrModal from './modals/WalletConnectQrModal';
+import {
+  executeEthereumOrderWithAutoWallet,
+  isEthereumUserRejected,
+} from '../../helpers/ethereumWallet';
 
 // Reject non-navigable schemes (e.g. javascript:, data:) and relative URLs.
 // Only http / https are allowed for backend-provided redirect targets.
@@ -93,6 +98,13 @@ const TopUp = () => {
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
 
+  // Ethereum 相关状态
+  const [enableEthereumTopUp, setEnableEthereumTopUp] = useState(false);
+  const [ethereumInfo, setEthereumInfo] = useState(null);
+  const [walletConnectUri, setWalletConnectUri] = useState('');
+  const [walletConnectModalVisible, setWalletConnectModalVisible] =
+    useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
   const [payWay, setPayWay] = useState('');
@@ -130,6 +142,21 @@ const TopUp = () => {
     enable_redemption: true,
     payment_compliance_confirmed: true,
   });
+
+  const getWalletConnectConfig = () => {
+    const walletConnect = ethereumInfo?.wallet_connect || {};
+    return {
+      projectId: walletConnect.project_id || '',
+      appName: walletConnect.app_name || '',
+      description: walletConnect.description || '',
+      url: walletConnect.url || '',
+      icon: walletConnect.icon || '',
+      relayProxyEnabled: Boolean(walletConnect.relay_proxy_enabled),
+      relayProxyUrl: walletConnect.relay_proxy_url || '',
+      primaryRelayUrl: walletConnect.primary_relay_url || '',
+      backupRelayUrl: walletConnect.backup_relay_url || '',
+    };
+  };
 
   const confirmPayMethods = [
     ...payMethods,
@@ -428,6 +455,109 @@ const TopUp = () => {
     }
   };
 
+  // Ethereum 余额充值
+  const payEthereum = async (tokenAddress, fromPayMethod) => {
+    if (!fromPayMethod && !enableEthereumTopUp) {
+      showError(t('管理员未开启 Ethereum 充值！'));
+      return;
+    }
+
+    const payWayType = `ethereum:${tokenAddress}`;
+    setPayWay(payWayType);
+    setPaymentLoading(true);
+    try {
+      // 1. Create pending top-up order on backend
+      const res = await API.post('/api/user/ethereum/pay', {
+        amount: parseInt(topUpCount),
+        token_address: tokenAddress,
+      });
+      if (!res?.data || res.data.message !== 'success') {
+        showError(res?.data?.data || t('创建订单失败'));
+        return;
+      }
+      const {
+        order_id,
+        contract_address,
+        chain_id,
+        token_address: respTokenAddr,
+        pay_amount,
+        symbol,
+      } = res.data.data;
+
+      setPaymentLoading(false);
+      showInfo(
+        t('正在连接钱包，如未检测到浏览器钱包将显示 WalletConnect 连接信息...'),
+      );
+      const receipt = await executeEthereumOrderWithAutoWallet(
+        {
+          order_id,
+          contract_address,
+          chain_id,
+          token_address: respTokenAddr,
+          pay_amount,
+        },
+        getWalletConnectConfig(),
+        {
+          onWalletConnectPending: () => {
+            setWalletConnectUri('');
+            setWalletConnectModalVisible(true);
+          },
+          onWalletConnectUri: (uri) => {
+            setWalletConnectUri(uri || '');
+            setWalletConnectModalVisible(Boolean(uri));
+          },
+          onWalletConnectConnected: () => {
+            showInfo(t('钱包已连接，正在准备交易请求...'));
+          },
+          onWalletConnectSessionEstablished: () => {
+            setWalletConnectModalVisible(false);
+            showInfo(t('连接已建立，正在同步钱包会话...'));
+          },
+          onWalletConnectSwitchNetworkPending: () => {
+            showInfo(t('请在钱包中确认切换网络'));
+          },
+          onWalletConnectReadyToSign: () => {
+            showInfo(t('钱包已就绪，正在发起交易请求...'));
+          },
+          onWalletConnectApprovePending: () => {
+            showInfo(t('请在钱包中确认代币授权'));
+          },
+          onWalletConnectTransactionPending: () => {
+            setWalletConnectModalVisible(false);
+            showInfo(t('请在钱包中确认支付交易'));
+          },
+          onWalletConnectError: () => {
+            setWalletConnectModalVisible(false);
+          },
+        },
+      );
+
+      showSuccess(t('交易确认成功！请稍等片刻，充值将在 webhook 回调后到账。'));
+      if (receipt?.hash) {
+        showInfo(
+          t('交易哈希：') +
+            receipt.hash.slice(0, 10) +
+            '...' +
+            (receipt?.walletName ? ` (${receipt.walletName})` : ''),
+        );
+      } else if (receipt?.walletName) {
+        showInfo(t('已使用钱包：') + receipt.walletName);
+      }
+      setOpen(false);
+    } catch (e) {
+      console.error('Ethereum payment error:', e);
+      let msg = e.message || t('支付失败');
+      if (isEthereumUserRejected(e)) {
+        msg = t('用户拒绝了签名');
+      } else if (e.code === 'INSUFFICIENT_FUNDS') {
+        msg = t('钱包余额不足');
+      }
+      showError(msg);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const getWaffoAmount = async (value) => {
     if (value === undefined) {
       value = topUpCount;
@@ -660,6 +790,7 @@ const TopUp = () => {
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           const enableWaffoPancakeTopUp =
             data.enable_waffo_pancake_topup || false;
+          const enableEthereumTopUp = data.enable_ethereum_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -677,6 +808,8 @@ const TopUp = () => {
           setWaffoMinTopUp(data.waffo_min_topup || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
+          setEnableEthereumTopUp(enableEthereumTopUp);
+          setEthereumInfo(data.ethereum_info || null);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
           setTopUpLink(data.topup_link || '');
@@ -941,6 +1074,13 @@ const TopUp = () => {
         t={t}
       />
 
+      <WalletConnectQrModal
+        t={t}
+        visible={walletConnectModalVisible}
+        uri={walletConnectUri}
+        onCancel={() => setWalletConnectModalVisible(false)}
+      />
+
       {/* Creem 充值确认模态框 */}
       <Modal
         title={t('确定要充值 $')}
@@ -1016,6 +1156,9 @@ const TopUp = () => {
           allSubscriptions={allSubscriptions}
           reloadSubscriptionSelf={getSubscriptionSelf}
           enableRedemption={topupInfo.enable_redemption !== false}
+          enableEthereumTopUp={enableEthereumTopUp}
+          ethereumInfo={ethereumInfo}
+          onPayEthereum={payEthereum}
         />
         <InvitationCard
           t={t}

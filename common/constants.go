@@ -114,6 +114,20 @@ var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
 
+var GlobalRecordIpLogEnabled = false
+var globalRecordIpLogEnvEnabled = false
+
+func SetGlobalRecordIpLogEnvEnabled(enabled bool) {
+	globalRecordIpLogEnvEnabled = enabled
+	if enabled {
+		GlobalRecordIpLogEnabled = true
+	}
+}
+
+func IsGlobalRecordIpLogEnabled() bool {
+	return globalRecordIpLogEnvEnabled || GlobalRecordIpLogEnabled
+}
+
 var TLSInsecureSkipVerify bool
 var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}
 

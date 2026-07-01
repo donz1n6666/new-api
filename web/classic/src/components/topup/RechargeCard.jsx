@@ -98,6 +98,9 @@ const RechargeCard = ({
   allSubscriptions = [],
   reloadSubscriptionSelf,
   enableRedemption = true,
+  enableEthereumTopUp = false,
+  ethereumInfo = null,
+  onPayEthereum,
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -691,6 +694,9 @@ const RechargeCard = ({
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}
                 withCard={false}
+                enableEthereumTopUp={enableEthereumTopUp}
+                ethereumInfo={ethereumInfo}
+                onPayEthereum={onPayEthereum}
               />
             </div>
           </TabPane>
