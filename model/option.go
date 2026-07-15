@@ -48,6 +48,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["GlobalRecordIpLogEnabled"] = strconv.FormatBool(common.IsGlobalRecordIpLogEnabled())
+	common.OptionMap["GlobalRecordUaLogEnabled"] = strconv.FormatBool(common.IsGlobalRecordUaLogEnabled())
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -309,6 +310,9 @@ func updateOptionMap(key string, value string) (err error) {
 		case "GlobalRecordIpLogEnabled":
 			common.GlobalRecordIpLogEnabled = boolValue
 			common.OptionMap[key] = strconv.FormatBool(common.IsGlobalRecordIpLogEnabled())
+		case "GlobalRecordUaLogEnabled":
+			common.GlobalRecordUaLogEnabled = boolValue
+			common.OptionMap[key] = strconv.FormatBool(common.IsGlobalRecordUaLogEnabled())
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）
 			// true -> USD, false -> TOKENS

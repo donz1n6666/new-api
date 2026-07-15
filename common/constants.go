@@ -107,6 +107,20 @@ func IsGlobalRecordIpLogEnabled() bool {
 	return globalRecordIpLogEnvEnabled || GlobalRecordIpLogEnabled
 }
 
+var GlobalRecordUaLogEnabled = false
+var globalRecordUaLogEnvEnabled = false
+
+func SetGlobalRecordUaLogEnvEnabled(enabled bool) {
+	globalRecordUaLogEnvEnabled = enabled
+	if enabled {
+		GlobalRecordUaLogEnabled = true
+	}
+}
+
+func IsGlobalRecordUaLogEnabled() bool {
+	return globalRecordUaLogEnvEnabled || GlobalRecordUaLogEnabled
+}
+
 var TLSInsecureSkipVerify bool
 var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}
 

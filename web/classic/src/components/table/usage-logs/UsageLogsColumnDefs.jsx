@@ -870,6 +870,53 @@ export const getLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.UA,
+      title: (
+        <div className='flex items-center gap-1'>
+          {t('UA')}
+          <Tooltip
+            content={t(
+              '当站点全局设置开启UA记录时，才会记录消费和错误类型日志的User-Agent',
+            )}
+          >
+            <IconHelpCircle className='text-gray-400 cursor-help' />
+          </Tooltip>
+        </div>
+      ),
+      dataIndex: 'ua',
+      render: (text, record, index) => {
+        const showUa = (record.type === 2 || record.type === 5) && text;
+        return showUa ? (
+          <Tooltip content={text}>
+            <span>
+              <Tag
+                color='cyan'
+                shape='circle'
+                onClick={(event) => {
+                  copyText(event, text);
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    maxWidth: 140,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    verticalAlign: 'bottom',
+                  }}
+                >
+                  {text}
+                </span>
+              </Tag>
+            </span>
+          </Tooltip>
+        ) : (
+          <></>
+        );
+      },
+    },
+    {
       key: COLUMN_KEYS.RETRY,
       title: t('重试'),
       dataIndex: 'retry',

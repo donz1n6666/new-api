@@ -402,6 +402,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const showTiming = isTimingLogType(props.log.type)
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  const showUa = !!props.log.ua && showTiming
   const adminInfo = other?.admin_info
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
@@ -550,6 +551,22 @@ export function DetailsDialog(props: DetailsDialogProps) {
                         aria-hidden='true'
                       />
                       {props.log.ip}
+                    </span>
+                  }
+                  mono
+                />
+              )}
+
+              {showUa && (
+                <DetailRow
+                  label={t('User-Agent')}
+                  value={
+                    <span className='flex items-center gap-1'>
+                      <Monitor
+                        className='size-3 shrink-0 text-sky-500'
+                        aria-hidden='true'
+                      />
+                      <span className='break-all'>{props.log.ua}</span>
                     </span>
                   }
                   mono

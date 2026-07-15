@@ -36,6 +36,7 @@ type Log struct {
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
+	Ua               string `json:"ua" gorm:"type:varchar(512);default:''"`
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	Other            string `json:"other"`
 }
@@ -151,6 +152,20 @@ func shouldRecordRequestLogIp(userId int) bool {
 	return err == nil && settingMap.RecordIpLog
 }
 
+// maxLogUaLength 限制入库的 User-Agent 长度，与 Log.Ua 列宽保持一致
+const maxLogUaLength = 512
+
+func getRequestLogUa(c *gin.Context) string {
+	if !common.IsGlobalRecordUaLogEnabled() {
+		return ""
+	}
+	ua := c.Request.UserAgent()
+	if runes := []rune(ua); len(runes) > maxLogUaLength {
+		return string(runes[:maxLogUaLength])
+	}
+	return ua
+}
+
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
 	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, content))
@@ -180,6 +195,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 			}
 			return ""
 		}(),
+		Ua:        getRequestLogUa(c),
 		RequestId: requestId,
 		Other:     otherStr,
 	}
@@ -235,6 +251,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			}
 			return ""
 		}(),
+		Ua:        getRequestLogUa(c),
 		RequestId: requestId,
 		Other:     otherStr,
 	}
