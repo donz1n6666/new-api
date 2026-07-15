@@ -244,7 +244,7 @@ export default function SettingsLog(props) {
                   checkedText='｜'
                   uncheckedText='〇'
                   extraText={t(
-                    '开启后，所有用户的消费和错误日志都会记录客户端User-Agent（UA）请求头',
+                    '开启后，所有用户由请求产生的消费和错误日志都会记录客户端User-Agent（UA）请求头',
                   )}
                   onChange={(value) => {
                     setInputs({

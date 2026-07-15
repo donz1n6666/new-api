@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -160,8 +162,14 @@ func getRequestLogUa(c *gin.Context) string {
 		return ""
 	}
 	ua := c.Request.UserAgent()
-	if runes := []rune(ua); len(runes) > maxLogUaLength {
-		return string(runes[:maxLogUaLength])
+	end := 0
+	for count := 0; count < maxLogUaLength && end < len(ua); count++ {
+		_, size := utf8.DecodeRuneInString(ua[end:])
+		end += size
+	}
+	ua = ua[:end]
+	if !utf8.ValidString(ua) {
+		ua = strings.ToValidUTF8(ua, string(utf8.RuneError))
 	}
 	return ua
 }

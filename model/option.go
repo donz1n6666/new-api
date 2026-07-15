@@ -308,10 +308,10 @@ func updateOptionMap(key string, value string) (err error) {
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
 		case "GlobalRecordIpLogEnabled":
-			common.GlobalRecordIpLogEnabled = boolValue
+			common.SetGlobalRecordIpLogEnabled(boolValue)
 			common.OptionMap[key] = strconv.FormatBool(common.IsGlobalRecordIpLogEnabled())
 		case "GlobalRecordUaLogEnabled":
-			common.GlobalRecordUaLogEnabled = boolValue
+			common.SetGlobalRecordUaLogEnabled(boolValue)
 			common.OptionMap[key] = strconv.FormatBool(common.IsGlobalRecordUaLogEnabled())
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）

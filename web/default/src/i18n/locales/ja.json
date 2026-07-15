@@ -3561,7 +3561,7 @@
     "TPM": "TPM",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "リクエストごとの消費を追跡し、使用状況分析に利用します。これをオンにすると、データベースへの書き込みが増加します。",
     "Globally record usage and error log User-Agent": "使用状況とエラーログのUser-Agentを全体で記録",
-    "When enabled, usage and error logs for all users record the client User-Agent request header.": "有効にすると、全ユーザーの使用状況とエラーログにクライアントのUser-Agentリクエストヘッダーが記録されます。",
+    "When enabled, request-based usage and error logs for all users record the client User-Agent header.": "有効にすると、全ユーザーのリクエストに基づく使用状況ログとエラーログにクライアントのUser-Agentヘッダーが記録されます。",
     "Track usage, costs and performance with real-time analytics": "リアルタイム分析で使用量、コスト、パフォーマンスを追跡",
     "Tracks current account base limits and additional metered usage on Codex upstream.": "Codex 上でのアカウント基礎枠と追加従量の利用量を表示します。",
     "Transfer": "振替",

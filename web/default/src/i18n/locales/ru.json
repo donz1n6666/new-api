@@ -3561,7 +3561,7 @@
     "TPM": "TPM",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "Отслеживать потребление для каждого запроса для аналитики использования. Сохранение этой опции увеличивает количество записей в базу данных.",
     "Globally record usage and error log User-Agent": "Глобально записывать User-Agent в журналах использования и ошибок",
-    "When enabled, usage and error logs for all users record the client User-Agent request header.": "После включения журналы использования и ошибок всех пользователей записывают заголовок User-Agent клиента.",
+    "When enabled, request-based usage and error logs for all users record the client User-Agent header.": "После включения журналы использования и ошибок, создаваемые запросами всех пользователей, записывают заголовок User-Agent клиента.",
     "Track usage, costs and performance with real-time analytics": "Отслеживайте использование, затраты и производительность с помощью аналитики в реальном времени",
     "Tracks current account base limits and additional metered usage on Codex upstream.": "Отслеживает базовые лимиты и дополнительное потребление (metered) аккаунта на стороне Codex.",
     "Transfer": "Перевод",

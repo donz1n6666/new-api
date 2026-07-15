@@ -3561,7 +3561,7 @@
     "TPM": "TPM",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "Theo dõi mức tiêu thụ theo từng yêu cầu để phục vụ phân tích mức độ sử dụng. Việc bật tính năng này làm tăng số lượt ghi vào cơ sở dữ liệu.",
     "Globally record usage and error log User-Agent": "Ghi User-Agent nhật ký sử dụng và lỗi trên toàn hệ thống",
-    "When enabled, usage and error logs for all users record the client User-Agent request header.": "Sau khi bật, nhật ký sử dụng và lỗi của tất cả người dùng sẽ ghi lại tiêu đề User-Agent của máy khách.",
+    "When enabled, request-based usage and error logs for all users record the client User-Agent header.": "Khi bật, nhật ký sử dụng và lỗi phát sinh từ yêu cầu của mọi người dùng sẽ ghi lại tiêu đề User-Agent của máy khách.",
     "Track usage, costs and performance with real-time analytics": "Theo dõi sử dụng, chi phí và hiệu suất với phân tích thời gian thực",
     "Tracks current account base limits and additional metered usage on Codex upstream.": "Theo dõi hạn cơ bản và mức dùng tính phí bổ sung của tài khoản ở phía upstream Codex.",
     "Transfer": "Chuyển",

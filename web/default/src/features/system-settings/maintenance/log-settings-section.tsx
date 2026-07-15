@@ -200,7 +200,7 @@ export function LogSettingsSection({
                   </FormLabel>
                   <FormDescription>
                     {t(
-                      'When enabled, usage and error logs for all users record the client User-Agent request header.'
+                      'When enabled, request-based usage and error logs for all users record the client User-Agent header.'
                     )}
                   </FormDescription>
                 </div>

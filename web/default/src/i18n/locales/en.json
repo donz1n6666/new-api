@@ -3561,7 +3561,7 @@
     "TPM": "TPM",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "Track per-request consumption to power usage analytics. Keeping this on increases database writes.",
     "Globally record usage and error log User-Agent": "Globally record usage and error log User-Agent",
-    "When enabled, usage and error logs for all users record the client User-Agent request header.": "When enabled, usage and error logs for all users record the client User-Agent request header.",
+    "When enabled, request-based usage and error logs for all users record the client User-Agent header.": "When enabled, request-based usage and error logs for all users record the client User-Agent header.",
     "Track usage, costs and performance with real-time analytics": "Track usage, costs and performance with real-time analytics",
     "Tracks current account base limits and additional metered usage on Codex upstream.": "Tracks current account base limits and additional metered usage on Codex upstream.",
     "Transfer": "Transfer",

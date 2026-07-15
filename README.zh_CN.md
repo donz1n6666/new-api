@@ -318,7 +318,7 @@ docker run --name new-api -d --restart always \
 | `AZURE_DEFAULT_API_VERSION` | Azure API 版本                                                 | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | 错误日志开关                                                       | `false` |
 | `GLOBAL_RECORD_IP_LOG_ENABLED` | 全局记录消费和错误日志的客户端 IP 开关                                     | `false` |
-| `GLOBAL_RECORD_UA_LOG_ENABLED` | 全局记录消费和错误日志的客户端 User-Agent 开关                             | `false` |
+| `GLOBAL_RECORD_UA_LOG_ENABLED` | 全局记录请求产生的消费和错误日志客户端 User-Agent 开关                       | `false` |
 | `PYROSCOPE_URL` | Pyroscope 服务地址                                            | - |
 | `PYROSCOPE_APP_NAME` | Pyroscope 应用名                                        | `new-api` |
 | `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Auth 用户名                        | - |

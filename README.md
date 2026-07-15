@@ -318,7 +318,7 @@ docker run --name new-api -d --restart always \
 | `AZURE_DEFAULT_API_VERSION` | Azure API version | `2025-04-01-preview` |
 | `ERROR_LOG_ENABLED` | Error log switch | `false` |
 | `GLOBAL_RECORD_IP_LOG_ENABLED` | Globally record client IPs for usage and error logs | `false` |
-| `GLOBAL_RECORD_UA_LOG_ENABLED` | Globally record client User-Agent headers for usage and error logs | `false` |
+| `GLOBAL_RECORD_UA_LOG_ENABLED` | Globally record client User-Agent headers for request-based usage and error logs | `false` |
 | `PYROSCOPE_URL` | Pyroscope server address | - |
 | `PYROSCOPE_APP_NAME` | Pyroscope application name | `new-api` |
 | `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope basic auth user | - |
