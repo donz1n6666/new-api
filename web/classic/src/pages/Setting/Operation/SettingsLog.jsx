@@ -47,6 +47,7 @@ export default function SettingsLog(props) {
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
     GlobalRecordIpLogEnabled: false,
+    GlobalRecordUaLogEnabled: false,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -231,6 +232,24 @@ export default function SettingsLog(props) {
                     setInputs({
                       ...inputs,
                       GlobalRecordIpLogEnabled: value,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'GlobalRecordUaLogEnabled'}
+                  label={t('全局记录消费与错误日志UA')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  extraText={t(
+                    '开启后，所有用户由请求产生的消费和错误日志都会记录客户端User-Agent（UA）请求头',
+                  )}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      GlobalRecordUaLogEnabled: value,
                     });
                   }}
                 />

@@ -267,6 +267,7 @@ export type MaintenanceSettings = {
   'theme.frontend': string
   Notice: string
   LogConsumeEnabled: boolean
+  GlobalRecordUaLogEnabled: boolean
   HeaderNavModules: string
   SidebarModulesAdmin: string
   'performance_setting.disk_cache_enabled': boolean

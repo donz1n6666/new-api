@@ -93,18 +93,34 @@ var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
 
-var GlobalRecordIpLogEnabled = false
-var globalRecordIpLogEnvEnabled = false
+var globalRecordIpLogEnabled atomic.Bool
+var globalRecordIpLogEnvEnabled atomic.Bool
+
+func SetGlobalRecordIpLogEnabled(enabled bool) {
+	globalRecordIpLogEnabled.Store(enabled)
+}
 
 func SetGlobalRecordIpLogEnvEnabled(enabled bool) {
-	globalRecordIpLogEnvEnabled = enabled
-	if enabled {
-		GlobalRecordIpLogEnabled = true
-	}
+	globalRecordIpLogEnvEnabled.Store(enabled)
 }
 
 func IsGlobalRecordIpLogEnabled() bool {
-	return globalRecordIpLogEnvEnabled || GlobalRecordIpLogEnabled
+	return globalRecordIpLogEnvEnabled.Load() || globalRecordIpLogEnabled.Load()
+}
+
+var globalRecordUaLogEnabled atomic.Bool
+var globalRecordUaLogEnvEnabled atomic.Bool
+
+func SetGlobalRecordUaLogEnabled(enabled bool) {
+	globalRecordUaLogEnabled.Store(enabled)
+}
+
+func SetGlobalRecordUaLogEnvEnabled(enabled bool) {
+	globalRecordUaLogEnvEnabled.Store(enabled)
+}
+
+func IsGlobalRecordUaLogEnabled() bool {
+	return globalRecordUaLogEnvEnabled.Load() || globalRecordUaLogEnabled.Load()
 }
 
 var TLSInsecureSkipVerify bool

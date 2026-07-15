@@ -150,6 +150,8 @@ func initConstantEnv() {
 	constant.ErrorLogEnabled = GetEnvOrDefaultBool("ERROR_LOG_ENABLED", false)
 	// GlobalRecordIpLogEnabled 全局记录消费和错误日志的客户端 IP。
 	SetGlobalRecordIpLogEnvEnabled(GetEnvOrDefaultBool("GLOBAL_RECORD_IP_LOG_ENABLED", false))
+	// GlobalRecordUaLogEnabled 全局记录消费和错误日志的客户端 User-Agent。
+	SetGlobalRecordUaLogEnvEnabled(GetEnvOrDefaultBool("GLOBAL_RECORD_UA_LOG_ENABLED", false))
 	// 任务轮询时查询的最大数量
 	constant.TaskQueryLimit = GetEnvOrDefault("TASK_QUERY_LIMIT", 1000)
 	// 异步任务超时时间（分钟），超过此时间未完成的任务将被标记为失败并退款。0 表示禁用。

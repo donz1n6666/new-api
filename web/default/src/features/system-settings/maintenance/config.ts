@@ -66,6 +66,7 @@ export const DEFAULT_MAINTENANCE_SETTINGS: MaintenanceSettings = {
   'theme.frontend': 'default',
   Notice: '',
   LogConsumeEnabled: false,
+  GlobalRecordUaLogEnabled: false,
   HeaderNavModules: JSON.stringify(HEADER_NAV_DEFAULT),
   SidebarModulesAdmin: JSON.stringify(SIDEBAR_MODULES_DEFAULT),
   'performance_setting.disk_cache_enabled': false,

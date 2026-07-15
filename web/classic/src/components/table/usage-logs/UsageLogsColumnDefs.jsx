@@ -144,10 +144,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -185,11 +182,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -461,7 +454,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
 
   if (other?.billing_mode === 'tiered_expr') {
     return { segments: renderTieredModelPriceSimple(summaryOpts) };
@@ -861,6 +858,53 @@ export const getLogsColumns = ({
                 }}
               >
                 {text}
+              </Tag>
+            </span>
+          </Tooltip>
+        ) : (
+          <></>
+        );
+      },
+    },
+    {
+      key: COLUMN_KEYS.UA,
+      title: (
+        <div className='flex items-center gap-1'>
+          {t('UA')}
+          <Tooltip
+            content={t(
+              '当站点全局设置开启UA记录时，才会记录消费和错误类型日志的User-Agent',
+            )}
+          >
+            <IconHelpCircle className='text-gray-400 cursor-help' />
+          </Tooltip>
+        </div>
+      ),
+      dataIndex: 'ua',
+      render: (text, record, index) => {
+        const showUa = (record.type === 2 || record.type === 5) && text;
+        return showUa ? (
+          <Tooltip content={text}>
+            <span>
+              <Tag
+                color='cyan'
+                shape='circle'
+                onClick={(event) => {
+                  copyText(event, text);
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    maxWidth: 140,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    verticalAlign: 'bottom',
+                  }}
+                >
+                  {text}
+                </span>
               </Tag>
             </span>
           </Tooltip>

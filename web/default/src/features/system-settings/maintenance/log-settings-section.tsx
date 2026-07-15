@@ -33,12 +33,14 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  GlobalRecordUaLogEnabled: z.boolean(),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultUaEnabled: boolean
 }
 
 const HOURS_IN_DAY = 24
@@ -68,6 +70,7 @@ const quickSelectOptions = [
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultUaEnabled,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -75,6 +78,7 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      GlobalRecordUaLogEnabled: defaultUaEnabled,
     },
   })
 
@@ -85,8 +89,11 @@ export function LogSettingsSection({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      GlobalRecordUaLogEnabled: defaultUaEnabled,
+    })
+  }, [defaultEnabled, defaultUaEnabled, form])
 
   const purgeTimestamp = useMemo(() => {
     if (!purgeDate) return null
@@ -99,11 +106,18 @@ export function LogSettingsSection({
   }, [purgeDate])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    if (values.LogConsumeEnabled !== defaultEnabled) {
+      await updateOption.mutateAsync({
+        key: 'LogConsumeEnabled',
+        value: values.LogConsumeEnabled,
+      })
+    }
+    if (values.GlobalRecordUaLogEnabled !== defaultUaEnabled) {
+      await updateOption.mutateAsync({
+        key: 'GlobalRecordUaLogEnabled',
+        value: values.GlobalRecordUaLogEnabled,
+      })
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -161,6 +175,32 @@ export function LogSettingsSection({
                   <FormDescription>
                     {t(
                       'Track per-request consumption to power usage analytics. Keeping this on increases database writes.'
+                    )}
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='GlobalRecordUaLogEnabled'
+            render={({ field }) => (
+              <FormItem className='flex flex-row items-start justify-between rounded-lg border p-4'>
+                <div className='space-y-0.5 pe-4'>
+                  <FormLabel className='text-base'>
+                    {t('Globally record usage and error log User-Agent')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, request-based usage and error logs for all users record the client User-Agent header.'
                     )}
                   </FormDescription>
                 </div>
